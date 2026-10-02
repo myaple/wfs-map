@@ -1,0 +1,137 @@
+import { test, expect } from '@playwright/test';
+const ready = async (page: any) => { await page.goto('/?points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3); };
+const drag = async (page: any, canvas: any, button: 'left' | 'right', lo = [.2, .25], hi = [.8, .8]) => { await canvas.scrollIntoViewIfNeeded(); const b = (await canvas.boundingBox())!; await page.mouse.move(b.x + 68 + (b.width - 86) * lo[0], b.y + 18 + (b.height - 82) * lo[1]); await page.mouse.down({ button }); await page.mouse.move(b.x + 68 + (b.width - 86) * hi[0], b.y + 18 + (b.height - 82) * hi[1], { steps: 5 }); await page.mouse.up({ button }); };
+test('only scatter offers unbinned mode, and changing type resets it', async ({ page }) => {
+    await ready(page);
+    const cards = page.locator('.chart-card');
+    await expect(cards.nth(0).getByLabel('Binning', { exact: true })).toBeHidden();
+    await expect(cards.nth(1).getByLabel('Binning', { exact: true })).toBeHidden();
+    const s = cards.nth(2);
+    await s.getByLabel('Binning', { exact: true }).selectOption('exact');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].raw);
+    await s.getByLabel('Chart type').selectOption('time');
+    await expect(s.getByLabel('Binning', { exact: true })).toBeHidden();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].type === 'time');
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results[2].raw)).toBeUndefined();
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results[2].x.ranges.length)).toBe(25);
+});
+test('binned charts left-drag zoom locally, right-drag select, double-click reset without filtering', async ({ page }) => {
+    await ready(page);
+    const scatter = page.locator('.chart-card').nth(2), canvas = scatter.locator('canvas');
+    const before = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].filterRequest);
+    await drag(page, canvas, 'left');
+    let view = JSON.parse((await canvas.getAttribute('data-view'))!);
+    expect(view[0]).toBeGreaterThan(0);
+    expect(view[2]).toBeLessThan(1);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].filterRequest)).toBe(before);
+    await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
+    await canvas.dblclick({ position: { x: 140, y: 100 } });
+    await expect(canvas).toHaveAttribute('data-view', '[0,0,1,1]');
+    await page.waitForTimeout(650);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].filterRequest)).toBe(before);
+    await drag(page, canvas, 'right');
+    await expect(page.locator('#rules .selection')).toHaveCount(1);
+    await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
+    await page.locator('#reset').click();
+    await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
+    const bar = page.locator('.chart-card').first().locator('canvas');
+    await drag(page, bar, 'left');
+    await expect(bar).not.toHaveAttribute('data-view', '[0,0,1,1]');
+    await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
+    await bar.dblclick({ position: { x: 140, y: 100 } });
+    await expect(bar).toHaveAttribute('data-view', '[0,0,1,1]');
+});
+test('raw date axes are readable, fill the plot, zoom independently and retain correct rectangle predicates', async ({ page }) => {
+    await ready(page);
+    const s = page.locator('.chart-card').nth(2);
+    await s.getByLabel('X attribute').selectOption('timestamp');
+    await s.getByLabel('Binning', { exact: true }).selectOption('exact');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].raw);
+    const canvas = s.locator('.raw-scatter canvas:not(.raw-scatter-axes)');
+    await expect(canvas).toHaveAttribute('data-axis-x', 'date');
+    const projection = await page.evaluate(() => {
+        const r = (window as any).__WFS_MAP__.workspace.results[2];
+        let min = 1, max = -1;
+        for (let i = 0; i < r.raw.positions.length; i += r.raw.precise ? 4 : 2) {
+            min = Math.min(min, r.raw.positions[i]);
+            max = Math.max(max, r.raw.positions[i]);
+        }
+        return { min, max };
+    });
+    expect(projection.min).toBe(-1);
+    expect(projection.max).toBe(1);
+    await drag(page, canvas, 'left');
+    await expect(canvas).not.toHaveAttribute('data-view', '[0,0,1,1]');
+    await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
+    await drag(page, canvas, 'right');
+    await expect(page.locator('#rules .selection')).toHaveCount(1);
+    const rules = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[0].children);
+    expect(rules[0].value).toMatch(/^202[4-6]-\d{2}-\d{2}T/);
+    await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
+    await canvas.dblclick({ position: { x: 140, y: 100 } });
+    await expect(canvas).toHaveAttribute('data-view', '[0,0,1,1]');
+});
+test('every chart enlarges and restores, retaining zoom and selection; Escape also restores', async ({ page }) => {
+    await ready(page);
+    const cards = page.locator('#charts > .chart-card'), scatter = cards.nth(2);
+    await scatter.getByLabel('Binning', { exact: true }).selectOption('exact');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].raw);
+    for (const id of ['chart-1', 'chart-2', 'chart-3']) {
+        const card = page.locator(`.chart-card[data-chart-id="${id}"]`);
+        if (!await card.count())
+            continue;
+        await card.getByRole('button', { name: 'Enlarge', exact: true }).click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+        const enlarged = page.getByRole('dialog').locator('.chart-card');
+        const canvas = enlarged.locator('canvas:not(.raw-scatter-axes):visible');
+        expect((await canvas.boundingBox())!.height).toBeGreaterThan(300);
+        await enlarged.getByRole('button', { name: 'Return to normal size' }).click();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+    }
+    await page.locator('#charts > .chart-card').nth(2).getByRole('button', { name: 'Enlarge', exact: true }).click();
+    const canvas = page.getByRole('dialog').locator('.raw-scatter canvas:not(.raw-scatter-axes)');
+    await drag(page, canvas, 'left');
+    const view = await canvas.getAttribute('data-view');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('#charts > .chart-card').nth(2).locator('.raw-scatter canvas:not(.raw-scatter-axes)')).toHaveAttribute('data-view', view!);
+    await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
+});
+test('pie and time charts share zoom/select gestures; removing an enlarged chart does not restore it', async ({ page }) => {
+    await ready(page);
+    const pie = page.locator('.chart-card').first();
+    await pie.getByLabel('Chart type').selectOption('pie');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[0].type === 'pie');
+    const canvas = pie.locator('canvas');
+    await canvas.scrollIntoViewIfNeeded();
+    let b = (await canvas.boundingBox())!;
+    await page.mouse.move(b.x + b.width * .55, b.y + 10);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(b.x + b.width * .95, b.y + b.height - 10, { steps: 5 });
+    await page.mouse.up({ button: 'right' });
+    await expect(page.locator('#filterStatus')).toContainText('2,048 matches');
+    await expect(page.locator('#rules')).toContainText('2 segments');
+    await page.locator('#reset').click();
+    await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
+    const time = page.locator('.chart-card').nth(1).locator('canvas');
+    await drag(page, time, 'left');
+    await expect(time).not.toHaveAttribute('data-view', '[0,0,1,1]');
+    await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
+    await time.dblclick({ position: { x: 140, y: 100 } });
+    await expect(time).toHaveAttribute('data-view', '[0,0,1,1]');
+    await drag(page, time, 'right');
+    await expect(page.locator('#rules .selection')).toHaveCount(1);
+    await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
+    await page.locator('.chart-card').first().getByRole('button', { name: 'Enlarge', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Remove chart', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.chart-card')).toHaveCount(2);
+    await page.waitForTimeout(100);
+    await expect(page.locator('.chart-card')).toHaveCount(2);
+});
+test('GPU date zoom keeps observations one millisecond apart distinct across a multi-year dataset',async({page})=>{
+ const times=[Date.UTC(2024,0,1),Date.UTC(2025,0,1),Date.UTC(2025,0,1)+1,Date.UTC(2026,0,1)],values=[0,25,75,100];
+ await page.route('**/wfs?*',async route=>{const url=new URL(route.request().url());if(url.searchParams.get('request')==='DescribeFeatureType'){await route.fulfill({status:404,body:'No schema'});return;}if(url.searchParams.get('resultType')==='hits'){await route.fulfill({contentType:'application/xml',body:'<FeatureCollection numberMatched="4"/>'});return;}await route.fulfill({contentType:'application/json',body:JSON.stringify({type:'FeatureCollection',numberMatched:4,features:times.map((t,i)=>({type:'Feature',id:`f${i}`,geometry:{type:'Point',coordinates:[-1+i*.1,54]},properties:{category:'a',timestamp:new Date(t).toISOString(),value:values[i]}}))})});});
+ await page.goto('/?points=4&autoload=1');await page.waitForFunction(()=>(window as any).__WFS_MAP__?.workspace.results.length===3);const s=page.locator('.chart-card').nth(2);await s.getByLabel('X attribute').selectOption('timestamp');await s.getByLabel('Y attribute').selectOption('value');await s.getByLabel('Binning',{exact:true}).selectOption('exact');await page.waitForFunction(()=>(window as any).__WFS_MAP__.workspace.results[2].raw?.precise);
+ const hits=await page.evaluate(times=>{const h=(window as any).__WFS_MAP__,raw=h.workspace.views.get('chart-3').raw,b=h.workspace.results[2].raw.bounds,t1=(times[1]-b[0])/(b[2]-b[0]),t2=(times[2]-b[0])/(b[2]-b[0]),span=t2-t1;raw.interaction.view=[t1-span*.5,0,t2+span*.5,1];raw.draw(true);const canvas=raw.canvas,d=canvas.width/canvas.clientWidth,w=canvas.clientWidth,height=canvas.clientHeight,hits=[];for(const [x,y] of [[.25,.25],[.75,.75]]){const pixels=new Uint8Array(4);raw.gl.readPixels(Math.round((68+(w-86)*x)*d),Math.round((64+(height-82)*y)*d),1,1,raw.gl.RGBA,raw.gl.UNSIGNED_BYTE,pixels);hits.push((pixels[0]+pixels[1]*256+pixels[2]*65536+pixels[3]*16777216)-1);}raw.draw();return hits;},times);expect(hits).toEqual([1,2]);
+});

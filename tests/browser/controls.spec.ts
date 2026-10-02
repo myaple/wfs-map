@@ -24,7 +24,7 @@ test('basemap template and attribution persist and use local tiles', async ({ pa
     await page.getByLabel('Raster basemap tile URL').press('Tab');
     await expect(page.getByLabel('Raster basemap tile URL')).toHaveAttribute('aria-invalid', 'true');
 });
-test('time Y mean and exact modes are configurable; raw scatter clicks select one original observation', async ({ page }) => {
+test('time Y mean and scatter mode are configurable; raw scatter clicks select one original observation', async ({ page }) => {
     await ready(page);
     const time = page.locator('.chart-card').nth(1);
     await time.getByLabel('Y aggregation').selectOption('mean');
@@ -36,32 +36,28 @@ test('time Y mean and exact modes are configurable; raw scatter clicks select on
         expect(aggregate.values[i]).toBeCloseTo(rows.reduce((s, f) => s + Number(f.properties.quality), 0) / rows.length, 8);
     }
     const bar = page.locator('.chart-card').first();
-    await bar.getByLabel('Binning', { exact: true }).selectOption('exact');
-    await expect(bar.getByLabel('Number of bins')).toBeDisabled();
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.specs[0].binned === false);
+    await expect(bar.getByLabel('Binning', { exact: true })).toBeHidden();
     await bar.getByLabel('Chart type').selectOption('pie');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[0].type === 'pie');
-    await time.getByLabel('Binning', { exact: true }).selectOption('exact');
-    await page.waitForFunction(() => !(window as any).__WFS_MAP__.workspace.results[1].x.ranges);
-    await expect(time.getByLabel('Number of bins')).toBeDisabled();
+    await expect(time.getByLabel('Binning', { exact: true })).toBeHidden();
     const scatter = page.locator('.chart-card').nth(2);
     await scatter.getByLabel('Binning', { exact: true }).selectOption('exact');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].raw?.rows.length === 4096);
-    const canvas = scatter.locator('canvas:visible');
+    const canvas = scatter.locator('.raw-scatter canvas:not(.raw-scatter-axes)');
     await canvas.scrollIntoViewIfNeeded();
     const b = (await canvas.boundingBox())!;
     const pos = await page.evaluate(() => Array.from((window as any).__WFS_MAP__.workspace.results[2].raw.positions.slice(0, 2)) as number[]);
-    await page.mouse.click(b.x + b.width * (.5 + pos[0] * .44), b.y + 240 * (.5 - pos[1] * .44));
+    await page.mouse.click(b.x + 68 + (b.width - 86) * (pos[0] + 1) / 2, b.y + b.height - 64 - (b.height - 82) * (pos[1] + 1) / 2);
     await expect(page.locator('#filterStatus')).toContainText('1 matches');
     await expect(page.locator('#rules')).toContainText('Observation');
     await page.locator('#reset').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     await canvas.scrollIntoViewIfNeeded();
     const box = (await canvas.boundingBox())!;
-    await page.mouse.move(box.x + box.width * .2, box.y + 60);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width * .7, box.y + 180);
-    await page.mouse.up();
+    await page.mouse.move(box.x + 68 + (box.width - 86) * .2, box.y + 18 + (box.height - 82) * .25);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(box.x + 68 + (box.width - 86) * .7, box.y + 18 + (box.height - 82) * .8);
+    await page.mouse.up({ button: 'right' });
     await expect(page.locator('#rules')).toContainText('rectangle');
     const e = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression());
     const rules = e.children[0].children;
@@ -120,7 +116,7 @@ test('sources retain independent colour attributes and geographic selections acr
     await page.locator('#analysisSource').selectOption(ids[0]);
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('quality');
     await expect(page.locator('#rules')).not.toContainText('Other box');
-    await expect(page.locator('.raw-scatter canvas')).toHaveCount(1);
+    await expect(page.locator('.raw-scatter canvas:not(.raw-scatter-axes)')).toHaveCount(1);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(4096);
     await page.locator('#analysisSource').selectOption(ids[1]);
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('value');

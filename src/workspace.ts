@@ -1,3 +1,4 @@
+import { ChartInteraction, plotRect, drawAxes, pieSegments, type Point, type View } from './chart-plot.ts';
 import { RawScatter } from './raw-scatter.ts';
 import type { Field, Rule } from './data.ts';
 import { all, type Expression, type ChartSpec, type ChartResult, type Axis } from './analysis.ts';
@@ -124,8 +125,10 @@ export class Workspace {
         for (const result of results)
             this.views.get(result.id)?.update(result);
     }
-    visibilityChanged() { for (const view of this.views.values())
-        view.refreshRaw(); }
+    visibilityChanged() {
+        for (const view of this.views.values())
+            view.refreshRaw();
+    }
     suspend() {
         this.results = [];
         for (const view of this.views.values())
@@ -160,8 +163,11 @@ class ChartView {
     private mode = element('select');
     private aggregate = element('select');
     private raw?: RawScatter;
-    private start: number | null = null;
-    private drag: number | null = null;
+    private plot = element('div');
+    private interaction: ChartInteraction;
+    private expand = element('button', 'Enlarge');
+    private dialog?: HTMLDialogElement;
+    private placeholder?: Comment;
     private focus = 0;
     private hit = new Float32Array(0);
     constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string) => void) {
@@ -183,46 +189,42 @@ class ChartView {
         this.aggregate.setAttribute('aria-label', 'Y aggregation');
         this.aggregate.append(...['count', 'sum', 'mean', 'min', 'max'].map(v => option(v, v === 'count' ? 'Point count' : v)));
         this.aggregate.value = spec.aggregate ?? 'count';
-        head.append(this.type, this.x, this.y, this.aggregate, this.mode, this.bins, button('×', remove));
+        const actions = element('div');
+        actions.className = 'chart-actions';
+        const removeButton = button('×', remove);
+        removeButton.setAttribute('aria-label', 'Remove chart');
+        this.expand.setAttribute('aria-haspopup', 'dialog');
+        this.expand.setAttribute('aria-expanded', 'false');
+        this.expand.onclick = () => this.enlarge();
+        actions.append(this.expand, removeButton);
+        head.append(this.type, this.x, this.y, this.aggregate, this.mode, this.bins, actions);
         this.canvas.tabIndex = 0;
         this.canvas.setAttribute('role', 'img');
         this.note.className = 'hint';
         const legend = element('details');
         legend.append(element('summary', 'Counts and keyboard selection'), this.list);
-        this.root.append(head, this.canvas, this.note, legend);
+        this.plot.className = 'chart-plot';
+        this.plot.append(this.canvas);
+        this.root.append(head, this.plot, this.note, legend);
         target.append(this.root);
         this.configure();
         this.type.onchange = () => { spec.type = this.type.value as ChartSpec['type']; this.configure(); changed(); };
         this.x.onchange = () => { spec.x = this.x.value; changed(); };
         this.y.onchange = () => { spec.y = this.y.value; changed(); };
-        this.mode.onchange = () => { spec.binned = this.mode.value === 'binned'; this.bins.disabled = !spec.binned; this.result = undefined; this.raw?.destroy(); this.raw = undefined; changed(); };
+        this.mode.onchange = () => { this.interaction.reset(); spec.binned = this.mode.value === 'binned'; this.bins.disabled = !spec.binned; this.result = undefined; this.raw?.destroy(); this.raw = undefined; changed(); };
         this.aggregate.onchange = () => { spec.aggregate = this.aggregate.value as ChartSpec['aggregate']; this.y.hidden = spec.type === 'time' && spec.aggregate === 'count'; changed(); };
         this.bins.onchange = () => { spec.bins = Number(this.bins.value); changed(); };
-        this.canvas.onpointerdown = e => {
+        this.interaction = new ChartInteraction(this.canvas, this.plot, () => this.result?.type === 'pie' ? { left: 0, right: this.canvas.clientWidth, top: 0, bottom: this.canvas.clientHeight, width: this.canvas.clientWidth, height: this.canvas.clientHeight } : plotRect(this.canvas, this.result?.y?.kind === 'date'), () => this.draw(), (a, b) => this.selectRectangle(a, b), p => {
+            const cell = this.cellAt(p);
+            if (cell >= 0)
+                this.choose(cell, cell);
+        });
+        this.canvas.addEventListener('pointermove', e => {
             if (!this.result)
                 return;
-            this.start = this.cell(e);
-            this.canvas.setPointerCapture(e.pointerId);
-        };
-        this.canvas.onpointermove = e => {
-            if (!this.result)
-                return;
-            const cell = this.cell(e);
+            const b = this.canvas.getBoundingClientRect(), cell = this.cellAt([e.clientX - b.left, e.clientY - b.top]);
             this.canvas.title = cell >= 0 ? this.description(cell) : '';
-            if (this.start !== null && this.result.y) {
-                this.drag = cell;
-                this.draw();
-            }
-        };
-        this.canvas.onpointercancel = () => { this.start = null; this.drag = null; this.draw(); };
-        this.canvas.onpointerup = e => {
-            const end = this.cell(e);
-            if (this.start !== null && end >= 0)
-                this.choose(this.start, end);
-            this.start = null;
-            this.drag = null;
-            this.draw();
-        };
+        });
         this.canvas.onkeydown = e => {
             if (!this.result)
                 return;
@@ -254,6 +256,11 @@ class ChartView {
         this.observer.observe(this.canvas);
     }
     private configure() {
+        this.interaction?.reset();
+        if (this.spec.type !== 'scatter')
+            this.spec.binned = true;
+        this.mode.hidden = this.spec.type !== 'scatter';
+        this.mode.value = this.spec.binned === false ? 'exact' : 'binned';
         this.result = undefined;
         this.raw?.destroy();
         this.raw = undefined;
@@ -278,6 +285,8 @@ class ChartView {
         this.note.textContent = allowed.length ? '' : 'No compatible attributes in this dataset. Choose another chart type.';
     }
     update(result: ChartResult) {
+        if (this.result && (this.result.x.field !== result.x.field || this.result.y?.field !== result.y?.field))
+            this.interaction.reset();
         this.result = result;
         this.focus = Math.min(this.focus, Math.max(0, result.counts.length - 1));
         this.canvas.hidden = !!result.raw;
@@ -289,7 +298,7 @@ class ChartView {
             this.draw();
         }
         const total = result.raw?.rows.length ?? result.counts.reduce((a, b) => a + b, 0);
-        this.note.textContent = result.error ?? `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing · ${result.raw ? 'Individual observations; click a point or drag a rectangle to filter.' : result.y ? 'Counted scatter bins; drag a rectangle to filter.' : 'Click a segment to filter.'}`;
+        this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing · ${result.raw ? 'Individual observations. Left-drag to zoom; right-drag to select; double-click to reset.' : result.y ? 'Counted scatter bins. Left-drag to zoom; right-drag to select; double-click to reset.' : 'Click a segment to filter. Left-drag to zoom; right-drag to select; double-click to reset.'}`;
         this.canvas.setAttribute('aria-label', `${result.type} chart of ${result.x.field}${result.y ? ' against ' + result.y.field : ''}. Arrow keys choose a bin; Enter filters it.`);
         this.list.replaceChildren();
         if (!result.y)
@@ -298,18 +307,49 @@ class ChartView {
         else
             this.list.append(element('p', result.raw ? 'Focus the plot and use arrow keys to step through original observations; Enter selects one. Overlapping points return one observation on click.' : 'Focus the plot, use arrow keys to choose a cell, and press Enter. Each circle counts all points in its cell.'));
     }
-    refreshRaw() { const r = this.result; if (!r?.raw)
-        return; if (this.root.isConnected && !document.getElementById('analysis')?.hidden) {
-        this.raw ??= new RawScatter(this.select);
-        if (!this.raw.container.isConnected)
-            this.canvas.after(this.raw.container);
-        this.raw.update(r);
+    refreshRaw() {
+        const r = this.result;
+        if (!r?.raw)
+            return;
+        if (this.root.isConnected && !document.getElementById('analysis')?.hidden) {
+            this.raw ??= new RawScatter(this.select);
+            if (!this.raw.container.isConnected)
+                this.canvas.after(this.raw.container);
+            this.raw.update(r);
+        }
+        else {
+            this.raw?.destroy();
+            this.raw = undefined;
+        }
     }
-    else {
-        this.raw?.destroy();
-        this.raw = undefined;
-    } }
     private description(i: number) { const r = this.result!, nx = r.x.labels.length; return `${r.x.field}: ${r.x.labels[i % nx]}${r.y ? ` · ${r.y.field}: ${r.y.labels[Math.floor(i / nx)]}` : ''} · ${(r.counts[i] ?? 0).toLocaleString()}${r.values ? ` · ${r.measure}: ${r.values[i]}` : ''}`; }
+    private selectRectangle(a: Point, b: Point) {
+        const r = this.result;
+        if (!r)
+            return;
+        if (r.type !== 'pie') {
+            const first = this.cellAt(a), last = this.cellAt(b);
+            if (first >= 0 && last >= 0)
+                this.choose(first, last);
+            return;
+        }
+        const lo = this.interaction.data([Math.min(a[0], b[0]), Math.max(a[1], b[1])]), hi = this.interaction.data([Math.max(a[0], b[0]), Math.min(a[1], b[1])]), w = this.canvas.clientWidth, h = this.canvas.clientHeight, radius = Math.min(w, h) * .36;
+        const cells = pieSegments(r.counts, [lo[0] * w, (1 - hi[1]) * h, hi[0] * w, (1 - lo[1]) * h], w / 2, h / 2, radius * .51, radius);
+        if (!cells.length)
+            return;
+        const children: Expression[] = [];
+        for (let i = 0; i < cells.length;) {
+            const lo = cells[i];
+            let hi = lo;
+            while (i + 1 < cells.length && cells[i + 1] === hi + 1) {
+                i++;
+                hi = cells[i];
+            }
+            children.push(interval(r.x, lo, hi));
+            i++;
+        }
+        this.select(children.length === 1 ? children[0] : { op: 'or', children }, `${r.x.field}: ${cells.length} segments`);
+    }
     private choose(a: number, b: number) {
         const r = this.result;
         if (!r || !r.counts.length || a < 0 || b < 0)
@@ -323,14 +363,18 @@ class ChartView {
         }
         this.select(expr, label);
     }
-    private cell(e: PointerEvent) {
+    private cellAt(point: Point) {
         const r = this.result;
         if (!r)
             return -1;
-        const box = this.canvas.getBoundingClientRect(), x = e.clientX - box.left, y = e.clientY - box.top;
+        const box = { width: this.canvas.clientWidth, height: this.canvas.clientHeight };
+        let [x, y] = point;
         if (r.type === 'pie') {
-            const dx = x - box.width / 2, dy = y - 120;
-            if (Math.hypot(dx, dy) > 88 || Math.hypot(dx, dy) < 45)
+            const data = this.interaction.data(point);
+            x = data[0] * box.width;
+            y = (1 - data[1]) * box.height;
+            const radius = Math.min(box.width, box.height) * .36, cx = box.width / 2, cy = box.height / 2, dx = x - cx, dy = y - cy;
+            if (Math.hypot(dx, dy) > radius || Math.hypot(dx, dy) < radius * .51)
                 return -1;
             let angle = Math.atan2(dy, dx) + Math.PI / 2;
             if (angle < 0)
@@ -353,7 +397,7 @@ class ChartView {
         const r = this.result, canvas = this.canvas, ctx = canvas.getContext('2d');
         if (!ctx)
             return;
-        const w = canvas.clientWidth, h = 240, dpr = Math.min(devicePixelRatio, 2);
+        const w = canvas.clientWidth, h = canvas.clientHeight, dpr = Math.min(devicePixelRatio, 2);
         canvas.width = Math.max(1, Math.round(w * dpr));
         canvas.height = h * dpr;
         ctx.scale(dpr, dpr);
@@ -374,46 +418,49 @@ class ChartView {
         ctx.font = '11px system-ui';
         ctx.fillStyle = '#546b7a';
         if (r.type === 'pie') {
+            const v = this.interaction.view, radius = Math.min(w, h) * .36;
+            ctx.save();
+            ctx.scale(1 / (v[2] - v[0]), 1 / (v[3] - v[1]));
+            ctx.translate(-v[0] * w, -(1 - v[3]) * h);
             let angle = -Math.PI / 2;
             for (let i = 0; i < r.counts.length; i++) {
                 const end = angle + r.counts[i] / total * Math.PI * 2;
                 ctx.beginPath();
-                ctx.moveTo(w / 2, 120);
-                ctx.arc(w / 2, 120, 88, angle, end);
+                ctx.moveTo(w / 2, h / 2);
+                ctx.arc(w / 2, h / 2, radius, angle, end);
                 ctx.closePath();
                 ctx.fillStyle = colors[i % colors.length];
                 ctx.fill();
                 angle = end;
             }
             ctx.beginPath();
-            ctx.arc(w / 2, 120, 45, 0, Math.PI * 2);
+            ctx.arc(w / 2, h / 2, radius * .51, 0, Math.PI * 2);
             ctx.fillStyle = '#fff';
             ctx.fill();
             ctx.fillStyle = '#254557';
             ctx.textAlign = 'center';
-            ctx.fillText(total.toLocaleString(), w / 2, 124);
+            ctx.fillText(total.toLocaleString(), w / 2, h / 2 + 4);
+            ctx.restore();
             return;
         }
-        const left = 48, right = w - 12, top = 16, bottom = 194, dx = (right - left) / Math.max(nx, 1), dy = (bottom - top) / Math.max(ny, 1);
-        ctx.strokeStyle = '#e0e8ed';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < 4; i++) {
-            const y = bottom - (bottom - top) * i / 3;
-            ctx.beginPath();
-            ctx.moveTo(left, y);
-            ctx.lineTo(right, y);
-            ctx.stroke();
-            if (!r.y)
-                ctx.fillText((low + (max - low) * i / 3).toLocaleString(undefined, { maximumFractionDigits: 2 }), 2, y + 4);
-        }
-        const xs = r.x.points, pointX = (i: number) => xs ? left + (xs.at(-1) === xs[0] ? .5 : (xs[i] - xs[0]) / (xs.at(-1)! - xs[0])) * (right - left) : left + (i + .5) * dx;
+        const p = plotRect(canvas, r.y?.kind === 'date'), { left, right, top, bottom } = p, view = this.interaction.view;
+        const dx = (right - left) / Math.max(nx, 1) / (view[2] - view[0]), dy = (bottom - top) / Math.max(ny, 1) / (view[3] - view[1]);
+        const xBounds = r.x.ranges ? [r.x.ranges[0], r.x.ranges.at(-1)!] : [0, nx], yBounds = r.y?.ranges ? [r.y.ranges[0], r.y.ranges.at(-1)!] : [low, max || 1];
+        const bounds: View = [xBounds[0], yBounds[0], xBounds[1], yBounds[1]];
+        drawAxes(ctx, p, view, bounds, r.x.ranges ? r.x.kind : 'category', r.y?.kind, r.x.field, r.y?.field ?? r.measure ?? 'Point count');
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(left, top, right - left, bottom - top);
+        ctx.clip();
+        const pointX = (i: number) => this.interaction.screen([(i + .5) / nx, 0])[0];
         let prevX = 0, prevY = 0;
         for (let i = 0; i < r.counts.length; i++) {
-            const xb = i % nx, yb = Math.floor(i / nx), x = pointX(xb), y = r.y ? bottom - (yb + .5) * dy : bottom - (plotted[i] - low) / (max - low || 1) * (bottom - top);
-            this.hit.set([xs ? (xb === 0 ? left : (pointX(xb - 1) + x) / 2) : left + xb * dx, r.y ? bottom - (yb + 1) * dy : top, xs ? (xb === nx - 1 ? right : (x + pointX(xb + 1)) / 2) : left + (xb + 1) * dx, r.y ? bottom - yb * dy : bottom], i * 4);
+            const xb = i % nx, yb = Math.floor(i / nx), x = pointX(xb), y = this.interaction.screen([0, r.y ? (yb + .5) / ny : (plotted[i] - low) / (max - low || 1)])[1];
+            const lo = this.interaction.screen([xb / nx, r.y ? (yb + 1) / ny : view[3]]), hi = this.interaction.screen([(xb + 1) / nx, r.y ? yb / ny : view[1]]);
+            this.hit.set([lo[0], lo[1], hi[0], hi[1]], i * 4);
             ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : '#0d9188';
             if (r.type === 'bar')
-                ctx.fillRect(left + xb * dx + 1, y, Math.max(1, dx - 2), bottom - y);
+                ctx.fillRect(this.hit[i * 4] + 1, y, Math.max(1, dx - 2), this.interaction.screen([0, 0])[1] - y);
             else if (r.type === 'time') {
                 if (!Number.isFinite(plotted[i])) {
                     prevY = NaN;
@@ -441,40 +488,41 @@ class ChartView {
                 ctx.globalAlpha = 1;
             }
         }
-        if (r.y && this.start !== null && this.drag !== null && this.drag >= 0) {
-            const a = this.start * 4, b = this.drag * 4;
-            const x = Math.min(this.hit[a], this.hit[b]), y = Math.min(this.hit[a + 1], this.hit[b + 1]), right = Math.max(this.hit[a + 2], this.hit[b + 2]), bottom = Math.max(this.hit[a + 3], this.hit[b + 3]);
-            ctx.fillStyle = '#3984cf33';
-            ctx.fillRect(x, y, right - x, bottom - y);
-            ctx.strokeStyle = '#3984cf';
-            ctx.strokeRect(x, y, right - x, bottom - y);
-        }
-        ctx.fillStyle = '#546b7a';
-        if (r.y) {
-            ctx.textAlign = 'right';
-            ctx.fillText(r.y.labels[ny - 1]?.split(' – ').at(-1) ?? '', left - 5, top + 8);
-            ctx.fillText(r.y.labels[0]?.split(' – ')[0] ?? '', left - 5, bottom);
-            ctx.save();
-            ctx.translate(12, (top + bottom) / 2);
-            ctx.rotate(-Math.PI / 2);
+        ctx.restore();
+        if (!r.x.ranges && !r.y) {
+            ctx.fillStyle = '#546b7a';
+            ctx.font = '11px system-ui';
             ctx.textAlign = 'center';
-            ctx.fillText(r.y.field, 0, 0);
-            ctx.restore();
+            for (let i = 0; i < nx; i++) {
+                const x = pointX(i);
+                if (x >= left && x <= right && nx * (view[2] - view[0]) <= 10)
+                    ctx.fillText(r.x.labels[i], x, bottom + 18, Math.max(1, dx - 3));
+            }
         }
-        if (!r.x.ranges && !r.y && nx <= 8) {
-            ctx.textAlign = 'center';
-            for (let i = 0; i < nx; i++)
-                ctx.fillText(r.x.labels[i], left + (i + .5) * dx, 213, Math.max(1, dx - 3));
+    }
+    private restoreSize() { const dialog = this.dialog; if (!dialog)
+        return; this.dialog = undefined; this.placeholder?.replaceWith(this.root); this.placeholder = undefined; dialog.close(); dialog.remove(); this.expand.textContent = 'Enlarge'; this.expand.setAttribute('aria-expanded', 'false'); this.expand.focus(); this.draw(); }
+    private enlarge() {
+        if (this.dialog) {
+            this.restoreSize();
+            return;
         }
-        else {
-            ctx.textAlign = 'left';
-            ctx.fillText(r.x.labels[0]?.split(' – ')[0] ?? '', left, 213);
-            ctx.textAlign = 'right';
-            ctx.fillText(r.x.labels[nx - 1]?.split(' – ').at(-1) ?? '', right, 213);
-        }
-        ctx.textAlign = 'center';
-        ctx.fillText(r.x.field, w / 2, 232);
+        this.placeholder = document.createComment('chart position');
+        this.root.before(this.placeholder);
+        const dialog = element('dialog');
+        this.dialog = dialog;
+        dialog.className = 'chart-dialog';
+        dialog.setAttribute('aria-label', 'Enlarged attribute chart');
+        document.body.append(dialog);
+        dialog.append(this.root);
+        this.expand.textContent = 'Return to normal size';
+        this.expand.setAttribute('aria-expanded', 'true');
+        dialog.addEventListener('close', () => { if (this.dialog === dialog)
+            this.restoreSize(); });
+        dialog.showModal();
+        this.expand.focus();
+        this.draw();
     }
     suspend() { this.raw?.destroy(); this.raw = undefined; this.canvas.hidden = false; this.result = undefined; this.list.replaceChildren(); this.note.textContent = 'Load this source to calculate charts.'; this.draw(); }
-    destroy() { this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
+    destroy() { this.restoreSize(); this.interaction.destroy(); this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
 }

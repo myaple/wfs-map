@@ -1,15 +1,15 @@
 {
-  "measuredAt": "2026-10-02T18:49:22.392Z",
+  "measuredAt": "2026-10-02T18:57:45.654Z",
   "features": 3000000,
   "initial": {
     "loaded": 3000000,
-    "loadMs": 22294.5,
-    "workerMs": 292.40000000037253
+    "loadMs": 22836.400000000373,
+    "workerMs": 315
   },
   "unbinned": {
-    "workerMs": 253.19999999925494,
+    "workerMs": 328.5,
     "observations": 3000000,
-    "positionsBytes": 24000000,
+    "positionsBytes": 48000000,
     "idsBytes": 12000000,
     "colorBytes": 3000000,
     "gpuBytes": 63000000
@@ -25,9 +25,9 @@
   "selected": {
     "count": 667181,
     "observations": 667181,
-    "workerMs": 174.59999999962747,
+    "workerMs": 226.19999999925494,
     "colorBytes": 3000000,
-    "responseMs": 198.605732
+    "responseMs": 245.7903839999999
   },
   "errors": [],
   "notes": [

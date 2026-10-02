@@ -133,8 +133,6 @@ ctx.onmessage = (event: MessageEvent) => {
             const transfers: Transferable[] = result.indices ? [result.indices.buffer] : [];
             for (const chart of result.charts) {
                 transfers.push(chart.counts.buffer);
-                if (chart.x.points)
-                    transfers.push(chart.x.points.buffer);
                 if (chart.values)
                     transfers.push(chart.values.buffer);
                 if (chart.raw)

@@ -24,7 +24,6 @@ export type ChartSpec = {
 };
 export type Axis = {
     kind?: string;
-    points?: Float64Array;
     field: string;
     labels: string[];
     ranges?: Float64Array;
@@ -39,15 +38,19 @@ export type ChartResult = {
     missing: number;
     values?: Float64Array;
     measure?: string;
-    error?: string;
     raw?: {
         positions: Float32Array;
+        precise?: boolean;
         rows: Uint32Array;
         bounds: Float64Array;
     };
 };
-const normalize = (v: number, lo: number, hi: number) => { if (hi === lo)
-    return 0; const width = hi - lo; return (Number.isFinite(width) ? (v - lo) / width : (v / 2 - lo / 2) / (hi / 2 - lo / 2)) * 2 - 1; };
+const normalize = (v: number, lo: number, hi: number) => {
+    if (hi === lo)
+        return 0;
+    const width = hi - lo;
+    return (Number.isFinite(width) ? (v - lo) / width : (v / 2 - lo / 2) / (hi / 2 - lo / 2)) * 2 - 1;
+};
 const BLOCK = 32768;
 export async function yieldEvents() {
     if ((globalThis as any).scheduler?.yield)
@@ -205,7 +208,6 @@ type Prepared = {
     ybin?: (v: number) => number;
     spec: ChartSpec;
     measure: number;
-    exact?: Map<number, number>;
     rawCount: number;
 };
 export class Analyzer {
@@ -288,7 +290,7 @@ export class Analyzer {
         const n = p.min === p.max ? 1 : bins, width = (p.max - p.min) / n;
         const ranges = new Float64Array(n + 1), labels: string[] = [], rules: Expression[] = [];
         const str = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString() : String(v);
-        const label = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString().slice(0, 10) : Number(v.toPrecision(4)).toString();
+        const label = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC') : Number(v.toPrecision(4)).toString();
         const regular = Number.isFinite(width) && width > 0;
         for (let i = 0; i <= n; i++) {
             const edge = regular ? p.min + width * i : p.min * (1 - i / n) + p.max * (i / n);
@@ -362,8 +364,7 @@ export class Analyzer {
             const aggregate = s.aggregate ?? 'count', measure = s.type === 'time' && aggregate !== 'count' ? this.store.fields.findIndex(f => f.name === s.y && f.kind === 'number') : -1;
             if (s.type === 'time' && (!['count', 'sum', 'mean', 'min', 'max'].includes(aggregate) || aggregate !== 'count' && measure < 0))
                 throw Error('Time series Y requires a numeric attribute and aggregation');
-            const exact = s.binned === false && s.type !== 'scatter' ? new Map<number, number>() : undefined;
-            const size = exact ? 4096 : x.axis.labels.length * (y?.axis.labels.length ?? 1);
+            const size = x.axis.labels.length * (y?.axis.labels.length ?? 1);
             const result: ChartResult = { id: s.id, type: s.type, x: x.axis, y: y?.axis, counts: new Uint32Array(size), missing: 0 };
             if (measure >= 0) {
                 result.values = new Float64Array(size);
@@ -372,10 +373,11 @@ export class Analyzer {
             }
             if (s.binned === false && s.type === 'scatter') {
                 const xp = await this.profile(x.column, cancelled), yp = await this.profile(y!.column, cancelled);
-                result.raw = { positions: new Float32Array(this.store.length * 2), rows: new Uint32Array(this.store.length), bounds: new Float64Array([xp.min, yp.min, xp.max, yp.max]) };
+                const precise = field?.kind === 'date' || this.store.fields[y!.column].kind === 'date';
+                result.raw = { precise, positions: new Float32Array(this.store.length * (precise ? 4 : 2)), rows: new Uint32Array(this.store.length), bounds: new Float64Array([xp.min, yp.min, xp.max, yp.max]) };
                 result.counts = new Uint32Array(0);
             }
-            prepared.push({ result, xi: x.column, yi: y?.column ?? -1, xbin: x.bin, ybin: y?.bin, spec: s, measure, exact, rawCount: 0 });
+            prepared.push({ result, xi: x.column, yi: y?.column ?? -1, xbin: x.bin, ybin: y?.bin, spec: s, measure, rawCount: 0 });
         }
         const unfiltered = 'children' in expression && expression.op === 'and' && !expression.children.length;
         const indices = unfiltered ? null : new Uint32Array(this.store.length);
@@ -394,37 +396,28 @@ export class Analyzer {
                     for (let i = 0; i < n; i++)
                         if (mask[i]) {
                             const r = chart.result, v = x[base + i], yv = y?.[base + i], mv = chart.measure >= 0 ? chunk.values[chart.measure][base + i] : 0;
-                            if (r.error)
-                                continue;
                             if (r.raw) {
                                 if (!Number.isFinite(v) || !Number.isFinite(yv!)) {
                                     r.missing++;
                                     continue;
                                 }
                                 const k = chart.rawCount++, b = r.raw.bounds;
-                                r.raw.positions[k * 2] = normalize(v, b[0], b[2]);
-                                r.raw.positions[k * 2 + 1] = normalize(yv!, b[1], b[3]);
+                                const xn = normalize(v, b[0], b[2]), yn = normalize(yv!, b[1], b[3]);
+                                if (r.raw.precise) {
+                                    const hx = Math.fround(xn), hy = Math.fround(yn);
+                                    r.raw.positions[k * 4] = hx;
+                                    r.raw.positions[k * 4 + 1] = hy;
+                                    r.raw.positions[k * 4 + 2] = xn - hx;
+                                    r.raw.positions[k * 4 + 3] = yn - hy;
+                                }
+                                else {
+                                    r.raw.positions[k * 2] = xn;
+                                    r.raw.positions[k * 2 + 1] = yn;
+                                }
                                 r.raw.rows[k] = chunk.offset + base + i;
                                 continue;
                             }
                             let xb = chart.xbin(v), yb = y ? chart.ybin!(yv!) : 0;
-                            if (chart.exact) {
-                                if (this.store.fields[chart.xi].kind === 'string' ? v < 0 : !Number.isFinite(v))
-                                    xb = -1;
-                                else {
-                                    const previous = chart.exact.get(v);
-                                    if (previous !== undefined)
-                                        xb = previous;
-                                    else if (chart.exact.size === 4096) {
-                                        r.error = 'More than 4,096 exact X values. Filter this source further or enable binning.';
-                                        continue;
-                                    }
-                                    else {
-                                        xb = chart.exact.size;
-                                        chart.exact.set(v, xb);
-                                    }
-                                }
-                            }
                             if (xb < 0 || yb < 0 || chart.measure >= 0 && !Number.isFinite(mv))
                                 r.missing++;
                             else {
@@ -443,28 +436,9 @@ export class Analyzer {
             }
         for (const chart of prepared) {
             const r = chart.result;
-            if (r.error) {
-                r.counts = new Uint32Array(0);
-                r.values = undefined;
-                r.x = { field: r.x.field, labels: [], rules: [] };
-                continue;
-            }
             if (r.raw) {
-                r.raw.positions = chart.rawCount < this.store.length / 2 ? r.raw.positions.slice(0, chart.rawCount * 2) : r.raw.positions.subarray(0, chart.rawCount * 2);
+                r.raw.positions = chart.rawCount < this.store.length / 2 ? r.raw.positions.slice(0, chart.rawCount * (r.raw.precise ? 4 : 2)) : r.raw.positions.subarray(0, chart.rawCount * (r.raw.precise ? 4 : 2));
                 r.raw.rows = chart.rawCount < this.store.length / 2 ? r.raw.rows.slice(0, chart.rawCount) : r.raw.rows.subarray(0, chart.rawCount);
-            }
-            if (chart.exact) {
-                const keys = [...chart.exact.keys()].sort((a, b) => a - b), c = this.store.columns[chart.xi], counts = new Uint32Array(keys.length), values = r.values ? new Float64Array(keys.length) : undefined;
-                const labels = keys.map(v => c.field.kind === 'string' ? c.dictionary[v] : c.field.kind === 'date' ? new Date(v).toISOString() : c.field.kind === 'boolean' ? String(!!v) : String(v));
-                for (let i = 0; i < keys.length; i++) {
-                    const k = chart.exact.get(keys[i])!;
-                    counts[i] = r.counts[k];
-                    if (values)
-                        values[i] = r.values![k];
-                }
-                r.x = { field: r.x.field, kind: c.field.kind, points: chart.spec.type === 'time' ? new Float64Array(keys) : undefined, labels, rules: labels.map(value => ({ field: r.x.field, op: 'eq', value })) };
-                r.counts = counts;
-                r.values = values;
             }
             if (r.values)
                 for (let i = 0; i < r.values.length; i++)

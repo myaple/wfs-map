@@ -42,11 +42,11 @@ test('all chart types configure from schema and scatter drag produces an exact A
     await scatter.getByLabel('Number of bins').selectOption('8');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].counts.length === 64);
     await scatter.locator('canvas').scrollIntoViewIfNeeded();
-    const b = (await scatter.locator('canvas').boundingBox())!, dx = (b.width - 60) / 8, dy = 178 / 8;
-    await page.mouse.move(b.x + 48 + dx * .5, b.y + 194 - dy * .5);
-    await page.mouse.down();
-    await page.mouse.move(b.x + 48 + dx * 2.5, b.y + 194 - dy * 2.5);
-    await page.mouse.up();
+    const b = (await scatter.locator('canvas').boundingBox())!, dx = (b.width - 86) / 8, dy = (b.height - 82) / 8;
+    await page.mouse.move(b.x + 68 + dx * .5, b.y + b.height - 64 - dy * .5);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(b.x + 68 + dx * 2.5, b.y + b.height - 64 - dy * 2.5);
+    await page.mouse.up({ button: 'right' });
     await page.waitForFunction(() => document.getElementById('filterStatus')?.textContent?.includes('matches'));
     const result = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results[2]);
     const bounds = await page.evaluate(() => { const r = (window as any).__WFS_MAP__.workspace.results[2]; return { x: r.x.ranges.slice(0, 4), y: r.y.ranges.slice(0, 4), xf: r.x.field, yf: r.y.field, count: (window as any).__WFS_MAP__.metrics.filterCount }; });
