@@ -1,0 +1,81 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "DE.HH.UP_STRASSENBAUMKATASTER_1",
+      "geometry": {
+        "type": "MultiPoint",
+        "coordinates": [
+          [
+            9.846289287519417,
+            53.52547419808404
+          ]
+        ]
+      },
+      "properties": {
+        "baumid": 100000117,
+        "baumnummer": "F122-83-1",
+        "gattung": "Populus / Pappel",
+        "gattung_latein": "Populus",
+        "gattung_deutsch": "Pappel",
+        "art": "Populus canadensis / Kanadische Pappel",
+        "art_latein": "Populus canadensis",
+        "art_deutsch": "Kanadische Pappel",
+        "sorte": "Populus canadensis / Kanadische Pappel",
+        "sorte_latein": "Populus canadensis",
+        "sorte_deutsch": "Kanadische Pappel",
+        "pflanzjahr": 1959,
+        "kronendurchmesser": 13,
+        "kronendurchmesser_z": "13 m",
+        "stammumfang": 271,
+        "stammumfang_z": "271 cm",
+        "strasse": "Finkenwerder Westerdeich",
+        "hausnummer": "0",
+        "ortsteil_nr": 141,
+        "stadtteil": "Finkenwerder",
+        "bezirk": "Hamburg-Mitte",
+        "daten_aus_vorjahr": 2026
+      },
+      "srsName": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    },
+    {
+      "type": "Feature",
+      "id": "DE.HH.UP_STRASSENBAUMKATASTER_2",
+      "geometry": {
+        "type": "MultiPoint",
+        "coordinates": [
+          [
+            9.846253767055849,
+            53.52543221595021
+          ]
+        ]
+      },
+      "properties": {
+        "baumid": 100000118,
+        "baumnummer": "F122-134-1",
+        "gattung": "Populus / Pappel",
+        "gattung_latein": "Populus",
+        "gattung_deutsch": "Pappel",
+        "art": "Populus canadensis / Kanadische Pappel",
+        "art_latein": "Populus canadensis",
+        "art_deutsch": "Kanadische Pappel",
+        "sorte": "Populus canadensis / Kanadische Pappel",
+        "sorte_latein": "Populus canadensis",
+        "sorte_deutsch": "Kanadische Pappel",
+        "pflanzjahr": 1949,
+        "kronendurchmesser": 20,
+        "kronendurchmesser_z": "20 m",
+        "stammumfang": 332,
+        "stammumfang_z": "332 cm",
+        "strasse": "Finkenwerder Westerdeich",
+        "hausnummer": "0",
+        "ortsteil_nr": 141,
+        "stadtteil": "Finkenwerder",
+        "bezirk": "Hamburg-Mitte",
+        "daten_aus_vorjahr": 2026
+      },
+      "srsName": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  ]
+}

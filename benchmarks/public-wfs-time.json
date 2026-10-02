@@ -1,0 +1,460 @@
+{
+  "checkedAt": "2026-10-02T21:25:02.278Z",
+  "service": "BfS radiation monitoring",
+  "endpoint": "https://www.imis.bfs.de/ogc/opendata/ows",
+  "layer": "opendata:odlinfo_odl_1h_latest",
+  "pass": true,
+  "referenceTime": "2026-10-02T21:00:00.000Z",
+  "initial": {
+    "error": false,
+    "status": "250 points loaded in 4.1 s. LIMIT REACHED: dataset is incomplete.",
+    "loaded": 250,
+    "fields": [
+      {
+        "name": "id",
+        "kind": "string"
+      },
+      {
+        "name": "kenn",
+        "kind": "string"
+      },
+      {
+        "name": "plz",
+        "kind": "string"
+      },
+      {
+        "name": "site_status",
+        "kind": "number"
+      },
+      {
+        "name": "site_status_text",
+        "kind": "string"
+      },
+      {
+        "name": "kid",
+        "kind": "number"
+      },
+      {
+        "name": "height_above_sea",
+        "kind": "number"
+      },
+      {
+        "name": "start_measure",
+        "kind": "date"
+      },
+      {
+        "name": "end_measure",
+        "kind": "date"
+      },
+      {
+        "name": "value",
+        "kind": "number"
+      },
+      {
+        "name": "value_cosmic",
+        "kind": "number"
+      },
+      {
+        "name": "value_terrestrial",
+        "kind": "number"
+      },
+      {
+        "name": "unit",
+        "kind": "string"
+      },
+      {
+        "name": "validated",
+        "kind": "number"
+      },
+      {
+        "name": "nuclide",
+        "kind": "string"
+      },
+      {
+        "name": "duration",
+        "kind": "string"
+      },
+      {
+        "name": "name",
+        "kind": "string"
+      }
+    ],
+    "metrics": {
+      "sourceId": "bfs",
+      "sourceName": "BfS radiation monitoring",
+      "startedAt": "2026-10-02T21:00:00.000Z",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+      "queryBounds": {
+        "time": {
+          "start": "2026-10-01T21:00:00.000Z",
+          "end": "2026-10-02T21:00:00.000Z"
+        }
+      },
+      "viewport": {
+        "width": 400,
+        "height": 300
+      },
+      "devicePixelRatio": 1,
+      "pointSize": 2,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+      "firstPointsMs": 1847,
+      "loaded": 250,
+      "total": 1588,
+      "pages": 3,
+      "bytes": 139238,
+      "parseMs": 6.600000001490116,
+      "elapsedMs": 4135.699999999255,
+      "bounds": [
+        6.17,
+        51.44,
+        13.16,
+        55.02
+      ],
+      "truncated": true,
+      "warning": "",
+      "readyMs": 4144,
+      "gpuBytes": 5000,
+      "lastFilterMs": 2.699999999254942,
+      "analysisCharts": [
+        {
+          "id": "chart-1",
+          "type": "bar",
+          "bins": 24,
+          "plotted": 250,
+          "missing": 0
+        },
+        {
+          "id": "chart-2",
+          "type": "time",
+          "bins": 24,
+          "plotted": 250,
+          "missing": 0
+        },
+        {
+          "id": "chart-3",
+          "type": "scatter",
+          "bins": 24,
+          "plotted": 250,
+          "missing": 0
+        }
+      ],
+      "filterCount": 250
+    },
+    "bounds": {
+      "time": {
+        "start": "2026-10-01T21:00:00.000Z",
+        "end": "2026-10-02T21:00:00.000Z"
+      }
+    }
+  },
+  "timeMatchesIndependentCQL": true,
+  "comparisonKey": "kenn",
+  "transientWFSFeatureIDs": true,
+  "area": {
+    "error": false,
+    "status": "1 points loaded in 1.5 s.",
+    "loaded": 1,
+    "fields": [
+      {
+        "name": "id",
+        "kind": "string"
+      },
+      {
+        "name": "kenn",
+        "kind": "string"
+      },
+      {
+        "name": "plz",
+        "kind": "string"
+      },
+      {
+        "name": "site_status",
+        "kind": "number"
+      },
+      {
+        "name": "site_status_text",
+        "kind": "string"
+      },
+      {
+        "name": "kid",
+        "kind": "number"
+      },
+      {
+        "name": "height_above_sea",
+        "kind": "number"
+      },
+      {
+        "name": "start_measure",
+        "kind": "date"
+      },
+      {
+        "name": "end_measure",
+        "kind": "date"
+      },
+      {
+        "name": "value",
+        "kind": "number"
+      },
+      {
+        "name": "value_cosmic",
+        "kind": "number"
+      },
+      {
+        "name": "value_terrestrial",
+        "kind": "number"
+      },
+      {
+        "name": "unit",
+        "kind": "string"
+      },
+      {
+        "name": "validated",
+        "kind": "number"
+      },
+      {
+        "name": "nuclide",
+        "kind": "string"
+      },
+      {
+        "name": "duration",
+        "kind": "string"
+      },
+      {
+        "name": "name",
+        "kind": "string"
+      }
+    ],
+    "metrics": {
+      "sourceId": "bfs",
+      "sourceName": "BfS radiation monitoring",
+      "startedAt": "2026-10-02T21:00:00.000Z",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+      "queryBounds": {
+        "time": {
+          "start": "2026-10-01T21:00:00.000Z",
+          "end": "2026-10-02T21:00:00.000Z"
+        },
+        "bbox": {
+          "west": 9.373554115425804,
+          "east": 9.386445885228682,
+          "south": 54.77683187198744,
+          "north": 54.78316787988345
+        }
+      },
+      "viewport": {
+        "width": 751,
+        "height": 640
+      },
+      "devicePixelRatio": 1,
+      "pointSize": 2,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+      "firstPointsMs": 1492,
+      "loaded": 1,
+      "total": 1,
+      "pages": 1,
+      "bytes": 737,
+      "parseMs": 2.5,
+      "elapsedMs": 1482.8999999985099,
+      "bounds": [
+        9.38,
+        54.78,
+        9.38,
+        54.78
+      ],
+      "truncated": false,
+      "warning": "",
+      "readyMs": 1492,
+      "gpuBytes": 20,
+      "lastFilterMs": 1.5999999977648258,
+      "analysisCharts": [
+        {
+          "id": "chart-1",
+          "type": "bar",
+          "bins": 1,
+          "plotted": 1,
+          "missing": 0
+        },
+        {
+          "id": "chart-2",
+          "type": "time",
+          "bins": 1,
+          "plotted": 1,
+          "missing": 0
+        },
+        {
+          "id": "chart-3",
+          "type": "scatter",
+          "bins": 1,
+          "plotted": 1,
+          "missing": 0
+        }
+      ],
+      "filterCount": 1
+    },
+    "bounds": {
+      "time": {
+        "start": "2026-10-01T21:00:00.000Z",
+        "end": "2026-10-02T21:00:00.000Z"
+      },
+      "bbox": {
+        "west": 9.373554115425804,
+        "east": 9.386445885228682,
+        "south": 54.77683187198744,
+        "north": 54.78316787988345
+      }
+    }
+  },
+  "combinedBoundsMatchIndependentCQL": true,
+  "empty": {
+    "error": false,
+    "status": "0 points loaded in 0.6 s.",
+    "loaded": 0,
+    "fields": [
+      {
+        "name": "id",
+        "kind": "string"
+      },
+      {
+        "name": "kenn",
+        "kind": "string"
+      },
+      {
+        "name": "plz",
+        "kind": "string"
+      },
+      {
+        "name": "site_status",
+        "kind": "number"
+      },
+      {
+        "name": "site_status_text",
+        "kind": "string"
+      },
+      {
+        "name": "kid",
+        "kind": "number"
+      },
+      {
+        "name": "height_above_sea",
+        "kind": "number"
+      },
+      {
+        "name": "start_measure",
+        "kind": "date"
+      },
+      {
+        "name": "end_measure",
+        "kind": "date"
+      },
+      {
+        "name": "value",
+        "kind": "number"
+      },
+      {
+        "name": "value_cosmic",
+        "kind": "number"
+      },
+      {
+        "name": "value_terrestrial",
+        "kind": "number"
+      },
+      {
+        "name": "unit",
+        "kind": "string"
+      },
+      {
+        "name": "validated",
+        "kind": "number"
+      },
+      {
+        "name": "nuclide",
+        "kind": "string"
+      },
+      {
+        "name": "duration",
+        "kind": "string"
+      }
+    ],
+    "metrics": {
+      "sourceId": "bfs",
+      "sourceName": "BfS radiation monitoring",
+      "startedAt": "2026-10-02T21:00:00.000Z",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+      "queryBounds": {
+        "time": {
+          "start": "2026-11-01T20:00Z",
+          "end": "2026-11-02T20:00Z"
+        },
+        "bbox": {
+          "west": 9.373554115425804,
+          "east": 9.386445885228682,
+          "south": 54.77683187198744,
+          "north": 54.78316787988345
+        }
+      },
+      "viewport": {
+        "width": 751,
+        "height": 640
+      },
+      "devicePixelRatio": 1,
+      "pointSize": 2,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+      "loaded": 0,
+      "total": 0,
+      "bounds": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "pages": 0,
+      "bytes": 0,
+      "parseMs": 0,
+      "elapsedMs": 553.6999999992549,
+      "truncated": false,
+      "warning": "",
+      "readyMs": 566,
+      "gpuBytes": 0,
+      "lastFilterMs": 0.7999999970197678,
+      "analysisCharts": [
+        {
+          "id": "chart-1",
+          "type": "bar",
+          "bins": 0,
+          "plotted": 0,
+          "missing": 0
+        },
+        {
+          "id": "chart-2",
+          "type": "time",
+          "bins": 0,
+          "plotted": 0,
+          "missing": 0
+        },
+        {
+          "id": "chart-3",
+          "type": "scatter",
+          "bins": 0,
+          "plotted": 0,
+          "missing": 0
+        }
+      ],
+      "filterCount": 0
+    },
+    "bounds": {
+      "time": {
+        "start": "2026-11-01T20:00Z",
+        "end": "2026-11-02T20:00Z"
+      },
+      "bbox": {
+        "west": 9.373554115425804,
+        "east": 9.386445885228682,
+        "south": 54.77683187198744,
+        "north": 54.78316787988345
+      }
+    }
+  }
+}

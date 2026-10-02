@@ -15,7 +15,8 @@
     "vendor": "node scripts/vendor.mjs",
     "install:offline": "node scripts/install-offline.mjs",
     "benchmark:analysis": "node scripts/benchmark-analysis.mjs",
-    "benchmark:sources": "node scripts/benchmark-sources.mjs"
+    "benchmark:sources": "node scripts/benchmark-sources.mjs",
+    "test:public-wfs": "npm run build && node scripts/test-public-wfs.mjs && node scripts/test-public-wfs-time.mjs"
   },
   "dependencies": {
     "fast-xml-parser": "5.11.2",

@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema" xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:de.hh.up="https://registry.gdi-de.org/id/de.hh.up" xmlns:xlink="http://www.w3.org/1999/xlink" targetNamespace="https://registry.gdi-de.org/id/de.hh.up" elementFormDefault="qualified" attributeFormDefault="unqualified">
+  <import namespace="http://www.opengis.net/gml/3.2" schemaLocation="http://schemas.opengis.net/gml/3.2.1/gml.xsd"/>
+  <element name="strassenbaumkataster" substitutionGroup="gml:AbstractFeature">
+    <complexType>
+      <complexContent>
+        <extension base="gml:AbstractFeatureType">
+          <sequence>
+            <element name="baumid" minOccurs="0" type="integer"/>
+            <element name="baumnummer" minOccurs="0" type="string"/>
+            <element name="gattung" minOccurs="0" type="string"/>
+            <element name="gattung_latein" minOccurs="0" type="string"/>
+            <element name="gattung_deutsch" minOccurs="0" type="string"/>
+            <element name="art" minOccurs="0" type="string"/>
+            <element name="art_latein" minOccurs="0" type="string"/>
+            <element name="art_deutsch" minOccurs="0" type="string"/>
+            <element name="sorte" minOccurs="0" type="string"/>
+            <element name="sorte_latein" minOccurs="0" type="string"/>
+            <element name="sorte_deutsch" minOccurs="0" type="string"/>
+            <element name="pflanzjahr" minOccurs="0" type="integer"/>
+            <element name="kronendurchmesser" minOccurs="0" type="integer"/>
+            <element name="kronendurchmesser_z" minOccurs="0" type="string"/>
+            <element name="stammumfang" minOccurs="0" type="integer"/>
+            <element name="stammumfang_z" minOccurs="0" type="string"/>
+            <element name="strasse" minOccurs="0" type="string"/>
+            <element name="hausnummer" minOccurs="0" type="string"/>
+            <element name="ortsteil_nr" minOccurs="0" type="integer"/>
+            <element name="stadtteil" minOccurs="0" type="string"/>
+            <element name="bezirk" minOccurs="0" type="string"/>
+            <element name="daten_aus_vorjahr" minOccurs="0" type="integer"/>
+            <element name="geom" minOccurs="0" type="gml:MultiPointPropertyType"/>
+          </sequence>
+        </extension>
+      </complexContent>
+    </complexType>
+  </element>
+</schema>

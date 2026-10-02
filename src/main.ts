@@ -217,7 +217,7 @@ function endpoint(config: Config) { return new URL(config.url, location.href).hr
 async function describe(s: Source, config: Config): Promise<{ fields: Field[]; queryFields: QueryFields }> {
     const controller = new AbortController();
     s.abort = controller;
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 45000);
     const fallback = { fields: [] as Field[], queryFields: { time: config.timeField, geometry: config.geometryField } };
     try {
         const r = await fetch(wfsURL(endpoint(config), config.version, 'DescribeFeatureType', { [config.version === '2.0.0' ? 'typeNames' : 'typeName']: config.layer }), { signal: controller.signal });

@@ -84,18 +84,45 @@ Double-click a map point for metadata. Picking checks enabled layers from top to
 
 1. On **Data sources**, use **Add data source** or **Configure** and enter the WFS URL. Vendor parameters and URL tokens are preserved.
 2. Choose a WFS version, **Discover layers**, and select a feature type.
-3. Set the exact advertised output format. Prefer `application/json`; simple GML Point output also works.
+3. Set the exact advertised output format. Prefer `application/json`; simple GML Point or single-point MultiPoint output also works.
 4. Request `urn:ogc:def:crs:OGC:1.3:CRS84` for longitude/latitude. EPSG:4326 GML may require reversing the configured axis order. GeoJSON always uses longitude/latitude.
 5. Choose a stable unique sort attribute if necessary. Keep the dataset unchanged throughout loading.
 6. Use **Add to list** / **Update source**, then **Save changes**. Enabled new/changed sources load; use **Load enabled sources** after a browser reload. Analyze attributes and inspect points.
 
-The adapter uses GetCapabilities, DescribeFeatureType, GetFeature hits and bounded paged GetFeature requests. One-page lookahead overlaps transfer with packing. Unknown totals load until an empty page or the explicit client limit. Server page caps are supported. The fixture serves up to 50 million deterministic points with eight fields: `id`, `category`, `status`, `value`, `timestamp`, `active`, `source`, `quality`. It supports UK, world and dense distributions, generates only requested pages, and does not allocate the full dataset on the server.
+The adapter uses GetCapabilities, DescribeFeatureType, GetFeature hits (WFS 1.1/2.0) and bounded paged GetFeature requests. WFS 1.0 skips hits because that version has no standard resultType count; unknown totals load until an empty page or the client limit. GML 1.x numberOfFeatures describes the returned page rather than a matched total, and GML2 fid IDs are retained. One-page lookahead overlaps transfer with packing. Unknown totals load until an empty page or the explicit client limit. Server page caps are supported. The fixture serves up to 50 million deterministic points with eight fields: `id`, `category`, `status`, `value`, `timestamp`, `active`, `source`, `quality`. It supports UK, world and dense distributions, generates only requested pages, and does not allocate the full dataset on the server.
 
-Supported scope: **WFS 2.0 paging**, GeoJSON FeatureCollections or simple GML 2/3 Point members using `pos`/`coordinates`, primitive attributes, geographic coordinates within Web Mercator's ±85.05112878° latitude limit. WFS 1.x requires the server's `startIndex` paging extension. MultiPoint, polygons, curves, geometry references, archives, and arbitrary projected CRS decoding are unsupported.
+Supported scope: **WFS 2.0 paging**, GeoJSON FeatureCollections or simple GML 2/3 Point members using `pos`/`coordinates`, including single-point MultiPoint wrappers, primitive attributes, geographic coordinates within Web Mercator's ±85.05112878° latitude limit. WFS 1.x requires the server's `startIndex` paging extension. MultiPoint features containing zero or multiple locations, polygons, curves, geometry references, archives, and arbitrary projected CRS decoding are unsupported.
 
 CORS must permit the browser origin, or serve behind a same-origin reverse proxy. Authentication supports same-origin cookies or endpoint URL tokens; custom authorization headers, OAuth UI and cross-origin cookie flows are not implemented. There is no unrestricted backend URL-fetching proxy.
 
 Repeated IDs/pages, changed counts, premature empty pages, ignored page sizes, invalid geometry/coordinates and unexpected schema changes fail visibly. They cannot prove snapshot consistency when counts are stable but rows change or IDs are absent. Stable pagination and snapshot isolation remain server responsibilities. Client-limit truncation is explicitly reported; charts then describe only the loaded subset.
+
+## Live public-service verification
+
+Checked on **2 October 2026** against actual public endpoints in Chromium, with browser CORS enabled. The service responses were not mocked. Loads deliberately stop at **250 observations over three pages**; these checks establish compatibility, not full-catalogue performance.
+
+| Service | Feature type | Successful configurations |
+| --- | --- | --- |
+| [Hamburg street trees](https://geodienste.hamburg.de/HH_WFS_Strassenbaumkataster) | `de.hh.up:strassenbaumkataster` | WFS 2.0: advertised `application/geo+json`, GML 3.2; singleton MultiPoint |
+| [Berlin street trees](https://gdi.berlin.de/services/wfs/baumbestand) | `baumbestand:strassenbaeume` | WFS 2.0: GeoJSON and GML 3.2; WFS 1.1: GeoJSON and GML 3.1; WFS 1.0: GML2 |
+
+[BfS radiation monitoring](https://www.imis.bfs.de/ogc/opendata/ows), layer `opendata:odlinfo_odl_1h_latest`, additionally exercises **dated** observations in WFS 2.0 GeoJSON. Set the time override to `end_measure` (the schema has two date attributes) and sort by `kenn`. The browser loads 250 recent observations in three pages, and its time-only and combined time/map filters match independently written CQL queries. A future custom range correctly returns zero rows while retaining the date schema. The test fixes the browser's preset reference time to one hour after an actual sampled observation, recording the exact window in its report. This service generates different WFS feature IDs on each request, so comparisons use stable station codes rather than assuming persistent server IDs.
+
+Both tree sources require **All time**. Use stable sort fields `baumid` (Hamburg) and `gisid` (Berlin). Discovery now selects an advertised GeoJSON format if the current format is unsupported, reading per-layer, global or GetFeature format declarations. An already supported manual format stays unchanged. Discovery and schema reads allow 45 seconds for public servers while retaining cancellation.
+
+For all seven configurations, paged IDs match a separate single-page query; charts account for every loaded row; local attribute filters make no new feature requests; truncation is explicit. Real right-drag map gestures return the same IDs as an independently expressed KVP BBOX, and clearing the area restores the original load. Hamburg returns six observations in the test area; Berlin returns five. Berlin's native projected-CRS envelope includes two points just outside the geographic box (roughly metre-scale); the independent BBOX query returns the same set. No claim of exact clipping beyond the server's BBOX semantics is made.
+
+[GeoNet's current endpoint](https://wfs.geonet.org.nz/geonet/ows) was also probed: a two-earthquake basic GeoJSON request succeeds, but GetCapabilities and requests with `startIndex` or standard XML `filter` fail with HTTP 400. It is **not compatible** with the app's bounded paged loading interface; no unbounded fallback is used.
+
+Run the opt-in live checks separately from CI:
+
+```sh
+npm run test:public-wfs
+```
+
+Reports: `benchmarks/public-wfs.json` and `benchmarks/public-wfs-time.json`. The runner hosts the built UI on an ephemeral local port, exercises normal source configuration and uses small public-server requests. Optional `PUBLIC_WFS_PROXY` and `PUBLIC_WFS_IGNORE_HTTPS_ERRORS=1` are test-runner controls for an intercepting development proxy; they never change application transport or CORS. The recorded run used that proxy with its test certificate exception and SwiftShader rendering.
+
+Normal CI uses [captured public responses](tests/fixtures/public-wfs/README.md) for deterministic format discovery, GeoJSON/GML equivalence, singleton MultiPoint safety, legacy IDs and pagination regressions. It does not depend on public-server uptime.
 
 ## Performance and memory design
 
@@ -152,7 +179,7 @@ node scripts/preview-sources.mjs
 node scripts/benchmark.mjs 3000000
 ```
 
-Current validation: **19 unit/API tests and 33 browser tests pass**, with an offline vendored install and TypeScript/Vite build. Tests cover custom local basemap templates and persistence, time Y aggregation, scatter-only unbinned mode, exact-point picking and rectangle selection, geographic edge/antimeridian predicates, source-specific colour/box state, colour code memory and stable bins, and bounded non-scatter aggregation. Chart navigation tests cover canvas/WebGL zoom and reset without dataset changes, right-drag selection (including pie/time), date axes and millisecond precision across multi-year domains, modal enlargement/restoration, Escape, type switching, and removing an enlarged chart. Chart settings checks cover visible accessible labels, responsive control widths, category-specific controls, time Y visibility, and switching between raw scatter and bin counts in one dropdown.
+Current validation: **26 unit/API tests and 43 browser tests pass**, with an offline vendored install and TypeScript/Vite build. Tests cover custom local basemap templates and persistence, time Y aggregation, scatter-only unbinned mode, exact-point picking and rectangle selection, geographic edge/antimeridian predicates, source-specific colour/box state, colour code memory and stable bins, and bounded non-scatter aggregation. Chart navigation tests cover canvas/WebGL zoom and reset without dataset changes, right-drag selection (including pie/time), date axes and millisecond precision across multi-year domains, modal enlargement/restoration, Escape, type switching, and removing an enlarged chart. Chart settings checks cover visible accessible labels, responsive control widths, category-specific controls, time Y visibility, and switching between raw scatter and bin counts in one dropdown.
 
 Data source tests cover draft isolation, atomic saves, reload persistence, generic empty defaults, cancellation/discard, undo removal and removal of the final loaded source, legacy migration, normal query parameter preservation, test-server startup/addition, storage failure, discovery failure/cancellation, the eight-source limit, keyboard focus, and mobile layouts.
 

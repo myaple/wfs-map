@@ -23,6 +23,13 @@ export function decodePage(text: string, axis: 'xy'|'yx'='xy'): Page {
     if(data.type!=='FeatureCollection' || !Array.isArray(data.features)) throw new Error('Expected a GeoJSON FeatureCollection');
     // GeoJSON always uses longitude, latitude, regardless of requested WFS CRS.
     const n=Number(data.numberMatched ?? data.totalFeatures);
+    // Some production services encode individual observations as MultiPoint.
+    // A singleton still represents exactly one row; never drop extra points.
+    for (const f of data.features) {
+      if (f.geometry?.type !== 'MultiPoint') continue;
+      if (f.geometry.coordinates?.length !== 1) throw new Error('Only single-point MultiPoint features are supported; multiple locations cannot represent one observation');
+      f.geometry = { type: 'Point', coordinates: f.geometry.coordinates[0] };
+    }
     return {features:data.features,numberMatched:Number.isSafeInteger(n)&&n>=0?n:undefined};
   }
   const fc=xmlDocument(text).FeatureCollection;
@@ -35,8 +42,11 @@ export function decodePage(text: string, axis: 'xy'|'yx'='xy'): Page {
     const properties:Record<string,unknown>={};
     let coordinates:number[]|undefined;
     for(const [key,val] of Object.entries(f)) {
-      if(key.startsWith('@_')) continue;
-      const point=(val as any)?.Point;
+      if(key.startsWith('@_') || key==='boundedBy') continue;
+      const multi=(val as any)?.MultiPoint;
+      const points=multi ? [...list(multi.pointMember).flatMap(m=>list(m.Point)),...list(multi.pointMembers).flatMap(m=>list(m.Point))] : [];
+      if(multi && points.length!==1) throw new Error('Only single-point GML MultiPoint features are supported');
+      const point=(val as any)?.Point ?? points[0];
       if(point) {
         const pos=point.pos ?? point.coordinates;
         const raw=typeof pos==='object' ? pos['#text'] : pos;
@@ -46,9 +56,11 @@ export function decodePage(text: string, axis: 'xy'|'yx'='xy'): Page {
       else properties[key]=typeof val==='object' && val && '#text' in val ? (val as any)['#text'] : val;
     }
     if(!coordinates) throw new Error('Only GML Point geometries with pos/coordinates are supported');
-    return {id:f['@_id'],geometry:{type:'Point',coordinates},properties};
+    return {id:f['@_id'] ?? f['@_fid'],geometry:{type:'Point',coordinates},properties};
   });
-  const n=Number(fc['@_numberMatched'] ?? fc['@_numberOfFeatures']);
+  // In WFS 1.x numberOfFeatures counts the returned page (except for hits).
+  // Treating it as the matched total breaks every multi-page GML 1.x load.
+  const n=Number(fc['@_numberMatched']);
   return {features,numberMatched:Number.isSafeInteger(n)&&n>=0?n:undefined};
 }
 export function fieldKind(type: string): FieldKind {
