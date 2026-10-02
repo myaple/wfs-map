@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
-const ready = async (page: any) => { await page.goto('/?points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
+const ready = async (page: any) => { await page.goto('/?time=all&points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
 test('every chart collapses all settings while keeping enlargement and removal available', async ({ page }) => {
-    await page.goto('/?points=4096&autoload=1');
+    await page.goto('/?time=all&points=4096&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3);
     const cards = page.locator('.chart-card');
     for (const card of await cards.all()) {
@@ -147,15 +147,16 @@ test('right-drag map box matches geographic bounds and point colours keep IDs an
     expect(colors.error).toBe(0);
     expect(new Set(colors.codes).size).toBe(24);
     expect(colors.palette[0]).not.toBe(colors.palette[69]);
-    const canvas = page.locator('#map canvas'), b = (await canvas.boundingBox())!;
+    const canvas = page.locator('#map canvas'); await canvas.scrollIntoViewIfNeeded(); const b = (await canvas.boundingBox())!;
     await page.mouse.move(b.x + b.width * .25, b.y + b.height * .25);
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(b.x + b.width * .65, b.y + b.height * .7, { steps: 5 });
     await expect(page.locator('.geo-box')).toBeVisible();
     await page.mouse.up({ button: 'right' });
     await expect(page.locator('.geo-box')).toBeHidden();
-    await expect(page.locator('#rules')).toContainText('Map box:');
-    const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[0]);
+    await expect(page.locator('#areaSummary')).toContainText('Map area:');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.done);
+    const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox);
     const expected = Array.from({ length: 4096 }, (_, i) => feature(i)).filter(f => { const [x, y] = f.geometry.coordinates; return x >= bounds.west && x <= bounds.east && y >= bounds.south && y <= bounds.north; }).length;
     await expect(page.locator('#filterStatus')).toContainText(`${expected.toLocaleString()} matches`);
     expect(expected).toBeGreaterThan(0);

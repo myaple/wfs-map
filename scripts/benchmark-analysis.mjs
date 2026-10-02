@@ -7,7 +7,7 @@ const n=Number(process.argv[2]??3_000_000),server=start(0);await once(server,'li
 const browser=await chromium.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try {
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(`http://127.0.0.1:${server.address().port}/?points=${n}&autoload=1`);
+  await page.goto(`http://127.0.0.1:${server.address().port}/?time=all&points=${n}&autoload=1`);
   await page.waitForFunction(()=>window.__WFS_MAP__?.metrics.analysisCharts?.length===3,null,{timeout:600000});
   const initial=await page.evaluate(()=>({workerMs:window.__WFS_MAP__.metrics.lastFilterMs,count:window.__WFS_MAP__.metrics.filterCount,charts:window.__WFS_MAP__.metrics.analysisCharts}));
   const expression={op:'and',children:[{op:'or',children:[{field:'category',op:'eq',value:'sensor'},{field:'category',op:'eq',value:'vehicle'}]},{field:'value',op:'gte',value:'50'},{field:'timestamp',op:'gte',value:'2025-01-01T00:00:00Z'}]};

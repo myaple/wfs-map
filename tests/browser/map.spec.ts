@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 test('loads genuine WFS pages, filters and double-clicks the correct GPU ID',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('/?points=1024&autoload=1');
+  await page.goto('/?time=all&points=1024&autoload=1');
   await page.waitForFunction(()=> (window as any).__WFS_MAP__?.done);
   await expect(page.locator('#status')).toContainText('1,024 points loaded');
   await page.evaluate(()=> (window as any).__WFS_MAP__.filter([{field:'id',op:'eq',value:'48'}]));
@@ -17,7 +17,7 @@ test('loads genuine WFS pages, filters and double-clicks the correct GPU ID',asy
   expect(errors).toEqual([]);
 });
 test('GML path uses schema hints and correct axis order',async({page})=>{
-  await page.goto('/?points=105');
+  await page.goto('/?time=all&points=105');
   await page.waitForFunction(()=> (window as any).__WFS_MAP__?.map.loaded());
   await page.locator('#configLink').click();await page.getByRole('button', { name: 'Configure WFS source', exact: true }).click();await page.locator('#wfsCompatibility summary').click();
   await page.locator('#format').fill('application/gml+xml; version=3.2');
@@ -29,7 +29,7 @@ test('GML path uses schema hints and correct axis order',async({page})=>{
   await expect(page.locator('#filterStatus')).toContainText('5 matches');
 });
 test('client limit is explicitly reported and clear releases the dataset',async({page})=>{
-  await page.goto('/?points=1024');await page.waitForFunction(()=> (window as any).__WFS_MAP__?.map.loaded());
+  await page.goto('/?time=all&points=1024');await page.waitForFunction(()=> (window as any).__WFS_MAP__?.map.loaded());
   await page.locator('#configLink').click();await page.getByRole('button', { name: 'Configure WFS source', exact: true }).click();await page.locator('#wfsCompatibility summary').click();await page.locator('#limit').fill('100');await page.locator('#updateSource').click();await page.locator('#saveSettings').click();await page.locator('#load').click();
   await page.waitForFunction(()=> (window as any).__WFS_MAP__.done);
   await expect(page.locator('#status')).toContainText('LIMIT REACHED');
@@ -37,7 +37,7 @@ test('client limit is explicitly reported and clear releases the dataset',async(
   await expect(page.locator('#apply')).toBeDisabled();
 });
 test('high zoom culling retains original IDs and coordinates',async({page})=>{
-  await page.goto('/?points=2048&autoload=1');await page.waitForFunction(()=> (window as any).__WFS_MAP__?.done);
+  await page.goto('/?time=all&points=2048&autoload=1');await page.waitForFunction(()=> (window as any).__WFS_MAP__?.done);
   const f=feature(42);
   await page.evaluate(coords=>(window as any).__WFS_MAP__.map.jumpTo({center:coords,zoom:20}),f.geometry.coordinates);
   await page.waitForFunction(()=>{const n=(window as any).__WFS_MAP__.layer.drawnLastFrame;return n>0&&n<2048;});

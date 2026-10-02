@@ -14,7 +14,7 @@ async function second(page: any, points = '2048') {
 test('two sources draw simultaneously, retain separate filters and chart settings, and re-enable without losing selections', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto('/?points=1024&autoload=1');
+    await page.goto('/?time=all&points=1024&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
     await second(page);
     await expect(page.locator('#hud')).toContainText('Loaded 3,072');
@@ -51,7 +51,7 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     expect(errors).toEqual([]);
 });
 test('overlapping IDs across sources pick the top rendered source with its own metadata', async ({ page }) => {
-    await page.goto('/?points=1024&autoload=1');
+    await page.goto('/?time=all&points=1024&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
     await second(page, '1024');
     await page.evaluate(() => { const h = (window as any).__WFS_MAP__; for (const s of h.sources)
@@ -66,7 +66,7 @@ test('overlapping IDs across sources pick the top rendered source with its own m
     await expect(page.locator('.metadata')).toContainText('points.48');
 });
 test('source lists persist and failure in one source leaves others available', async ({ page }) => {
-    await page.goto('/?points=1024&autoload=1');
+    await page.goto('/?time=all&points=1024&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
     await page.locator('#configLink').click();
     await page.locator('#addSource').click();
@@ -93,7 +93,7 @@ test('sources with different schemas expose only their own fields and counts', a
         await route.fulfill({ contentType: 'application/xml', body: '<FeatureCollection numberMatched="2"/>' });
         return;
     } await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ type: 'FeatureCollection', numberMatched: 2, features: [{ id: 'alternate.0', type: 'Feature', geometry: { type: 'Point', coordinates: [-1, 54] }, properties: { temperature: 7, name: 'north' } }, { id: 'alternate.1', type: 'Feature', geometry: { type: 'Point', coordinates: [-2, 53] }, properties: { temperature: 9, name: 'south' } }] }) }); });
-    await page.goto('/?points=1024&autoload=1');
+    await page.goto('/?time=all&points=1024&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
     await page.locator('#configLink').click();
     await page.locator('#addSource').click();

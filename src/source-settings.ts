@@ -1,6 +1,6 @@
-export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit'] as const;
+export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField'] as const;
 export type Config = Record<typeof configKeys[number], string>;
-export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000' };
+export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '' };
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];

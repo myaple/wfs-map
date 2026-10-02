@@ -5,6 +5,8 @@ import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { feature, fields, boundedInteger } from './demo.ts';
+import { fixtureFilter } from './filter.ts';
+import { setImmediate } from 'node:timers/promises';
 
 const root = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const maxPoints = 50_000_000;
@@ -55,7 +57,9 @@ export async function handle(req: IncomingMessage, res: ServerResponse, testWfs 
     if (op === 'describefeaturetype') { res.setHeader('Content-Type','application/xml'); res.end(schema()); return; }
     if (op !== 'getfeature') throw new Error('Unsupported operation');
     if ((p.get('typenames') ?? p.get('typename')) !== 'demo:points') throw new Error('typeNames must be demo:points');
-    if (p.has('filter') || p.has('cql_filter')) throw new Error('Fixture does not implement server-side attribute filters. Apply filters in the application worker.');
+    if (p.has('cql_filter')) throw new Error('Use standard XML FILTER for fixture time and map area bounds.');
+    if (p.has('filter') && p.has('bbox')) throw new Error('FILTER and BBOX are mutually exclusive.');
+    const filter = fixtureFilter(p.get('filter'));
     if (p.has('sortby') && !/^id(\s+A)?$/i.test(p.get('sortby')!)) throw new Error('Fixture only supports sortBy=id A');
     const n = boundedInteger(p.get('points') ?? process.env.POINTS, 3_000_000, maxPoints);
     const offset = boundedInteger(p.get('startindex'), 0, maxPoints);
@@ -69,9 +73,16 @@ export async function handle(req: IncomingMessage, res: ServerResponse, testWfs 
     const bbox = p.get('bbox')?.split(',').slice(0,4).map(Number);
     if (bbox && (bbox.length !== 4 || bbox.some(v => !Number.isFinite(v)))) throw new Error('Invalid bbox');
     // BBOX fixture uses CRS84 lon/lat. Full layer iteration is deliberately lazy.
-    const matches = (f: ReturnType<typeof feature>) => !bbox || (f.geometry.coordinates[0]>=bbox[0] && f.geometry.coordinates[1]>=bbox[1] && f.geometry.coordinates[0]<=bbox[2] && f.geometry.coordinates[1]<=bbox[3]);
+    const matches = (f: ReturnType<typeof feature>) => filter(f) && (!bbox || (f.geometry.coordinates[0]>=bbox[0] && f.geometry.coordinates[1]>=bbox[1] && f.geometry.coordinates[0]<=bbox[2] && f.geometry.coordinates[1]<=bbox[3]));
     let matched = n;
-    if (bbox) { matched = 0; for(let i=0;i<n;i++) if(matches(feature(i,distribution))) matched++; }
+    const filtered = !!bbox || p.has('filter');
+    if (filtered) {
+      matched = 0;
+      for (let i = 0; i < n; i++) {
+        if (i % 16384 === 0) { await setImmediate(); if (res.destroyed) return; }
+        if (matches(feature(i, distribution))) matched++;
+      }
+    }
     if (p.get('resulttype')?.toLowerCase() === 'hits') { res.setHeader('Content-Type','application/xml'); res.end(`<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" numberMatched="${matched}" numberReturned="0" timeStamp="${new Date().toISOString()}"/>`); return; }
     const returned = Math.max(0, Math.min(count, matched - offset));
     res.setHeader('Content-Type', gml ? 'application/gml+xml; version=3.2' : 'application/geo+json');
@@ -87,10 +98,11 @@ export async function handle(req: IncomingMessage, res: ServerResponse, testWfs 
     await write(gml ? `<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:demo="urn:demo" numberMatched="${matched}" numberReturned="${returned}">` : `{"type":"FeatureCollection","numberMatched":${matched},"numberReturned":${returned},"features":[`);
     let emitted=0, skipped=0, batch='';
     const selected = p.get('propertyname')?.split(',');
-    for(let i=bbox ? 0 : offset; i<n && emitted<returned; i++) {
+    for(let i=filtered ? 0 : offset; i<n && emitted<returned; i++) {
+      if (filtered && i % 16384 === 0) { await setImmediate(); if (res.destroyed) return; }
       const f=feature(i,distribution);
       if (!matches(f)) continue;
-      if (bbox && skipped++ < offset) continue;
+      if (filtered && skipped++ < offset) continue;
       if (gml) {
         const pos=/4326/i.test(crs) ? [...f.geometry.coordinates].reverse() : f.geometry.coordinates;
         batch += `<wfs:member><demo:points gml:id="points.${i}"><demo:geometry><gml:Point srsName="${xml(crs)}"><gml:pos>${pos.join(' ')}</gml:pos></gml:Point></demo:geometry>${Object.entries(f.properties).filter(([k])=>!selected||selected.includes(k)).map(([k,v])=>`<demo:${k}>${xml(v)}</demo:${k}>`).join('')}</demo:points></wfs:member>`;

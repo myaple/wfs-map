@@ -10,7 +10,7 @@ const browser=await chromium.launch({headless:true,args:['--use-gl=angle','--use
 try {
   const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];
   page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(`${url}/?points=${n}&autoload=1`);
+  await page.goto(`${url}/?time=all&points=${n}&autoload=1`);
   await page.waitForFunction(()=>window.__WFS_MAP__?.done,null,{timeout:600000});
   await page.evaluate(()=>window.__WFS_MAP__.filter([{field:'category',op:'eq',value:'sensor'},{field:'value',op:'gte',value:'50'},{field:'timestamp',op:'gte',value:'2025-01-01T00:00:00Z'}]));
   await page.waitForFunction(()=>window.__WFS_MAP__.metrics.lastFilterMs!==undefined);
