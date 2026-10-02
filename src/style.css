@@ -443,3 +443,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
 .source-analysis select { min-width:180px; border-color:#0d9188; }
 .source-analysis .hint { flex:1; }
 .source-analysis button { font-size:12px; }
+
+.geo-box{position:absolute;pointer-events:none;border:2px solid #3984cf;background:#3984cf33;z-index:3}.source-analysis{flex-wrap:wrap}.source-analysis input[type=color]{width:36px;padding:2px}.chart-controls{flex-wrap:wrap}
+
+#colorRamp{display:inline-block;width:70px;height:10px;border-radius:3px}.raw-scatter{position:relative}.raw-scatter-labels{font-size:11px;color:#546b7a;padding:0 12px 6px}.source-analysis #colorBins{min-width:60px}

@@ -1,3 +1,4 @@
+import { RawScatter } from './raw-scatter.ts';
 import type { Field, Rule } from './data.ts';
 import { all, type Expression, type ChartSpec, type ChartResult, type Axis } from './analysis.ts';
 const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => {
@@ -123,8 +124,14 @@ export class Workspace {
         for (const result of results)
             this.views.get(result.id)?.update(result);
     }
-    suspend() { this.results = []; for (const view of this.views.values())
-        view.suspend(); this.settled(); }
+    visibilityChanged() { for (const view of this.views.values())
+        view.refreshRaw(); }
+    suspend() {
+        this.results = [];
+        for (const view of this.views.values())
+            view.suspend();
+        this.settled();
+    }
     pending() { this.charts.setAttribute('aria-busy', 'true'); }
     settled() { this.charts.setAttribute('aria-busy', 'false'); }
 }
@@ -150,6 +157,9 @@ class ChartView {
     private y = element('select');
     private type = element('select');
     private bins = element('select');
+    private mode = element('select');
+    private aggregate = element('select');
+    private raw?: RawScatter;
     private start: number | null = null;
     private drag: number | null = null;
     private focus = 0;
@@ -167,7 +177,13 @@ class ChartView {
         this.bins.setAttribute('aria-label', 'Number of bins');
         this.bins.append(...[8, 16, 24, 32, 48, 64].map(n => option(String(n), `${n} bins`)));
         this.bins.value = String(spec.bins);
-        head.append(this.type, this.x, this.y, this.bins, button('×', remove));
+        this.mode.setAttribute('aria-label', 'Binning');
+        this.mode.append(option('binned', 'Binning on'), option('exact', 'Binning off'));
+        this.mode.value = spec.binned === false ? 'exact' : 'binned';
+        this.aggregate.setAttribute('aria-label', 'Y aggregation');
+        this.aggregate.append(...['count', 'sum', 'mean', 'min', 'max'].map(v => option(v, v === 'count' ? 'Point count' : v)));
+        this.aggregate.value = spec.aggregate ?? 'count';
+        head.append(this.type, this.x, this.y, this.aggregate, this.mode, this.bins, button('×', remove));
         this.canvas.tabIndex = 0;
         this.canvas.setAttribute('role', 'img');
         this.note.className = 'hint';
@@ -179,6 +195,8 @@ class ChartView {
         this.type.onchange = () => { spec.type = this.type.value as ChartSpec['type']; this.configure(); changed(); };
         this.x.onchange = () => { spec.x = this.x.value; changed(); };
         this.y.onchange = () => { spec.y = this.y.value; changed(); };
+        this.mode.onchange = () => { spec.binned = this.mode.value === 'binned'; this.bins.disabled = !spec.binned; this.result = undefined; this.raw?.destroy(); this.raw = undefined; changed(); };
+        this.aggregate.onchange = () => { spec.aggregate = this.aggregate.value as ChartSpec['aggregate']; this.y.hidden = spec.type === 'time' && spec.aggregate === 'count'; changed(); };
         this.bins.onchange = () => { spec.bins = Number(this.bins.value); changed(); };
         this.canvas.onpointerdown = e => {
             if (!this.result)
@@ -237,6 +255,9 @@ class ChartView {
     }
     private configure() {
         this.result = undefined;
+        this.raw?.destroy();
+        this.raw = undefined;
+        this.canvas.hidden = false;
         this.list.replaceChildren();
         this.draw();
         const allowed = this.fields.filter(f => this.spec.type === 'time' ? f.kind === 'date' : this.spec.type === 'scatter' ? ['number', 'date'].includes(f.kind) : true);
@@ -244,12 +265,14 @@ class ChartView {
         if (!allowed.some(f => f.name === this.spec.x))
             this.spec.x = allowed[0]?.name ?? '';
         this.x.value = this.spec.x;
-        const numeric = this.fields.filter(f => ['number', 'date'].includes(f.kind));
+        const numeric = this.fields.filter(f => this.spec.type === 'time' ? f.kind === 'number' : ['number', 'date'].includes(f.kind));
         this.y.replaceChildren(...numeric.map(f => option(f.name)));
         if (!numeric.some(f => f.name === this.spec.y))
             this.spec.y = numeric.find(f => f.name !== this.spec.x)?.name ?? numeric[0]?.name;
         this.y.value = this.spec.y ?? '';
-        this.y.hidden = this.spec.type !== 'scatter';
+        this.y.hidden = this.spec.type !== 'scatter' && (this.spec.type !== 'time' || (this.spec.aggregate ?? 'count') === 'count');
+        this.aggregate.hidden = this.spec.type !== 'time';
+        this.bins.disabled = this.spec.binned === false;
         this.x.disabled = !allowed.length;
         this.root.classList.toggle('unavailable', !allowed.length);
         this.note.textContent = allowed.length ? '' : 'No compatible attributes in this dataset. Choose another chart type.';
@@ -257,18 +280,36 @@ class ChartView {
     update(result: ChartResult) {
         this.result = result;
         this.focus = Math.min(this.focus, Math.max(0, result.counts.length - 1));
-        this.draw();
-        const total = result.counts.reduce((a, b) => a + b, 0);
-        this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing · ${result.y ? 'Counted scatter bins; drag a rectangle to filter.' : 'Click a segment to filter.'}`;
+        this.canvas.hidden = !!result.raw;
+        if (result.raw)
+            this.refreshRaw();
+        else {
+            this.raw?.destroy();
+            this.raw = undefined;
+            this.draw();
+        }
+        const total = result.raw?.rows.length ?? result.counts.reduce((a, b) => a + b, 0);
+        this.note.textContent = result.error ?? `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing · ${result.raw ? 'Individual observations; click a point or drag a rectangle to filter.' : result.y ? 'Counted scatter bins; drag a rectangle to filter.' : 'Click a segment to filter.'}`;
         this.canvas.setAttribute('aria-label', `${result.type} chart of ${result.x.field}${result.y ? ' against ' + result.y.field : ''}. Arrow keys choose a bin; Enter filters it.`);
         this.list.replaceChildren();
         if (!result.y)
             for (let i = 0; i < result.counts.length; i++)
                 this.list.append(button(this.description(i), () => this.choose(i, i)));
         else
-            this.list.append(element('p', 'Focus the plot, use arrow keys to choose a cell, and press Enter. Each circle counts all points in its cell.'));
+            this.list.append(element('p', result.raw ? 'Focus the plot and use arrow keys to step through original observations; Enter selects one. Overlapping points return one observation on click.' : 'Focus the plot, use arrow keys to choose a cell, and press Enter. Each circle counts all points in its cell.'));
     }
-    private description(i: number) { const r = this.result!, nx = r.x.labels.length; return `${r.x.field}: ${r.x.labels[i % nx]}${r.y ? ` · ${r.y.field}: ${r.y.labels[Math.floor(i / nx)]}` : ''} · ${(r.counts[i] ?? 0).toLocaleString()}`; }
+    refreshRaw() { const r = this.result; if (!r?.raw)
+        return; if (this.root.isConnected && !document.getElementById('analysis')?.hidden) {
+        this.raw ??= new RawScatter(this.select);
+        if (!this.raw.container.isConnected)
+            this.canvas.after(this.raw.container);
+        this.raw.update(r);
+    }
+    else {
+        this.raw?.destroy();
+        this.raw = undefined;
+    } }
+    private description(i: number) { const r = this.result!, nx = r.x.labels.length; return `${r.x.field}: ${r.x.labels[i % nx]}${r.y ? ` · ${r.y.field}: ${r.y.labels[Math.floor(i / nx)]}` : ''} · ${(r.counts[i] ?? 0).toLocaleString()}${r.values ? ` · ${r.measure}: ${r.values[i]}` : ''}`; }
     private choose(a: number, b: number) {
         const r = this.result;
         if (!r || !r.counts.length || a < 0 || b < 0)
@@ -320,8 +361,9 @@ class ChartView {
         if (!r)
             return;
         this.hit = new Float32Array(0);
-        const nx = r.x.labels.length, ny = r.y?.labels.length ?? 1, max = r.counts.reduce((a, b) => Math.max(a, b), 0), total = r.counts.reduce((a, b) => a + b, 0);
-        if (!max) {
+        const plotted = r.values ?? r.counts, finite = Array.from(plotted).filter(Number.isFinite), low = r.values ? Math.min(0, ...finite) : 0;
+        const nx = r.x.labels.length, ny = r.y?.labels.length ?? 1, max = finite.reduce((a, b) => Math.max(a, b), 0), total = r.counts.reduce((a, b) => a + b, 0);
+        if (!r.counts.some(v => v > 0)) {
             ctx.fillStyle = '#607588';
             ctx.font = '14px system-ui';
             ctx.fillText('No matching values', 24, 110);
@@ -362,17 +404,22 @@ class ChartView {
             ctx.lineTo(right, y);
             ctx.stroke();
             if (!r.y)
-                ctx.fillText(Math.round(max * i / 3).toLocaleString(), 2, y + 4);
+                ctx.fillText((low + (max - low) * i / 3).toLocaleString(undefined, { maximumFractionDigits: 2 }), 2, y + 4);
         }
+        const xs = r.x.points, pointX = (i: number) => xs ? left + (xs.at(-1) === xs[0] ? .5 : (xs[i] - xs[0]) / (xs.at(-1)! - xs[0])) * (right - left) : left + (i + .5) * dx;
         let prevX = 0, prevY = 0;
         for (let i = 0; i < r.counts.length; i++) {
-            const xb = i % nx, yb = Math.floor(i / nx), x = left + (xb + .5) * dx, y = r.y ? bottom - (yb + .5) * dy : bottom - r.counts[i] / max * (bottom - top);
-            this.hit.set([left + xb * dx, r.y ? bottom - (yb + 1) * dy : top, left + (xb + 1) * dx, r.y ? bottom - yb * dy : bottom], i * 4);
+            const xb = i % nx, yb = Math.floor(i / nx), x = pointX(xb), y = r.y ? bottom - (yb + .5) * dy : bottom - (plotted[i] - low) / (max - low || 1) * (bottom - top);
+            this.hit.set([xs ? (xb === 0 ? left : (pointX(xb - 1) + x) / 2) : left + xb * dx, r.y ? bottom - (yb + 1) * dy : top, xs ? (xb === nx - 1 ? right : (x + pointX(xb + 1)) / 2) : left + (xb + 1) * dx, r.y ? bottom - yb * dy : bottom], i * 4);
             ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : '#0d9188';
             if (r.type === 'bar')
                 ctx.fillRect(left + xb * dx + 1, y, Math.max(1, dx - 2), bottom - y);
             else if (r.type === 'time') {
-                if (i) {
+                if (!Number.isFinite(plotted[i])) {
+                    prevY = NaN;
+                    continue;
+                }
+                if (i && Number.isFinite(prevY)) {
                     ctx.strokeStyle = '#0d9188';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
@@ -428,6 +475,6 @@ class ChartView {
         ctx.textAlign = 'center';
         ctx.fillText(r.x.field, w / 2, 232);
     }
-    suspend() { this.result = undefined; this.list.replaceChildren(); this.note.textContent = 'Load this source to calculate charts.'; this.draw(); }
-    destroy() { this.observer.disconnect(); this.root.remove(); }
+    suspend() { this.raw?.destroy(); this.raw = undefined; this.canvas.hidden = false; this.result = undefined; this.list.replaceChildren(); this.note.textContent = 'Load this source to calculate charts.'; this.draw(); }
+    destroy() { this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
 }
