@@ -1,0 +1,38 @@
+{
+  "measuredAt": "2026-10-02T18:57:45.654Z",
+  "features": 3000000,
+  "initial": {
+    "loaded": 3000000,
+    "loadMs": 22836.400000000373,
+    "workerMs": 315
+  },
+  "unbinned": {
+    "workerMs": 328.5,
+    "observations": 3000000,
+    "positionsBytes": 48000000,
+    "idsBytes": 12000000,
+    "colorBytes": 3000000,
+    "gpuBytes": 63000000
+  },
+  "geo": {
+    "op": "bbox",
+    "west": -5,
+    "east": 0,
+    "south": 52,
+    "north": 56
+  },
+  "expected": 667181,
+  "selected": {
+    "count": 667181,
+    "observations": 667181,
+    "workerMs": 226.19999999925494,
+    "colorBytes": 3000000,
+    "responseMs": 245.7903839999999
+  },
+  "errors": [],
+  "notes": [
+    "All observations drawn with WebGL, no sampling; coordinates and IDs are transferred typed buffers.",
+    "Software GPU (ANGLE SwiftShader). Worker time excludes GPU rendering; browser response includes automation and uploads, without waiting for map paint.",
+    "Numeric color codes occupy one byte per loaded point, remain fixed through geographic filtering."
+  ]
+}

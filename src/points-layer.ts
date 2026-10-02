@@ -4,6 +4,11 @@ const vertex = `#version 300 es
 precision highp float;
 precision highp int;
 layout(location=0) in vec4 a_position;
+layout(location=1) in uint a_bin;
+uniform bool u_colored;
+uniform vec3 u_palette[64];
+uniform vec3 u_color;
+flat out vec3 v_color;
 uniform vec4 u_center;
 uniform vec2 u_scale;
 uniform float u_size;
@@ -18,18 +23,19 @@ void main() {
   if(u_pick) clip=(clip-u_pickCenter)*u_pickScale;
   gl_Position=vec4(clip,0.0,1.0);
   gl_PointSize=u_size;
+  v_color=u_colored?(a_bin==255u?vec3(.5):u_palette[min(a_bin,63u)]):u_color;
   uint id=uint(gl_VertexID)+1u;
   v_id=vec4(float(id&255u),float((id>>8u)&255u),float((id>>16u)&255u),float((id>>24u)&255u))/255.0;
 }`;
 const fragment = `#version 300 es
 precision highp float;
 uniform bool u_pick;
-uniform vec3 u_color;
+flat in vec3 v_color;
 flat in vec4 v_id;
 out vec4 color;
 void main() {
   if(length(gl_PointCoord-vec2(.5))>.5) discard;
-  color=u_pick?v_id:vec4(u_color,1.0);
+  color=u_pick?v_id:vec4(v_color,1.0);
 }`;
 export class PointsLayer implements CustomLayerInterface {
     id: string;
@@ -53,6 +59,10 @@ export class PointsLayer implements CustomLayerInterface {
     positionBuffer!: WebGLBuffer;
     indexBuffer!: WebGLBuffer;
     spatialBuffer!: WebGLBuffer;
+    colorBuffer!: WebGLBuffer;
+    colorCodes?: Uint8Array;
+    palette = new Float32Array(64 * 3);
+    private paletteBins = 24;
     capacity = 0;
     count = 0;
     pointSize = 2;
@@ -89,7 +99,7 @@ export class PointsLayer implements CustomLayerInterface {
             gl.deleteShader(s);
         if (!gl.getProgramParameter(this.program, gl.LINK_STATUS))
             throw new Error(gl.getProgramInfoLog(this.program) ?? 'Shader link failed');
-        for (const name of ['center', 'scale', 'size', 'pick', 'pickCenter', 'pickScale', 'color'])
+        for (const name of ['center', 'scale', 'size', 'pick', 'pickCenter', 'pickScale', 'color', 'colored', 'palette'])
             this.uniform[name] = gl.getUniformLocation(this.program, 'u_' + name);
         this.vao = gl.createVertexArray()!;
         this.positionBuffer = gl.createBuffer()!;
@@ -109,6 +119,16 @@ export class PointsLayer implements CustomLayerInterface {
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.capacity * 4, gl.STATIC_DRAW);
         for (const c of this.chunks)
             gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, c.offset * 4, c.indices);
+        this.colorBuffer = gl.createBuffer()!;
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, this.colorCodes ?? new Uint8Array(1), gl.STATIC_DRAW);
+        gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, 1, 0);
+        if (this.colorCodes)
+            gl.enableVertexAttribArray(1);
+        else {
+            gl.disableVertexAttribArray(1);
+            gl.vertexAttribI4ui(1, 255, 0, 0, 0);
+        }
         gl.bindVertexArray(null);
         this.framebuffer = undefined;
         this.texture = undefined;
@@ -157,6 +177,33 @@ export class PointsLayer implements CustomLayerInterface {
         gl.bindVertexArray(null);
         this.map.triggerRepaint();
     }
+    setColors(codes: Uint8Array | undefined, low = '#2463d4', high = '#ee5539', bins = 24) {
+        this.colorCodes = codes;
+        this.paletteBins = bins;
+        this.setPalette(low, high);
+        const gl = this.gl;
+        if (!gl)
+            return;
+        gl.bindVertexArray(this.vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, codes ?? new Uint8Array(1), gl.STATIC_DRAW);
+        if (codes)
+            gl.enableVertexAttribArray(1);
+        else {
+            gl.disableVertexAttribArray(1);
+            gl.vertexAttribI4ui(1, 255, 0, 0, 0);
+        }
+        gl.bindVertexArray(null);
+        this.map.triggerRepaint();
+    }
+    setPalette(low: string, high: string) {
+        const bins = this.paletteBins;
+        const rgb = (s: string) => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16) / 255), a = rgb(low), b = rgb(high);
+        for (let i = 0; i < 64; i++)
+            for (let c = 0; c < 3; c++)
+                this.palette[i * 3 + c] = a[c] + (b[c] - a[c]) * Math.min(1, i / Math.max(1, bins - 1));
+        this.map?.triggerRepaint();
+    }
     private draw(picking: boolean, center: [
         number,
         number
@@ -172,6 +219,8 @@ export class PointsLayer implements CustomLayerInterface {
         const dpr = canvas.width / size.width;
         gl.useProgram(this.program);
         gl.uniform3f(this.uniform.color, ...this.color);
+        gl.uniform1i(this.uniform.colored, this.colorCodes ? 1 : 0);
+        gl.uniform3fv(this.uniform.palette, this.palette);
         gl.bindVertexArray(this.vao);
         gl.uniform4f(this.uniform.center, hx, hy, x - hx, y - hy);
         gl.uniform2f(this.uniform.scale, world * 2 / size.width, -world * 2 / size.height);
@@ -202,10 +251,14 @@ export class PointsLayer implements CustomLayerInterface {
             }
             else if (overlap > 0 || area === 0) {
                 let start = -1, count = 0;
-                const flush = () => { if (count) {
-                    gl.drawElements(gl.POINTS, count, gl.UNSIGNED_INT, start * 4);
-                    drawn += count;
-                } count = 0; start = -1; };
+                const flush = () => {
+                    if (count) {
+                        gl.drawElements(gl.POINTS, count, gl.UNSIGNED_INT, start * 4);
+                        drawn += count;
+                    }
+                    count = 0;
+                    start = -1;
+                };
                 for (const chunk of this.chunks)
                     for (let i = 0; i < chunk.groups.length; i += 6) {
                         const g = chunk.groups, visible = g[i + 2] <= right && g[i + 4] >= left && g[i + 3] <= bottom && g[i + 5] >= top;
@@ -229,8 +282,10 @@ export class PointsLayer implements CustomLayerInterface {
         gl.bindVertexArray(null);
         gl.enable(gl.BLEND);
     }
-    render(_gl: WebGL2RenderingContext, _options: CustomRenderMethodInput) { if (this.count)
-        this.draw(false); }
+    render(_gl: WebGL2RenderingContext, _options: CustomRenderMethodInput) {
+        if (this.count)
+            this.draw(false);
+    }
     pick(cssX: number, cssY: number): number | null {
         if (!this.count)
             return null;
@@ -301,10 +356,11 @@ export class PointsLayer implements CustomLayerInterface {
         gl.deleteBuffer(this.positionBuffer);
         gl.deleteBuffer(this.indexBuffer);
         gl.deleteBuffer(this.spatialBuffer);
+        gl.deleteBuffer(this.colorBuffer);
         if (this.framebuffer)
             gl.deleteFramebuffer(this.framebuffer);
         if (this.texture)
             gl.deleteTexture(this.texture);
     }
-    get gpuBytes() { return this.capacity * 20 + (this.indices?.byteLength ?? 0); }
+    get gpuBytes() { return this.capacity * 20 + (this.colorCodes?.byteLength ?? 0) + (this.indices?.byteLength ?? 0); }
 }

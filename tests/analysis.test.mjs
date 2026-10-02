@@ -50,3 +50,31 @@ test('numeric boundary rounding, huge finite values and subnormals preserve exac
     for(let i=0;i<24;i++)assert.equal((await a.run(r.charts[0].x.rules[i],[])).count,r.charts[0].counts[i],`values ${values} bin ${i}`);
   }
 });
+test('geographic filters compose with attribute AND/OR, include edges and cross the antimeridian',async()=>{
+  const coords=[[-179,0],[179,0],[0,0],[10,10],[-10,-10],[10,11]],rows=coords.map((coordinates,i)=>({...feature(i),geometry:{type:'Point',coordinates}})),a=build(rows);
+  assert.deepEqual([...(await a.run({op:'bbox',west:170,east:-170,south:-1,north:1},[])).indices],[0,1]);
+  const box={op:'bbox',west:-10,east:10,south:-10,north:10};
+  assert.deepEqual([...(await a.run({op:'and',children:[box,{field:'id',op:'gte',value:'3'}]},[])).indices],[3,4]);
+  assert.equal((await a.run({op:'or',children:[box,{op:'row',index:0}]},[])).count,4);
+  await assert.rejects(a.run({...box,north:-20},[]),/geographic/);
+});
+test('time Y aggregates stay binned, and only scatter accepts unbinned observations',async()=>{
+  const rows=Array.from({length:10},(_,i)=>({...feature(i),properties:{x:i%3,time:new Date(1704067200000+(i%3)*1000).toISOString(),y:i===9?null:i-5,text:`c${i%3}`}})),a=build(rows);
+  for(const aggregate of ['count','sum','mean','min','max']){
+    const r=(await a.run(all([]),[{id:'t',type:'time',x:'time',y:'y',aggregate,bins:8,binned:false}])).charts[0];assert.ok(r.x.ranges);assert.equal(r.missing,aggregate==='count'?0:1);
+    for(let j=0;j<r.counts.length;j++){const range=r.x.rules[j].children,selected=rows.filter(f=>{const x=Date.parse(f.properties.time);return x>=Date.parse(range[0].value)&&(range[1].op==='lt'?x<Date.parse(range[1].value):x<=Date.parse(range[1].value));});assert.equal((await a.run(r.x.rules[j],[])).count,selected.length);if(aggregate!=='count'){const ys=selected.map(f=>f.properties.y).filter(v=>v!==null),sum=ys.reduce((a,b)=>a+b,0);assert.equal(r.values[j],!ys.length?NaN:aggregate==='sum'?sum:aggregate==='mean'?sum/ys.length:aggregate==='min'?Math.min(...ys):Math.max(...ys));}}
+  }
+  for(const type of ['bar','pie']){const r=(await a.run(all([]),[{id:type,type,x:'x',bins:8,binned:false}])).charts[0];assert.ok(r.x.ranges);assert.equal(r.counts.length,8);}
+  const r=(await a.run(all([]),[{id:'s',type:'scatter',x:'x',y:'y',bins:8,binned:false}])).charts[0];assert.equal(r.raw.rows.length,9);assert.equal(r.raw.positions.length,18);assert.equal(r.missing,1);assert.deepEqual([...r.raw.rows],[0,1,2,3,4,5,6,7,8]);assert.equal((await a.run({op:'row',index:r.raw.rows[5]},[])).count,1);
+});
+test('non-scatter charts remain bounded; colours use fixed full-data bins and missing codes',async()=>{
+  const rows=Array.from({length:4100},(_,i)=>({...feature(i),properties:{x:i,y:i===0?null:i,time:new Date(1704067200000+i).toISOString()}})),a=build(rows);
+  const r=await a.run(all([]),[{id:'exact',type:'bar',x:'x',bins:8,binned:false},{id:'binned',type:'bar',x:'x',bins:8}]);assert.equal(r.charts[0].error,undefined);assert.equal(r.charts[0].counts.length,8);assert.equal(r.count,4100);assert.equal(r.charts[1].counts.reduce((a,b)=>a+b,0),4100);
+  const colors=await a.colors('y',8);assert.equal(colors.codes.byteLength,4100);assert.equal(colors.codes[0],255);assert.equal(colors.codes[1],0);assert.equal(colors.codes.at(-1),7);for(let i=0;i<8;i++){const n=(await a.run(colors.axis.rules[i],[])).count;assert.equal(colors.codes.filter(v=>v===i).length,n);}
+  await assert.rejects(a.colors('y',8,()=>true),/Superseded/);
+});
+test('unbinned date coordinates retain millisecond separation across multi-year domains',async()=>{
+ const base=Date.UTC(2024,0,1),dates=[base,base+31536000000,base+31536000001,base+63072000000],a=build(dates.map((time,i)=>({...feature(i),properties:{time:new Date(time).toISOString(),y:i}})));
+ const r=(await a.run(all([]),[{id:'s',type:'scatter',x:'time',y:'y',bins:8,binned:false}])).charts[0];assert.equal(r.raw.precise,true);assert.equal(r.raw.positions.length,16);
+ const x=i=>r.raw.positions[i*4]+r.raw.positions[i*4+2];assert.ok(x(2)>x(1));assert.ok(Math.abs((x(2)-x(1))*63072000000/2-1)<.001);
+});

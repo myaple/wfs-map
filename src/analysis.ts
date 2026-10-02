@@ -1,6 +1,15 @@
 import { numericValue, type Rule } from './data.ts';
 import type { Store } from './store.ts';
 export type Expression = Rule | {
+    op: 'bbox';
+    west: number;
+    east: number;
+    south: number;
+    north: number;
+} | {
+    op: 'row';
+    index: number;
+} | {
     op: 'and' | 'or';
     children: Expression[];
 };
@@ -10,8 +19,11 @@ export type ChartSpec = {
     x: string;
     y?: string;
     bins: number;
+    binned?: boolean;
+    aggregate?: 'count' | 'sum' | 'mean' | 'min' | 'max';
 };
 export type Axis = {
+    kind?: string;
     field: string;
     labels: string[];
     ranges?: Float64Array;
@@ -24,6 +36,20 @@ export type ChartResult = {
     y?: Axis;
     counts: Uint32Array;
     missing: number;
+    values?: Float64Array;
+    measure?: string;
+    raw?: {
+        positions: Float32Array;
+        precise?: boolean;
+        rows: Uint32Array;
+        bounds: Float64Array;
+    };
+};
+const normalize = (v: number, lo: number, hi: number) => {
+    if (hi === lo)
+        return 0;
+    const width = hi - lo;
+    return (Number.isFinite(width) ? (v - lo) / width : (v / 2 - lo / 2) / (hi / 2 - lo / 2)) * 2 - 1;
 };
 const BLOCK = 32768;
 export async function yieldEvents() {
@@ -48,6 +74,13 @@ type Node = {
     target?: number;
     pass?: Uint8Array;
     text?: boolean;
+    geo?: {
+        west: number;
+        east: number;
+        south: number;
+        north: number;
+    };
+    row?: number;
 };
 async function compile(store: Store, expression: Expression, cancelled: () => boolean): Promise<Node> {
     let size = 0;
@@ -62,6 +95,19 @@ async function compile(store: Store, expression: Expression, cancelled: () => bo
             for (const child of expr.children)
                 node.children.push(await visit(child, depth + 1));
             node.union = expr.op === 'or';
+            return node;
+        }
+        if (expr.op === 'row') {
+            if (!Number.isInteger(expr.index) || expr.index < 0 || expr.index >= store.length)
+                throw Error('Invalid point index');
+            node.row = expr.index;
+            return node;
+        }
+        if (expr.op === 'bbox') {
+            const { west, east, south, north } = expr;
+            if (![west, east, south, north].every(Number.isFinite) || west < -180 || east > 180 || east < -180 || west > 180 || south < -90 || north > 90 || south > north)
+                throw Error('Invalid geographic bounds');
+            node.geo = { west, east, south, north };
             return node;
         }
         const column = store.fields.findIndex(f => f.name === expr.field);
@@ -105,18 +151,31 @@ async function compile(store: Store, expression: Expression, cancelled: () => bo
     }
     return visit(expression, 0);
 }
-function evaluate(node: Node, values: (Float64Array | Int32Array)[], base: number, n: number): Uint8Array {
+function evaluate(node: Node, values: (Float64Array | Int32Array)[], base: number, n: number, lon: Float64Array, lat: Float64Array, offset: number): Uint8Array {
     const out = node.mask;
     if (node.children) {
         out.fill(node.union ? 0 : 1, 0, n);
         for (const child of node.children) {
-            const next = evaluate(child, values, base, n);
+            const next = evaluate(child, values, base, n, lon, lat, offset);
             if (node.union)
                 for (let i = 0; i < n; i++)
                     out[i] |= next[i];
             else
                 for (let i = 0; i < n; i++)
                     out[i] &= next[i];
+        }
+        return out;
+    }
+    if (node.row !== undefined) {
+        for (let i = 0; i < n; i++)
+            out[i] = Number(offset + base + i === node.row);
+        return out;
+    }
+    if (node.geo) {
+        const g = node.geo;
+        for (let i = 0; i < n; i++) {
+            const x = lon[base + i], y = lat[base + i];
+            out[i] = Number(y >= g.south && y <= g.north && (g.west <= g.east ? x >= g.west && x <= g.east : x >= g.west || x <= g.east));
         }
         return out;
     }
@@ -147,6 +206,9 @@ type Prepared = {
     yi: number;
     xbin: (v: number) => number;
     ybin?: (v: number) => number;
+    spec: ChartSpec;
+    measure: number;
+    rawCount: number;
 };
 export class Analyzer {
     private profiles = new Map<number, Profile>();
@@ -228,7 +290,7 @@ export class Analyzer {
         const n = p.min === p.max ? 1 : bins, width = (p.max - p.min) / n;
         const ranges = new Float64Array(n + 1), labels: string[] = [], rules: Expression[] = [];
         const str = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString() : String(v);
-        const label = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString().slice(0, 10) : Number(v.toPrecision(4)).toString();
+        const label = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC') : Number(v.toPrecision(4)).toString();
         const regular = Number.isFinite(width) && width > 0;
         for (let i = 0; i <= n; i++) {
             const edge = regular ? p.min + width * i : p.min * (1 - i / n) + p.max * (i / n);
@@ -239,20 +301,49 @@ export class Analyzer {
             rules.push(group('and', [{ field: name, op: 'gte', value: str(ranges[i]) }, { field: name, op: i === n - 1 ? 'lte' : 'lt', value: str(ranges[i + 1]) }]));
         }
         const bin = (v: number) => {
-            if (!Number.isFinite(v)) return -1;
-            if (n === 1) return 0;
+            if (!Number.isFinite(v))
+                return -1;
+            if (n === 1)
+                return 0;
             if (!regular) {
                 let lo = 0, hi = n;
-                while (lo + 1 < hi) { const mid = (lo + hi) >>> 1; if (v >= ranges[mid]) lo = mid; else hi = mid; }
+                while (lo + 1 < hi) {
+                    const mid = (lo + hi) >>> 1;
+                    if (v >= ranges[mid])
+                        lo = mid;
+                    else
+                        hi = mid;
+                }
                 return lo;
             }
             let index = Math.min(n - 1, Math.max(0, Math.floor((v - p.min) / width)));
             // Correct IEEE rounding at exact bin edges; filters use these same edges.
-            while (index > 0 && v < ranges[index]) index--;
-            while (index < n - 1 && v >= ranges[index + 1]) index++;
+            while (index > 0 && v < ranges[index])
+                index--;
+            while (index < n - 1 && v >= ranges[index + 1])
+                index++;
             return index;
         };
         return { column: j, axis: { field: name, labels, ranges, rules }, bin };
+    }
+    async colors(name: string, bins: number, cancelled: () => boolean = () => false) {
+        if (!Number.isInteger(bins) || bins < 2 || bins > 64)
+            throw Error('Invalid colour bins');
+        const a = await this.axis(name, bins, cancelled), codes = new Uint8Array(this.store.length);
+        codes.fill(255);
+        for (const chunk of this.store.chunks)
+            for (let base = 0; base < chunk.length; base += BLOCK) {
+                const end = Math.min(base + BLOCK, chunk.length);
+                for (let i = base; i < end; i++) {
+                    const bin = a.bin(chunk.values[a.column][i]);
+                    if (bin >= 0)
+                        codes[chunk.offset + i] = bin;
+                }
+                await yieldEvents();
+                if (cancelled())
+                    throw Error('Superseded');
+            }
+        return { codes, axis: a.axis };
     }
     async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false) {
         if (specs.length > 12)
@@ -267,14 +358,33 @@ export class Analyzer {
             if (s.type === 'scatter' && (!s.y || !['number', 'date'].includes(field?.kind ?? '') || !['number', 'date'].includes(this.store.fields.find(f => f.name === s.y)?.kind ?? '')))
                 throw new Error('Scatter axes require numeric or date attributes');
             const x = await this.axis(s.x, s.bins, cancelled), y = s.type === 'scatter' ? await this.axis(s.y!, s.bins, cancelled) : undefined;
-            prepared.push({ result: { id: s.id, type: s.type, x: x.axis, y: y?.axis, counts: new Uint32Array(x.axis.labels.length * (y?.axis.labels.length ?? 1)), missing: 0 }, xi: x.column, yi: y?.column ?? -1, xbin: x.bin, ybin: y?.bin });
+            x.axis.kind = field?.kind;
+            if (y)
+                y.axis.kind = this.store.fields[y.column].kind;
+            const aggregate = s.aggregate ?? 'count', measure = s.type === 'time' && aggregate !== 'count' ? this.store.fields.findIndex(f => f.name === s.y && f.kind === 'number') : -1;
+            if (s.type === 'time' && (!['count', 'sum', 'mean', 'min', 'max'].includes(aggregate) || aggregate !== 'count' && measure < 0))
+                throw Error('Time series Y requires a numeric attribute and aggregation');
+            const size = x.axis.labels.length * (y?.axis.labels.length ?? 1);
+            const result: ChartResult = { id: s.id, type: s.type, x: x.axis, y: y?.axis, counts: new Uint32Array(size), missing: 0 };
+            if (measure >= 0) {
+                result.values = new Float64Array(size);
+                result.values.fill(aggregate === 'min' ? Infinity : aggregate === 'max' ? -Infinity : 0);
+                result.measure = `${aggregate}(${s.y})`;
+            }
+            if (s.binned === false && s.type === 'scatter') {
+                const xp = await this.profile(x.column, cancelled), yp = await this.profile(y!.column, cancelled);
+                const precise = field?.kind === 'date' || this.store.fields[y!.column].kind === 'date';
+                result.raw = { precise, positions: new Float32Array(this.store.length * (precise ? 4 : 2)), rows: new Uint32Array(this.store.length), bounds: new Float64Array([xp.min, yp.min, xp.max, yp.max]) };
+                result.counts = new Uint32Array(0);
+            }
+            prepared.push({ result, xi: x.column, yi: y?.column ?? -1, xbin: x.bin, ybin: y?.bin, spec: s, measure, rawCount: 0 });
         }
         const unfiltered = 'children' in expression && expression.op === 'and' && !expression.children.length;
         const indices = unfiltered ? null : new Uint32Array(this.store.length);
         let count = 0;
         for (const chunk of this.store.chunks)
             for (let base = 0; base < chunk.length; base += BLOCK) {
-                const n = Math.min(BLOCK, chunk.length - base), mask = evaluate(root, chunk.values, base, n);
+                const n = Math.min(BLOCK, chunk.length - base), mask = evaluate(root, chunk.values, base, n, chunk.lon, chunk.lat, chunk.offset);
                 for (let i = 0; i < n; i++)
                     if (mask[i]) {
                         if (indices)
@@ -285,17 +395,55 @@ export class Analyzer {
                     const x = chunk.values[chart.xi], y = chart.yi >= 0 ? chunk.values[chart.yi] : undefined, nx = chart.result.x.labels.length;
                     for (let i = 0; i < n; i++)
                         if (mask[i]) {
-                            const xb = chart.xbin(x[base + i]), yb = y ? chart.ybin!(y[base + i]) : 0;
-                            if (xb < 0 || yb < 0)
-                                chart.result.missing++;
-                            else
-                                chart.result.counts[yb * nx + xb]++;
+                            const r = chart.result, v = x[base + i], yv = y?.[base + i], mv = chart.measure >= 0 ? chunk.values[chart.measure][base + i] : 0;
+                            if (r.raw) {
+                                if (!Number.isFinite(v) || !Number.isFinite(yv!)) {
+                                    r.missing++;
+                                    continue;
+                                }
+                                const k = chart.rawCount++, b = r.raw.bounds;
+                                const xn = normalize(v, b[0], b[2]), yn = normalize(yv!, b[1], b[3]);
+                                if (r.raw.precise) {
+                                    const hx = Math.fround(xn), hy = Math.fround(yn);
+                                    r.raw.positions[k * 4] = hx;
+                                    r.raw.positions[k * 4 + 1] = hy;
+                                    r.raw.positions[k * 4 + 2] = xn - hx;
+                                    r.raw.positions[k * 4 + 3] = yn - hy;
+                                }
+                                else {
+                                    r.raw.positions[k * 2] = xn;
+                                    r.raw.positions[k * 2 + 1] = yn;
+                                }
+                                r.raw.rows[k] = chunk.offset + base + i;
+                                continue;
+                            }
+                            let xb = chart.xbin(v), yb = y ? chart.ybin!(yv!) : 0;
+                            if (xb < 0 || yb < 0 || chart.measure >= 0 && !Number.isFinite(mv))
+                                r.missing++;
+                            else {
+                                const k = yb * nx + xb;
+                                r.counts[k]++;
+                                if (r.values) {
+                                    const a = chart.spec.aggregate;
+                                    r.values[k] = a === 'min' ? Math.min(r.values[k], mv) : a === 'max' ? Math.max(r.values[k], mv) : r.values[k] + mv;
+                                }
+                            }
                         }
                 }
                 await yieldEvents();
                 if (cancelled())
                     throw new Error('Superseded');
             }
+        for (const chart of prepared) {
+            const r = chart.result;
+            if (r.raw) {
+                r.raw.positions = chart.rawCount < this.store.length / 2 ? r.raw.positions.slice(0, chart.rawCount * (r.raw.precise ? 4 : 2)) : r.raw.positions.subarray(0, chart.rawCount * (r.raw.precise ? 4 : 2));
+                r.raw.rows = chart.rawCount < this.store.length / 2 ? r.raw.rows.slice(0, chart.rawCount) : r.raw.rows.subarray(0, chart.rawCount);
+            }
+            if (r.values)
+                for (let i = 0; i < r.values.length; i++)
+                    r.values[i] = !r.counts[i] ? NaN : chart.spec.aggregate === 'mean' ? r.values[i] / r.counts[i] : r.values[i];
+        }
         return { indices: indices?.subarray(0, count) ?? null, count, charts: prepared.map(p => p.result) };
     }
 }

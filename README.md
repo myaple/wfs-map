@@ -1,6 +1,6 @@
 # WFS analysis workspace
 
-A TypeScript analysis page for million-point WFS datasets. MapLibre renders every loaded point through a custom WebGL 2 layer. A worker holds typed metadata columns and calculates exact chart counts and nested AND/OR selections. The UI creates chart elements for bins, never for individual features. There is no sampling, clustering, DOM map markers, or map hover picking.
+A TypeScript analysis page for million-point WFS datasets. MapLibre renders every loaded point through a custom WebGL 2 layer. A worker holds typed metadata columns and calculates exact chart counts and nested AND/OR selections. Binned charts use bounded canvas aggregates; unbinned scatter plots draw contiguous point buffers with WebGL without per-observation JavaScript objects. There is no sampling, clustering, DOM map markers, or map hover picking.
 
 ## Build and run offline
 
@@ -16,7 +16,7 @@ Open **http://127.0.0.1:8787** and click **Load enabled sources**. The default d
 
 All npm dependencies, including native Linux x64 build packages, are committed in `vendor/npm-cache-parts/`, with licenses and exact versions in `vendor/licenses/`, `vendor/manifest.json`, and `package-lock.json`. The install script assembles the committed binary parts, checks their SHA-256, extracts the integrity-checked cache and invokes `npm ci --offline`; it does not contact an npm registry. Builds produce self-contained `dist/` assets, including both workers and MapLibre CSS. Once built, `node server/server.ts` uses only Node built-ins; no npm install, CDN, database, or API key is needed to run it.
 
-The default grid basemap works offline. OpenStreetMap is an optional online display setting. Connecting a remote WFS naturally requires access to that server.
+The default grid basemap works offline. On Data sources, configure an optional HTTP(S) XYZ raster tile URL containing `{z}`, `{x}` and `{y}`, plus attribution. Relative local tile URLs work offline when those tiles are hosted locally. The Basemap switch and URL are saved in this browser; an empty URL keeps the grid. OpenStreetMap is the initial optional tile provider. Connecting a remote WFS naturally requires access to that server.
 
 Development: `npm run dev` starts Vite on port 5173 and the WFS fixture on 8787, with a same-origin proxy. On a different build platform, install once online and run `npm run vendor` to prepare that platform's npm cache bundle. Node itself and optional browser-test Chromium binaries are not vendored.
 
@@ -43,16 +43,22 @@ Charts are populated from DescribeFeatureType or the adapter's inferred schema. 
 | --- | --- | --- |
 | Bar | Any primitive attribute | Category counts or numeric/date histogram; click a bar |
 | Pie | Any primitive attribute | Category counts or histogram; click a slice |
-| Time series | Date attribute | Counts in equal-width UTC time intervals; click an interval |
-| Scatter | Two number/date attributes | Counted 2D bins; circle size and opacity encode population; click a cell or drag a rectangle |
+| Time series | Date X; optional numeric Y | Count, sum, mean, minimum or maximum by time interval; click a segment |
+| Scatter | Two number/date attributes | Counted 2D bins, or every individual observation with binning off; click or right-drag a rectangle |
 
-Scatter plots aggregate **every point**, rather than sampling observations or drawing millions of chart glyphs. This preserves exact filtering but does not display each individual observation as its own dot. Numeric/time charts have 8–64 configurable bins. Domains stay fixed to the complete loaded dataset so bin boundaries remain stable while filtering. Numeric ranges include the lower bound, exclude the upper bound, and include the maximum in the last bin. Millisecond time boundaries use exact integer edges.
+Bar, pie and time-series charts always aggregate the full selection into bounded categories or bins. Only scatter plots have a **Binning off** option, which draws **every non-null observation** with WebGL. There is no sampling or distinct-value cap for raw scatter; it retains original row IDs for point clicks, and overlapping dots return one observation. Numeric/time charts have 8–64 configurable bins. Time-series **Y aggregation** selects count, sum, mean, min or max; the latter four enable a numeric **Y attribute** selector. Null Y values are excluded and counted as missing. Full-data domains and bin boundaries remain stable through filtering. Numeric ranges include the lower bound, exclude the upper bound, and include the maximum in the last bin. Millisecond time boundaries use exact integer edges.
 
-Category charts retain the 23 most frequent categories from the full dataset and an exact **Other categories** segment when needed. Clicking Other matches every remaining non-null category. Missing attributes are excluded from plotted counts and reported separately. Plotted counts plus missing counts equal the current selection. Counts and keyboard selection are available in each chart's disclosure; focus a plot, use arrow keys, and press Enter to select a bin. Hovering a chart reads only its bounded aggregate counts and never queries individual map features.
+Every chart uses the same mouse gestures: **left-drag a rectangle to zoom**, **right-drag to select**, and **double left-click to reset zoom**. Zoom only changes the local viewport; it does not filter the dataset, issue WFS requests or upload point data again. Single segment/point clicks and keyboard selection still filter. Scatter axes have numeric/date value ticks, axis titles, gridlines and readable UTC dates/times that adapt to the zoom level. Canvas and WebGL geometry use the same actual plot dimensions, including enlargement. Binned scatter selection chooses cells intersected by the range; raw scatter selection uses exact numeric/date bounds. Pie rectangle selection intersects its sectors.
+
+Use **Enlarge** on any chart for a large modal view. **Return to normal size** or Escape restores the original position and size while retaining the zoom and source selection. Raw scatter supports arrow keys to step through original observations; Enter selects one.
+
+Category charts retain the 23 most frequent categories from the full dataset and an exact **Other categories** segment when needed. Clicking Other matches every remaining non-null category. Missing attributes are excluded from plotted counts and reported separately. Plotted counts plus missing counts equal the current selection. Counts and keyboard selection are available in each chart's disclosure; focus a plot, use arrow keys, and press Enter to select a bin. Hovering a binned chart reads only its bounded aggregate counts and never queries individual map features.
+
+Choose **Point colour** for the active source to colour by an attribute. Numbers and dates use 8, 24 or 64 fixed full-data value bins across configurable low/high colours; text uses the top categories and Other, and booleans use false/true. The legend shows the domain and gradient; nulls are grey. Each source saves its attribute, bin count and ramp separately. Colour bins stay stable through filtering. Palette edits change uniforms without rescanning attributes or uploading point geometry. Choose Source colour to return to the source’s solid colour.
 
 ### Combined filters
 
-Each filter group can use **AND** or **OR**, and groups can contain other groups. Use **Add chart selections here** to choose the receiving group; the highlighted group is the active target. Chart selections apply immediately. Manual rules and changed group operators apply with **Apply filters**. Removing a condition or clearing filters also updates the selection.
+Each filter group can use **AND** or **OR**, and groups can contain other groups. Use **Add chart selections here** to choose the receiving group; the highlighted group is the active target. Chart selections apply immediately. **Right-click and drag a box on the map** to add a geographic selection for the active source to the highlighted group. Its inclusive longitude/latitude bounds combine with other predicates through the same AND/OR engine; removing the selection or clearing filters restores those rows. Manual rules and changed group operators apply with **Apply filters**. Removing a condition or clearing filters also updates the selection.
 
 For example, create an AND root containing an OR group for `category = sensor` or `category = vehicle`, plus `value ≥ 50` and `timestamp ≥ 2025-01-01T00:00:00Z`. Range selections and scatter rectangles are nested AND expressions, so their endpoints remain together even inside an OR group. Repeated matching branches never duplicate features or counts.
 
@@ -84,10 +90,11 @@ Repeated IDs/pages, changed counts, premature empty pages, ignored page sizes, i
 - Ingestion drops page feature objects after packing metadata into per-page **contiguous Float64/Int32 columns**. String attributes use dictionary codes. Coordinates and original IDs remain available for metadata inspection.
 - Filters compile a small expression tree into reusable **32,768-row Uint8 masks**. Each leaf scans its column; AND/OR combines masks. No expression traversal, object construction or string comparison happens per matching feature. Text comparisons evaluate dictionary entries once and use code lookups per row.
 - Numeric domains and category rankings are cached per attribute in each source’s worker. Category-to-bin tables and Uint32 bin counts are compact. Filtering and all chart aggregations share each block's selection mask. The worker yields between blocks, accepts superseding requests, and suppresses stale results.
-- Only matching Uint32 indices, bounded bin counts, labels and boundaries cross to the UI. Geometry is never rebuilt. Canvas charts draw at most 4,096 scatter cells each, independent of dataset size. There is no new chart dependency.
+- Matching Uint32 map indices and bounded chart aggregates cross to the UI by transferable buffers. In unbinned scatter mode the worker also sends normalized interleaved Float32 coordinates and original Uint32 row IDs, without creating point objects. Canvas charts draw at most 4,096 scatter cells; raw scatter makes one GPU draw over all observations. Inactive raw chart GPU contexts are released and recreated from retained typed data on source switching. Geometry is never rebuilt for filters. There is no new dependency.
+- Geographic leaves scan the existing contiguous longitude/latitude columns. Attribute colour calculation yields compact Uint8 bin codes; the map shader reads a shared 64-colour uniform palette. Colour requests have a separate cancellation revision so changing chart filters does not recompute colour data.
 - Every WFS page has a 32×32 spatial index with actual bounds. Unfiltered zoomed views skip offscreen groups; wide views draw the full index. Filtered views draw only matches but currently do not have a second spatial index. GPU restoration uses retained compact arrays.
 
-GPU geometry plus spatial indices uses **20 bytes per allocated point** (60 MB at three million), plus 4 bytes per displayed filtered point. Context recovery retains equivalent main-thread arrays. The worker retains typed columns, coordinates, string dictionaries and original ID strings. A filtered output reserves up to 4 bytes per loaded point before exposing its matching subarray. Filter masks cost 32 KiB per expression node (up to 4 MiB). Categorical profiling temporarily uses 4 bytes per distinct value; categorical bin maps use 1 byte per distinct value per chart. These costs, unique strings/IDs and transient GeoJSON pages mean total RAM is substantially larger than GPU buffers. Costs add across enabled sources; source limits are per source, not a global memory budget. This is not an out-of-core engine.
+GPU geometry plus spatial indices uses **20 bytes per allocated point** (60 MB at three million), plus 4 bytes per displayed filtered point. Attribute colouring adds **1 GPU byte per loaded point** plus an equivalent retained Uint8 array. Unbinned scatter adds **12 bytes per numeric plotted observation** in the UI (8-byte normalized coordinates, 4-byte original row ID) and 8 GPU bytes per observation, per chart. Date scatter uses split-float coordinates to preserve close timestamps under deep zoom: 20 CPU bytes and 16 GPU bytes per plotted observation; each calculation temporarily reserves up to 12 bytes per loaded point (20 for date scatter) in the worker. Small filtered outputs are copied into tight buffers before transfer. Context recovery retains equivalent main-thread geometry arrays. The worker retains typed columns, coordinates, string dictionaries and original ID strings. A filtered output reserves up to 4 bytes per loaded point before exposing its matching subarray. Filter masks cost 32 KiB per expression node (up to 4 MiB). Categorical profiling temporarily uses 4 bytes per distinct value; categorical bin maps use 1 byte per distinct value per chart. These costs, unique strings/IDs and transient GeoJSON pages mean total RAM is substantially larger than GPU buffers. Costs add across enabled sources; source limits are per source, not a global memory budget. This is not an out-of-core engine.
 
 The map is north-up flat Web Mercator, with rotation, pitch, globe and terrain disabled. Downloading millions of raw WFS features remains a large bulk transfer. Full-density map smoothness remains dependent on hardware and is **not established** by fast worker filtering.
 
@@ -105,11 +112,15 @@ The reproducible **three-million-point workspace** run used headless Chromium wi
 | Reset to all points + chart updates | 295.3 ms in worker |
 | Filter browser round trips | 0.50–2.59 s, including automation polling and GPU upload |
 | Browser errors | None |
-| Correctness tests | 14 unit/API + 12 browser tests passed |
+| Original workspace correctness tests | 14 unit/API + 12 browser tests passed |
 
 See `benchmarks/3000000-analysis-workspace.json` and its screenshot. Worker timings include filter scans and aggregation, not GPU rendering. Browser round trips reflect substantial software-renderer costs and must not be presented as sub-250-ms visible updates.
 
 The simultaneous-source run (`benchmarks/3000000-multi-source.json`) loaded **two 1.5-million-point sources** and calculated three charts for each in 16.50 s overall. Independent two-attribute filters plus chart updates took **70.8 ms** and **75.5 ms** in their respective workers. The combined browser selection response was 110.2 ms, including buffer uploads and automation but without waiting for the next map paint. Results matched independently calculated fixture counts: 187,366 and 76,840; no browser errors. These results are from the same software renderer, with different filters and point distributions from the single-source run; they are not hardware smoothness measurements.
+
+The controls benchmark (`benchmarks/3000000-controls.json`, reproducible with `node scripts/benchmark-controls.mjs 3000000`) loaded all **3,000,000** points in **22.29 s** and drew every observation in an unbinned scatter plot while calculating a mean-quality time series. The raw-chart calculation took **253.2 ms** in the worker; coordinates and IDs occupied 24 MB and 12 MB. Numeric map colour codes occupied **3 MB**. A geographic selection matched an independent fixture count of **667,181** points and updated all three charts in **174.6 ms** in the worker (198.6 ms browser response including automation/uploads, without waiting for map paint). No browser errors. This used SwiftShader and does not establish hardware-GPU frame smoothness.
+
+The date-scatter variant (`benchmarks/3000000-date-controls.json`, reproducible with `node scripts/benchmark-controls.mjs 3000000 date`) loaded **3,000,000** points in **22.84 s**. Raw date scatter plus mean-quality time-series calculation took **328.5 ms** in the worker, with 48 MB of split-float coordinates and 12 MB of IDs. Geographic selection matched the same **667,181** points and updated the charts in **226.2 ms** in the worker (245.8 ms browser response without waiting for map paint). No browser errors; this also used SwiftShader.
 
 The earlier prototype benchmark remains archived in `benchmarks/3000000-software-gpu.json`: it loaded three million features in 22.51 s but had a **1,072-ms whole-dataset pan/zoom p95**. That run used a different layout and simpler AND filter. Neither run proves smooth rendering of three million simultaneously visible points on a hardware GPU. The fixture produces about 868 MB of uncompressed GeoJSON at that size, gzip-compressed in transit. Real network/server throughput and attribute cardinality change these results. Weak GPUs or much larger visible datasets may need a different rendering/level-of-detail strategy.
 
@@ -122,8 +133,13 @@ npx playwright install chromium
 npm run test:browser
 npm run benchmark:analysis -- 3000000
 npm run benchmark:sources -- 1500000
+node scripts/benchmark-controls.mjs 3000000
+node scripts/benchmark-controls.mjs 3000000 date
+node scripts/preview-charts.mjs
 node scripts/benchmark.mjs 3000000
 ```
+
+Current validation: **18 unit/API tests and 22 browser tests pass**, along with a fresh offline vendored install/build/test in an independent directory. Tests cover custom local basemap templates and persistence, time Y aggregation, scatter-only unbinned mode, exact-point picking and rectangle selection, geographic edge/antimeridian predicates, source-specific colour/box state, colour code memory and stable bins, and bounded non-scatter aggregation. Chart navigation tests cover canvas/WebGL zoom and reset without dataset changes, right-drag selection (including pie/time), date axes and millisecond precision across multi-year domains, modal enlargement/restoration, Escape, type switching, and removing an enlarged chart.
 
 Analysis tests independently check nested expression semantics, missing values, constants, Other categories, chart totals, exact clicked bin membership, fractional time boundaries, cancellation and invalid schemas. Browser tests exercise schema-driven chart types, pie clicks, scatter dragging, OR chart selections, nested manual rules, keyboard selection, latest-request wins, multi-source isolation, distinct schemas, persistence, disable/re-enable, source-aware picking, partial failure, subpage navigation, GML, high-zoom picking and truncation. CI installs npm dependencies from the committed offline bundle; browser binaries are fetched separately for tests.
 
@@ -136,6 +152,8 @@ The analysis benchmark writes worker and browser round-trip timings plus a scree
 | `src/main.ts` | MapLibre, configuration subpage, worker coordination, metadata and metrics |
 | `src/store.ts` | Typed metadata columns, dictionaries and duplicate detection |
 | `src/points-layer.ts` | GPU buffers, culling, rendering and double-click picking |
+| `src/chart-plot.ts` | Shared chart axes, local viewport, pointer gestures and bounded pie-sector intersection |
+| `src/raw-scatter.ts` | Unbinned WebGL charts, original-row picking, numeric/date brushing, readable axes and context recovery |
 | `src/worker.ts` | WFS ingestion, analysis revisions and transferable results |
 | `src/data.ts` | WFS decoding, schema types and coordinate packing |
 | `server/` | Deterministic WFS fixture and built-app hosting, using Node built-ins |

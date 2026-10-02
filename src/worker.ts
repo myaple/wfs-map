@@ -14,7 +14,7 @@ type Config = {
     fields: Field[];
 };
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
-let store: Store | undefined, revision = 0, analyzer: Analyzer | undefined;
+let store: Store | undefined, revision = 0, colorRevision = 0, analyzer: Analyzer | undefined;
 function post(message: unknown, transfers: Transferable[] = []) { ctx.postMessage(message, transfers); }
 async function fetchText(url: string) {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 120000);
@@ -113,6 +113,13 @@ ctx.onmessage = (event: MessageEvent) => {
             post({ type: 'error', message: (e as Error).message });
         }
     }
+    if (m.type === 'colors' && store) {
+        const r = ++colorRevision;
+        analyzer ??= new Analyzer(store);
+        void analyzer.colors(m.field, m.bins, () => r !== colorRevision).then(result => { if (r === colorRevision)
+            post({ type: 'colored', request: m.request, ...result }, [result.codes.buffer]); }).catch(e => { if (r === colorRevision)
+            post({ type: 'colorError', request: m.request, message: (e as Error).message }); });
+    }
     if (m.type === 'filter' || m.type === 'analyze') {
         const r = ++revision, start = performance.now();
         if (!store) {
@@ -126,13 +133,19 @@ ctx.onmessage = (event: MessageEvent) => {
             const transfers: Transferable[] = result.indices ? [result.indices.buffer] : [];
             for (const chart of result.charts) {
                 transfers.push(chart.counts.buffer);
+                if (chart.values)
+                    transfers.push(chart.values.buffer);
+                if (chart.raw)
+                    transfers.push(chart.raw.positions.buffer, chart.raw.rows.buffer, chart.raw.bounds.buffer);
                 if (chart.x.ranges)
                     transfers.push(chart.x.ranges.buffer);
                 if (chart.y?.ranges)
                     transfers.push(chart.y.ranges.buffer);
             }
             post({ type: 'filtered', request: m.request, ...result, elapsedMs: performance.now() - start }, transfers);
-        }).catch(e => { if (r === revision)
-            post({ type: 'filterError', request: m.request, message: (e as Error).message }); });
+        }).catch(e => {
+            if (r === revision)
+                post({ type: 'filterError', request: m.request, message: (e as Error).message });
+        });
     }
 };
