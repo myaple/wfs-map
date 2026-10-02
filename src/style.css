@@ -1,0 +1,23 @@
+@import 'maplibre-gl/dist/maplibre-gl.css';
+* { box-sizing:border-box; }
+body { margin:0; font:14px system-ui,sans-serif; color:#143144; background:#edf2f5; }
+#app {display:grid;grid-template-columns:330px 1fr;height:100dvh;}
+aside {padding:18px;overflow:auto;background:#fff;border-right:1px solid #ccd7df;}
+h1 {font-size:21px;margin:0 0 6px;} h2 {font-size:16px;margin:20px 0 10px;}
+p {line-height:1.45;} .hint {font-size:12px;color:#567;}
+label {display:block;font-size:12px;margin:10px 0 5px;}
+input,select,button {font:inherit;border:1px solid #b5c5ce;border-radius:4px;padding:7px;}
+input,select {width:100%;background:white;} button {cursor:pointer;background:#e8eff4;}
+button.primary {background:#14597a;color:white;border-color:#14597a;}button:disabled {opacity:.5;cursor:default;}
+.row {display:flex;gap:8px;margin-top:10px;} .row>* {flex:1;min-width:0;}
+#map {min-width:0;height:100%;position:relative;}
+#hud {position:absolute;z-index:2;top:12px;left:12px;background:rgba(255,255,255,.93);padding:10px 14px;border-radius:6px;pointer-events:none;font:12px ui-monospace,monospace;white-space:pre-line;line-height:1.6;}
+#status {padding:10px;margin-top:12px;background:#eef3f6;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;}
+#status.error {background:#ffe8e6;color:#842616;}
+details {margin-top:12px;}summary {cursor:pointer;font-size:12px;}
+.rule {display:grid;grid-template-columns:1fr 78px 28px;gap:5px;margin:8px 0;padding-bottom:8px;border-bottom:1px solid #eee;}
+.rule input {grid-column:1 / 3;}.rule button {grid-column:3;grid-row:1;padding:3px;}
+.metadata {max-height:50vh;overflow:auto;font-size:12px;} .metadata table {border-collapse:collapse;width:100%;}.metadata th,.metadata td {padding:5px;text-align:left;border-bottom:1px solid #ddd;word-break:break-word;}.metadata th {font-weight:600;}
+.maplibregl-popup-content {min-width:240px;max-width:380px;}
+progress {width:100%;height:8px;}
+@media(max-width:700px) {#app {grid-template-columns:260px 1fr;}aside {padding:12px;}#hud {top:auto;bottom:10px;}}

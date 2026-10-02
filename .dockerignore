@@ -1,0 +1,7 @@
+node_modules
+vendor
+.git
+test-results
+playwright-report
+*.png
+audit.json

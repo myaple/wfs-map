@@ -1,0 +1,52 @@
+{
+  "startedAt": "2026-10-02T15:44:00.075Z",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+  "pointsRequested": 3000000,
+  "viewport": {
+    "width": 1110,
+    "height": 900
+  },
+  "devicePixelRatio": 1,
+  "pointSize": 2,
+  "distribution": "uk",
+  "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+  "note": "Actual browser frame intervals; no GPU timer queries. JSON bytes are uncompressed.",
+  "firstPointsMs": 523.2000000001863,
+  "loaded": 3000000,
+  "total": 3000000,
+  "pages": 60,
+  "bytes": 868295113,
+  "parseMs": 8725.300000000745,
+  "elapsedMs": 22511.5,
+  "bounds": [
+    -7.999979624990374,
+    50.00000135367736,
+    1.9999950523488224,
+    58.99999902979471
+  ],
+  "truncated": false,
+  "warning": "",
+  "readyMs": 22566.600000000093,
+  "gpuBytes": 60000000,
+  "lastFilterMs": 0.10000000009313226,
+  "filterCount": 3000000,
+  "panZoom": {
+    "nominalDurationMs": 6000,
+    "actualDurationMs": 7892.5,
+    "mapFrames": 32,
+    "frameMedianMs": 16.899999999906868,
+    "frameP95Ms": 1071.7999999998137,
+    "frameMaxMs": 1094.5,
+    "over33ms": 12,
+    "rafMedianMs": 16.700000000000728,
+    "rafP95Ms": 1066.5999999999985,
+    "pointSize": 2,
+    "selected": 3000000,
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+  },
+  "multiAttributeFilter": {
+    "milliseconds": 156.29999999981374,
+    "matches": 249379
+  },
+  "browserErrors": []
+}
