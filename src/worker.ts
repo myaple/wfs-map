@@ -12,6 +12,7 @@ type Config = {
     limit: number;
     sort: string;
     fields: Field[];
+    filter?: string;
 };
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 let store: Store | undefined, revision = 0, colorRevision = 0, analyzer: Analyzer | undefined;
@@ -33,6 +34,7 @@ async function load(c: Config) {
         throw new Error('Invalid point limit or page size');
     const start = performance.now(), typeParam = c.version === '2.0.0' ? 'typeNames' : 'typeName', countParam = c.version === '2.0.0' ? 'count' : 'maxFeatures';
     const common: Record<string, string> = { [typeParam]: c.typeName, srsName: c.srs };
+    if (c.filter) common.filter = c.filter;
     if (c.sort)
         common.sortBy = c.sort + ' A';
     let total: number | undefined, warning = '';
@@ -95,7 +97,8 @@ async function load(c: Config) {
     }
     if (total !== undefined && loaded > total)
         throw new Error('Received more features than the reported count');
-    store?.finish();
+    if (!store) { store = new Store(c.fields); post({ type: 'fields', fields: store.fields }); }
+    store.finish();
     if (store)
         analyzer = new Analyzer(store);
     post({ type: 'done', loaded, total, bounds: store?.bounds, pages, bytes, parseMs, elapsedMs: performance.now() - start,

@@ -9,7 +9,7 @@ async function add(page: Page, name = 'Stations', url = '/wfs?points=128&vendor=
 const sourceStorage = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('wfs-settings') ?? 'null'));
 test('clean first visit has a generic empty list; drafts, cancel and discard never autosave', async ({ page }) => {
     const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
-    await page.goto('/#configuration');
+    await page.goto('/?time=all#configuration');
     await expect(page.locator('#sourceList')).toContainText('No data sources yet');
     await expect(page.locator('#load')).toBeDisabled();
     await expect(page.locator('#url')).toBeHidden();
@@ -34,7 +34,7 @@ test('clean first visit has a generic empty list; drafts, cancel and discard nev
 });
 test('save applies sources and background atomically; configuration pops out and survives reload', async ({ page }) => {
     const requests: string[] = []; page.on('request', r => { if (r.url().includes('/wfs?')) requests.push(r.url()); });
-    await page.goto('/#configuration'); await add(page);
+    await page.goto('/?time=all#configuration'); await add(page);
     await page.locator('#backgroundSettings summary').click();
     await page.locator('#basemapURL').fill(''); await page.locator('#basemapAttribution').fill('Offline');
     await page.locator('#saveSettings').click();
@@ -60,7 +60,7 @@ test('save applies sources and background atomically; configuration pops out and
 });
 test('removal can be undone and saved removal of the last loaded source releases data and remains empty', async ({ page }) => {
     const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
-    await page.goto('/#configuration'); await add(page); await page.locator('#saveSettings').click();
+    await page.goto('/?time=all#configuration'); await add(page); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
     await page.evaluate(() => (window as any).__removedSource = (window as any).__WFS_MAP__.sources[0]);
     await page.getByRole('button', { name: 'Remove Stations', exact: true }).click();
@@ -78,7 +78,7 @@ test('removal can be undone and saved removal of the last loaded source releases
     expect(errors).toEqual([]);
 });
 test('start a test WFS separately and add it through the normal editor', async ({ page }) => {
-    await page.goto('/#configuration'); await page.locator('#testServer summary').click();
+    await page.goto('/?time=all#configuration'); await page.locator('#testServer summary').click();
     await page.locator('#points').fill('96'); await page.locator('#distribution').selectOption('dense');
     await page.locator('#startTestServer').click(); await expect(page.locator('#testServerStatus')).toContainText('is running');
     await expect(page.locator('.source-row')).toHaveCount(0); expect(await sourceStorage(page)).toBeNull();
@@ -95,7 +95,7 @@ test('start a test WFS separately and add it through the normal editor', async (
     await expect(page.locator('#hud')).toContainText('Loaded 96');
 });
 test('validation and storage failure leave drafts available without changing running sources', async ({ page }) => {
-    await page.goto('/#configuration'); await add(page);
+    await page.goto('/?time=all#configuration'); await add(page);
     await page.locator('#backgroundSettings summary').click(); await page.locator('#basemapURL').fill('javascript:bad');
     await page.locator('#saveSettings').click(); await expect(page.locator('#saveError')).toContainText('XYZ tile URL');
     expect(await sourceStorage(page)).toBeNull();
@@ -113,7 +113,7 @@ test('legacy source settings migrate without changing remote endpoints or losing
         const config = { url: '/wfs', layer: 'demo:points', points: '17', distribution: 'world', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000' };
         localStorage.setItem('wfs-sources', JSON.stringify([{ id: 'old', name: 'Existing test source', enabled: true, config }, { id: 'remote', name: 'Remote', enabled: false, config: { ...config, url: 'https://data.example/wfs?token=abc&vendor=yes' } }]));
     });
-    await page.goto('/#configuration');
+    await page.goto('/?time=all#configuration');
     await page.getByRole('button', { name: 'Configure Existing test source', exact: true }).click();
     await expect(page.locator('#url')).toHaveValue('/wfs?points=17&distribution=world'); await page.locator('#cancelSource').click();
     await page.getByRole('button', { name: 'Configure Remote', exact: true }).click();
@@ -123,7 +123,7 @@ test('legacy source settings migrate without changing remote endpoints or losing
     expect(saved.sources[1].config.url).toBe('https://data.example/wfs?token=abc&vendor=yes');
 });
 test('source limit, keyboard editor focus and narrow layouts remain usable', async ({ page }) => {
-    await page.goto('/#configuration');
+    await page.goto('/?time=all#configuration');
     for (let i = 0; i < 8; i++) await add(page, `Source ${i}`, `/wfs?points=${i + 1}`);
     await expect(page.locator('#addSource')).toBeDisabled();
     await page.getByRole('button', { name: 'Remove Source 7', exact: true }).click(); await expect(page.locator('#addSource')).toBeEnabled();
@@ -143,7 +143,7 @@ test('source limit, keyboard editor focus and narrow layouts remain usable', asy
 test('failed discovery allows manual configuration; unavailable test hosting reports an actionable error', async ({ page }) => {
     await page.route('**/api/test-wfs/start', route => route.fulfill({ status: 404 }));
     await page.route('**/external-wfs?*', route => route.fulfill({ status: 503, body: 'Unavailable' }));
-    await page.goto('/#configuration'); await page.locator('#testServer summary').click(); await page.locator('#startTestServer').click();
+    await page.goto('/?time=all#configuration'); await page.locator('#testServer summary').click(); await page.locator('#startTestServer').click();
     await expect(page.locator('#testServerStatus')).toContainText('Could not start'); await expect(page.locator('#addTestSource')).toBeDisabled();
     await page.locator('#addSource').click(); await page.locator('#sourceName').fill('Manual'); await page.locator('#url').fill('/external-wfs');
     await page.locator('#discover').click(); await expect(page.locator('#discoveryStatus')).toContainText('Discovery failed');
@@ -158,7 +158,7 @@ test('closing or changing endpoints aborts discovery and cannot populate another
         await blocked;
         await route.fulfill({ contentType: 'application/xml', body: '<WFS_Capabilities><FeatureType><Name>stale:layer</Name></FeatureType></WFS_Capabilities>' }).catch(() => {});
     });
-    await page.goto('/#configuration'); await page.locator('#addSource').click();
+    await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
     await page.locator('#url').fill('/slow-wfs');
     const requested = page.waitForRequest(r => r.url().includes('/slow-wfs?'));
     await page.locator('#discover').click(); await requested;

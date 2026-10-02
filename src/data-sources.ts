@@ -28,6 +28,8 @@ export class DataSources {
             <label for="format">Output format</label><input id="format" required><p class="hint">Use the exact format advertised by the server. GeoJSON is recommended.</p>
             <label for="srs">Requested coordinate reference system</label><input id="srs" required>
             <label for="axis">GML coordinate order</label><select id="axis"><option value="xy">Longitude, latitude</option><option value="yx">Latitude, longitude</option></select><p class="hint">GeoJSON always uses longitude, latitude.</p>
+            <label for="timeField">Time attribute (optional override)</label><input id="timeField" placeholder="Auto-detect from schema"><p class="hint">Used for the global time window sent to WFS. Specify the date/time field if discovery is unavailable or ambiguous.</p>
+            <label for="geometryField">Geometry attribute (optional override)</label><input id="geometryField" placeholder="Auto-detect from schema"><p class="hint">Used for map area requests. Enter the server’s geometry property name, e.g. the_geom.</p>
             <label for="sort">Stable unique sort attribute (optional)</label><input id="sort" placeholder="e.g. id">
             <label for="pageSize">Features per request</label><input id="pageSize" type="number" min="1" max="100000" required>
             <label for="limit">Client point limit</label><input id="limit" type="number" min="1" max="50000000" required>

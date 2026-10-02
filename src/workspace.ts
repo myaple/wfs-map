@@ -114,6 +114,12 @@ export class Workspace {
     }
     expression(): Expression { const root = this.rules.querySelector(':scope > .filter-group'); return root ? this.read(root) : all([]); }
     clearFilters() { this.rules.replaceChildren(); this.makeGroup(this.rules, 'and'); this.changed(); }
+    discardObservationSelections() {
+        // Raw scatter observation indices belong to the previous loaded rows;
+        // attribute predicates remain meaningful when server bounds change.
+        const hasRow = (expr: Expression): boolean => expr.op === 'row' || ('children' in expr && expr.children.some(hasRow));
+        for (const row of this.rules.querySelectorAll('.selection')) if (hasRow((row as any).expression)) row.remove();
+    }
     select(expression: Expression, label: string) {
         if (!this.active)
             return;

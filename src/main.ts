@@ -7,6 +7,7 @@ import { Workspace } from './workspace.ts';
 import { all, type Expression } from './analysis.ts';
 import { DataSources } from './data-sources.ts';
 import { defaultConfig, readSettings, settingsKey, type Config, type Settings } from './source-settings.ts';
+import { queryFilter, timeBounds, validateTime, type QueryBounds, type QueryFields } from './wfs-query.ts';
 import './style.css';
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -16,7 +17,7 @@ $('app').innerHTML = `
 <header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav><a href="#analysis" id="analysisLink">Analysis</a><a href="#configuration" id="configLink">Data sources</a></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="filterStatus" role="status"></div></div>
 <section id="configuration" hidden></section>
-<section id="analysis"><div class="source-analysis"><label for="analysisSource">Analyze source</label><select id="analysisSource" aria-label="Analyze source"></select><label for="colorAttribute">Point colour</label><select id="colorAttribute" aria-label="Point colour attribute"></select><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select><input id="colorLow" type="color" aria-label="Low value colour" value="#2463d4"><input id="colorHigh" type="color" aria-label="High value colour" value="#ee5539"><span id="colorRamp" aria-hidden="true"></span><span id="colorLegend" class="hint"></span><span id="sourceSummary" class="hint"></span><button id="reloadSource">Reload this source</button></div><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Nested AND / OR groups. Chart selections go into the highlighted group. Numeric and time bins use inclusive lower bounds and exclusive upper bounds (last bin includes the maximum). Charts and filters apply only to the chosen source. The map shows all enabled sources.</p><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button></div></details>
+<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · fetched from WFS</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><label for="timeStart">Start (UTC)</label><input id="timeStart" type="datetime-local" step="1"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="datetime-local" step="1"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="source-analysis"><label for="analysisSource">Analyze source</label><select id="analysisSource" aria-label="Analyze source"></select><label for="colorAttribute">Point colour</label><select id="colorAttribute" aria-label="Point colour attribute"></select><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select><input id="colorLow" type="color" aria-label="Low value colour" value="#2463d4"><input id="colorHigh" type="color" aria-label="High value colour" value="#ee5539"><span id="colorRamp" aria-hidden="true"></span><span id="colorLegend" class="hint"></span><span id="sourceSummary" class="hint"></span><button id="reloadSource">Reload this source</button></div><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Nested AND / OR groups. Chart selections go into the highlighted group. Numeric and time bins use inclusive lower bounds and exclusive upper bounds (last bin includes the maximum). Charts and filters apply only to the chosen source. The map shows all enabled sources.</p><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button></div></details>
 <div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label></div><main id="map"><div id="hud">Starting map…</div></main></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><button id="addChart" disabled>+ Add chart</button></div><div id="charts" aria-live="polite"><p class="empty">Load a dataset to create charts from its attributes.</p></div></section></div>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
 type Source = {
@@ -57,6 +58,7 @@ type Source = {
     error: boolean;
     filterStatus: string;
     loadedConfig?: string;
+    loadedQuery?: string;
 };
 const colors: [
     number,
@@ -66,6 +68,7 @@ const colors: [
 const settings = readSettings();
 let background = settings.background;
 const sources: Source[] = [];
+let queryBounds: QueryBounds = params.get('time') === 'all' ? {} : { time: timeBounds(24) };
 let activeId = '', popup: maplibregl.Popup | undefined, benchmarkRunning = false, mapReady = false, loadSlots = 0;
 const loadQueue: Source[] = [];
 const layerOrder: Source[] = [];
@@ -211,28 +214,36 @@ function state() {
     hud();
 }
 function endpoint(config: Config) { return new URL(config.url, location.href).href; }
-async function describe(s: Source, config: Config): Promise<Field[]> {
+async function describe(s: Source, config: Config): Promise<{ fields: Field[]; queryFields: QueryFields }> {
     const controller = new AbortController();
     s.abort = controller;
     const timeout = setTimeout(() => controller.abort(), 15000);
+    const fallback = { fields: [] as Field[], queryFields: { time: config.timeField, geometry: config.geometryField } };
     try {
         const r = await fetch(wfsURL(endpoint(config), config.version, 'DescribeFeatureType', { [config.version === '2.0.0' ? 'typeNames' : 'typeName']: config.layer }), { signal: controller.signal });
         const text = await r.text();
         xmlDocument(text);
-        if (!r.ok)
-            return [];
+        if (!r.ok) return fallback;
         const doc = new DOMParser().parseFromString(text, 'text/xml');
-        const elements = [...doc.getElementsByTagNameNS('*', 'sequence')].flatMap(seq => [...seq.children]).filter(el => el.localName === 'element');
-        return elements.filter(el => el.hasAttribute('name') && !/gml:|geometry|point|polygon|curve|surface/i.test(el.getAttribute('type') ?? '')).map(el => ({ name: el.getAttribute('name')!, kind: fieldKind(el.getAttribute('type') ?? 'string') }));
-    }
-    catch {
-        return [];
-    }
-    finally {
-        clearTimeout(timeout);
-        if (s.abort === controller)
-            s.abort = undefined;
-    }
+        // Restrict discovery to the selected feature type's complex type rather
+        // than accidentally using fields from another type in the same schema.
+        const localType = config.layer.split(':').at(-1);
+        const feature = [...doc.getElementsByTagNameNS('*', 'element')].find(el => el.parentElement?.localName === 'schema' && el.getAttribute('name') === localType);
+        const typeName = feature?.getAttribute('type')?.split(':').at(-1);
+        const complex = [...doc.getElementsByTagNameNS('*', 'complexType')].find(el => el.getAttribute('name') === typeName);
+        const sequences = [...(complex ?? doc).getElementsByTagNameNS('*', 'sequence')];
+        const elements = sequences.flatMap(seq => [...seq.children]).filter(el => el.localName === 'element' && el.hasAttribute('name'));
+        const isGeometry = (el: Element) => /geometry|point|polygon|curve|surface|line|location/i.test(el.getAttribute('type') ?? '') || (el.getAttribute('type') ?? '').split(':')[0] === 'gml';
+        const fields = elements.filter(el => !isGeometry(el)).map(el => ({ name: el.getAttribute('name')!, kind: fieldKind(el.getAttribute('type') ?? 'string') }));
+        const dates = fields.filter(f => f.kind === 'date'), geometries = elements.filter(isGeometry);
+        const namespaces: Record<string, string> = {};
+        for (const el of [doc.documentElement, ...elements]) for (const attr of [...el.attributes]) if (attr.name.startsWith('xmlns:')) namespaces[attr.name.slice(6)] = attr.value;
+        const targetNamespace = doc.documentElement.getAttribute('targetNamespace');
+        const prefix = Object.keys(namespaces).find(key => namespaces[key] === targetNamespace);
+        const reference = (name: string) => prefix && doc.documentElement.getAttribute('elementFormDefault') === 'qualified' ? `${prefix}:${name}` : name;
+        return { fields, queryFields: { time: config.timeField || (dates.length === 1 ? reference(dates[0].name) : ''), geometry: config.geometryField || (geometries.length === 1 ? reference(geometries[0].getAttribute('name')!) : ''), namespaces } };
+    } catch { return fallback; }
+    finally { clearTimeout(timeout); if (s.abort === controller) s.abort = undefined; }
 }
 function clearSource(s: Source) {
     const layerIndex = layerOrder.indexOf(s);
@@ -260,6 +271,7 @@ function clearSource(s: Source) {
     s.filterStatus = '';
     s.status = 'Cleared. Load to resume analysis.';
     s.error = false;
+    s.workspace.discardObservationSelections();
     s.workspace.suspend();
     if (s.id === activeId)
         popup?.remove();
@@ -272,7 +284,7 @@ function clear() {
 function loadSource(s: Source) {
     if (!s.enabled || s.loading || !mapReady)
         return;
-    if (s.done && s.loadedConfig === JSON.stringify(s.config))
+    if (s.done && s.loadedConfig === JSON.stringify(s.config) && s.loadedQuery === JSON.stringify(queryBounds))
         return;
     clearSource(s);
     s.loading = true;
@@ -287,7 +299,8 @@ function pumpLoads() {
         if (!s.loading || !s.enabled)
             continue;
         loadSlots++;
-        void performLoad(s).catch(e => { clearSource(s); s.status = (e as Error).message; s.error = true; }).finally(() => { loadSlots--; pumpLoads(); state(); });
+        const session = s.request;
+        void performLoad(s).catch(e => { if (session === s.request) { clearSource(s); s.status = (e as Error).message; s.error = true; } }).finally(() => { loadSlots--; pumpLoads(); state(); });
     }
 }
 async function load() {
@@ -297,17 +310,20 @@ async function load() {
             loadSource(s);
 }
 async function performLoad(s: Source) {
-    const session = s.request, config = { ...s.config };
+    const session = s.request, config = { ...s.config }, bounds = structuredClone(queryBounds);
     s.status = 'Reading feature schema…';
     state();
-    const schemaHints = await describe(s, config);
+    const schema = await describe(s, config);
     if (session !== s.request || !s.enabled)
         return;
+    const serverFilter = queryFilter(config.version, bounds, schema.queryFields);
+    if (serverFilter && [...new URL(endpoint(config)).searchParams.keys()].some(key => ['bbox', 'filter', 'cql_filter', 'featureid', 'resourceid'].includes(key.toLowerCase()))) throw Error('Remove selection parameters from the endpoint URL before using the time or map area controls.');
+    s.fields = schema.fields;
     map.addLayer(s.layer);
     layerOrder.push(s);
     s.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     const began = performance.now();
-    s.metrics = { sourceId: s.id, sourceName: s.name, startedAt: new Date().toISOString(), userAgent: navigator.userAgent, pointsRequested: Number(new URL(endpoint(config)).searchParams.get('points')) || undefined, viewport: { width: map.getCanvas().width, height: map.getCanvas().height }, devicePixelRatio, pointSize: s.layer.pointSize, distribution: new URL(endpoint(config)).searchParams.get('distribution') ?? undefined, renderer: gpuName(), note: 'Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.' };
+    s.metrics = { sourceId: s.id, sourceName: s.name, startedAt: new Date().toISOString(), userAgent: navigator.userAgent, queryBounds: bounds, pointsRequested: Number(new URL(endpoint(config)).searchParams.get('points')) || undefined, viewport: { width: map.getCanvas().width, height: map.getCanvas().height }, devicePixelRatio, pointSize: s.layer.pointSize, distribution: new URL(endpoint(config)).searchParams.get('distribution') ?? undefined, renderer: gpuName(), note: 'Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.' };
     await new Promise<void>(resolve => {
         s.complete = resolve;
         const fail = (message: string) => {
@@ -352,6 +368,7 @@ async function performLoad(s: Source) {
                     s.loading = false;
                     s.done = true;
                     s.loadedConfig = JSON.stringify(config);
+                    s.loadedQuery = JSON.stringify(bounds);
                     if (JSON.stringify(s.workspace.fields) !== JSON.stringify(s.fields)) {
                         s.workspace.reset();
                         s.workspace.ready(s.fields);
@@ -359,7 +376,7 @@ async function performLoad(s: Source) {
                     s.metrics.readyMs = performance.now() - began;
                     s.metrics.gpuBytes = s.layer.gpuBytes;
                     s.status = `${s.loaded.toLocaleString()} points loaded in ${(m.elapsedMs / 1000).toFixed(1)} s.${m.truncated ? ' LIMIT REACHED: dataset is incomplete.' : ''}${m.warning ? '\n' + m.warning : ''}`;
-                    fit();
+                    if (!bounds.bbox) fit();
                     filter(undefined, s);
                     applyColors(s);
                     if (s.id === activeId)
@@ -404,7 +421,7 @@ async function performLoad(s: Source) {
                 fail((e as Error).message);
             }
         };
-        s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), limit: Number(config.limit), sort: config.sort, fields: schemaHints } });
+        s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), limit: Number(config.limit), sort: config.sort, fields: schema.fields, filter: serverFilter } });
     });
     if (session === s.request)
         s.complete = undefined;
@@ -542,7 +559,7 @@ $('size').oninput = () => {
 };
 $<HTMLInputElement>('basemap').onchange = () => { background.enabled = $<HTMLInputElement>('basemap').checked; sourceSettings.syncBackgroundEnabled(background.enabled); applyBackground(); persist(); };
 $('export').onclick = () => { const blob = new Blob([JSON.stringify({ sources: sources.map(s => ({ id: s.id, name: s.name, enabled: s.enabled, metrics: s.metrics })) }, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wfs-map-metrics.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
-(window as any).__WFS_MAP__ = { map, get layer() { return active()?.layer; }, get metrics() { return active()?.metrics; }, get done() { return active()?.done ?? false; }, load, filter, benchmark, get workspace() { return active()?.workspace; }, get sources() { return sources; }, switchSource: switchAnalysis, filterSource: (id: string, rules: Rule[] | Expression) => {
+(window as any).__WFS_MAP__ = { map, get layer() { return active()?.layer; }, get metrics() { return active()?.metrics; }, get done() { return active()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get workspace() { return active()?.workspace; }, get sources() { return sources; }, switchSource: switchAnalysis, filterSource: (id: string, rules: Rule[] | Expression) => {
         const s = sources.find(s => s.id === id);
         if (s)
             filter(rules, s);
@@ -598,20 +615,69 @@ $('map').append(geoBox);
 let geoStart: [
     number,
     number
-] | undefined, geoSource: Source | undefined;
+] | undefined;
 const mapPoint = (e: PointerEvent): [
     number,
     number
 ] => { const rect = mapCanvas.getBoundingClientRect(); return [Math.max(0, Math.min(rect.width, e.clientX - rect.left)), Math.max(0, Math.min(rect.height, e.clientY - rect.top))]; };
 mapCanvas.addEventListener('contextmenu', e => e.preventDefault());
-mapCanvas.addEventListener('pointerdown', e => { if (e.button !== 2 || !active()?.done)
-    return; e.preventDefault(); e.stopImmediatePropagation(); geoStart = mapPoint(e); geoSource = active(); map.dragPan.disable(); mapCanvas.setPointerCapture(e.pointerId); geoBox.hidden = false; geoBox.style.left = geoStart[0] + 'px'; geoBox.style.top = geoStart[1] + 'px'; geoBox.style.width = '0'; geoBox.style.height = '0'; }, true);
+mapCanvas.addEventListener('pointerdown', e => { if (e.button !== 2 || !mapReady)
+    return; e.preventDefault(); e.stopImmediatePropagation(); geoStart = mapPoint(e); map.dragPan.disable(); mapCanvas.setPointerCapture(e.pointerId); geoBox.hidden = false; geoBox.style.left = geoStart[0] + 'px'; geoBox.style.top = geoStart[1] + 'px'; geoBox.style.width = '0'; geoBox.style.height = '0'; }, true);
 mapCanvas.addEventListener('pointermove', e => { if (!geoStart)
     return; const p = mapPoint(e); geoBox.style.left = Math.min(p[0], geoStart[0]) + 'px'; geoBox.style.top = Math.min(p[1], geoStart[1]) + 'px'; geoBox.style.width = Math.abs(p[0] - geoStart[0]) + 'px'; geoBox.style.height = Math.abs(p[1] - geoStart[1]) + 'px'; });
-function endGeo(e: PointerEvent, cancel = false) { const a = geoStart, s = geoSource; geoStart = undefined; geoSource = undefined; geoBox.hidden = true; map.dragPan.enable(); if (!a || !s || cancel || !s.done)
+function endGeo(e: PointerEvent, cancel = false) { const a = geoStart; geoStart = undefined; geoBox.hidden = true; map.dragPan.enable(); if (!a || cancel)
     return; const b = mapPoint(e); if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 4)
-    return; const nw = map.unproject([Math.min(a[0], b[0]), Math.min(a[1], b[1])]), se = map.unproject([Math.max(a[0], b[0]), Math.max(a[1], b[1])]); const west = Math.max(-180, Math.min(180, nw.lng)), east = Math.max(-180, Math.min(180, se.lng)), south = Math.max(-90, se.lat), north = Math.min(90, nw.lat); s.workspace.select({ op: 'bbox', west, east, south, north }, `Map box: ${west.toFixed(4)}, ${south.toFixed(4)} to ${east.toFixed(4)}, ${north.toFixed(4)}`); }
+    return; const nw = map.unproject([Math.min(a[0], b[0]), Math.min(a[1], b[1])]), se = map.unproject([Math.max(a[0], b[0]), Math.max(a[1], b[1])]); const west = Math.max(-180, Math.min(180, nw.lng)), east = Math.max(-180, Math.min(180, se.lng)), south = Math.max(-90, se.lat), north = Math.min(90, nw.lat); queryBounds = { ...queryBounds, bbox: { west, east, south, north } }; showQueryBounds(); reloadBounds(); }
 mapCanvas.addEventListener('pointerup', e => { if (geoStart)
     endGeo(e); });
 mapCanvas.addEventListener('pointercancel', e => { if (geoStart)
     endGeo(e, true); });
+
+function reloadBounds() {
+    // Cancel every old worker and queued load before pumping replacement work.
+    // This prevents old pages/errors/counts from being applied to a newer query.
+    for (const s of sources) clearSource(s);
+    for (const s of sources) if (s.enabled) loadSource(s);
+    state();
+}
+function showQueryBounds() {
+    const time = queryBounds.time, bbox = queryBounds.bbox;
+    $('timeSummary').textContent = time ? `${time.start.slice(0, 19).replace('T', ' ')} → ${time.end.slice(0, 19).replace('T', ' ')} · UTC` : 'All time · no time bound sent to WFS.';
+    $('areaSummary').textContent = bbox ? `Map area: ${bbox.west.toFixed(4)}, ${bbox.south.toFixed(4)} to ${bbox.east.toFixed(4)}, ${bbox.north.toFixed(4)} · all enabled sources` : 'All map areas · right-drag a box on the map to bound requests.';
+    $('clearArea').hidden = !bbox;
+    if (!mapReady) return;
+    const data: Parameters<maplibregl.GeoJSONSource['setData']>[0] = { type: 'FeatureCollection', features: bbox ? [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[bbox.west, bbox.south], [bbox.east, bbox.south], [bbox.east, bbox.north], [bbox.west, bbox.north], [bbox.west, bbox.south]]] } }] : [] };
+    const source = map.getSource('query-area') as maplibregl.GeoJSONSource | undefined;
+    if (source) source.setData(data);
+    else {
+        map.addSource('query-area', { type: 'geojson', data });
+        map.addLayer({ id: 'query-area-outline', type: 'line', source: 'query-area', paint: { 'line-color': '#3984cf', 'line-width': 2, 'line-dasharray': [3, 2] } });
+    }
+}
+function chooseTime() {
+    const custom = value('timeWindow') === 'custom';
+    $('customTime').hidden = !custom;
+    $('applyTime').textContent = custom ? 'Apply time range' : 'Refresh time window';
+    if (custom) {
+        const time = queryBounds.time ?? timeBounds(24);
+        $<HTMLInputElement>('timeStart').value = time.start.slice(0, 19);
+        $<HTMLInputElement>('timeEnd').value = time.end.slice(0, 19);
+    } else applyTime();
+}
+function applyTime() {
+    try {
+        const choice = value('timeWindow');
+        const time = choice === 'all' ? undefined : choice === 'custom'
+            ? { start: value('timeStart') + 'Z', end: value('timeEnd') + 'Z' } : timeBounds(Number(choice));
+        if (time) validateTime(time);
+        queryBounds = { ...queryBounds, time };
+        $('timeError').hidden = true;
+        showQueryBounds(); reloadBounds();
+    } catch (e) { $('timeError').textContent = (e as Error).message; $('timeError').hidden = false; }
+}
+$('timeWindow').onchange = chooseTime;
+$('timeForm').onsubmit = e => { e.preventDefault(); applyTime(); };
+$('clearArea').onclick = () => { queryBounds = { ...queryBounds, bbox: undefined }; showQueryBounds(); reloadBounds(); };
+$<HTMLSelectElement>('timeWindow').value = queryBounds.time ? '24' : 'all';
+showQueryBounds();
+map.on('load', showQueryBounds);
