@@ -17,13 +17,28 @@ export function capabilities(base: string) {
   <wfs:FeatureTypeList><wfs:FeatureType><wfs:Name>demo:points</wfs:Name><wfs:Title>Generated points (8 fields)</wfs:Title><wfs:DefaultCRS>urn:ogc:def:crs:OGC:1.3:CRS84</wfs:DefaultCRS><wfs:OtherCRS>urn:ogc:def:crs:EPSG::4326</wfs:OtherCRS><ows:WGS84BoundingBox><ows:LowerCorner>-179 -70</ows:LowerCorner><ows:UpperCorner>179 70</ows:UpperCorner></ows:WGS84BoundingBox></wfs:FeatureType></wfs:FeatureTypeList></wfs:WFS_Capabilities>`;
 }
 export function schema() { return `<?xml version="1.0"?><xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:demo="urn:demo" targetNamespace="urn:demo" elementFormDefault="qualified"><xsd:import namespace="http://www.opengis.net/gml/3.2" schemaLocation="http://schemas.opengis.net/gml/3.2.1/gml.xsd"/><xsd:element name="points" type="demo:pointsType" substitutionGroup="gml:AbstractFeature"/><xsd:complexType name="pointsType"><xsd:complexContent><xsd:extension base="gml:AbstractFeatureType"><xsd:sequence><xsd:element name="geometry" type="gml:PointPropertyType"/>${Object.entries(fields).map(([n,t]) => `<xsd:element name="${n}" type="xsd:${t}"/>`).join('')}</xsd:sequence></xsd:extension></xsd:complexContent></xsd:complexType></xsd:schema>`; }
-export async function handle(req: IncomingMessage, res: ServerResponse) {
+export async function handle(req: IncomingMessage, res: ServerResponse, testWfs = { running: false }) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
   const u = new URL(req.url!, 'http://localhost');
   if (u.pathname === '/health') { res.setHeader('Content-Type', 'application/json'); res.end('{"ok":true}'); return; }
-  if (u.pathname !== '/wfs') {
+  if (u.pathname === '/api/test-wfs' || u.pathname === '/api/test-wfs/start') {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    if (u.pathname.endsWith('/start')) {
+      if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }); res.end('{"error":"Use POST to start the test server"}'); return; }
+      // This only activates our built-in fixture; it cannot launch arbitrary processes.
+      // Cross-origin WFS reads are allowed; server lifecycle requests are same-origin.
+      if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) { res.writeHead(403); res.end('{"error":"Same-origin request required"}'); return; }
+      if (!req.headers['content-type']?.startsWith('application/json')) { res.writeHead(415); res.end('{"error":"Use application/json"}'); return; }
+      testWfs.running = true;
+      req.resume();
+    } else if (req.method !== 'GET') { res.writeHead(405, { Allow: 'GET' }); res.end(); return; }
+    res.end(JSON.stringify({ running: testWfs.running, endpoint: '/test-wfs' })); return;
+  }
+  if (u.pathname === '/test-wfs' && !testWfs.running) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end('{"error":"Start the test WFS server from Data sources first"}'); return; }
+  if (!['/wfs', '/test-wfs'].includes(u.pathname)) {
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); res.end(); return; }
     const file = resolve(root, '.' + decodeURIComponent(u.pathname === '/' ? '/index.html' : u.pathname));
     if (!file.startsWith(root + sep) || !existsSync(file) || !statSync(file).isFile()) { res.writeHead(404); res.end('Run npm run build first; development UI uses port 5173.'); return; }
@@ -36,7 +51,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse) {
     const p = new Map([...u.searchParams].map(([k,v]) => [k.toLowerCase(),v]));
     const op = (p.get('request') ?? 'GetCapabilities').toLowerCase();
     if (p.has('version') && p.get('version') !== '2.0.0') throw new Error('This development fixture supports WFS 2.0.0 only.');
-    if (op === 'getcapabilities') { res.setHeader('Content-Type','application/xml'); res.end(capabilities(`http://${req.headers.host}/wfs`)); return; }
+    if (op === 'getcapabilities') { res.setHeader('Content-Type','application/xml'); res.end(capabilities(`http://${req.headers.host}${u.pathname}`)); return; }
     if (op === 'describefeaturetype') { res.setHeader('Content-Type','application/xml'); res.end(schema()); return; }
     if (op !== 'getfeature') throw new Error('Unsupported operation');
     if ((p.get('typenames') ?? p.get('typename')) !== 'demo:points') throw new Error('typeNames must be demo:points');
@@ -95,7 +110,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse) {
   }
 }
 export function start(port = Number(process.env.PORT ?? 8787)) {
-  const server=createServer((req,res)=>{ void handle(req,res).catch(()=>res.destroy()); });
+  const testWfs = { running: false };
+  const server=createServer((req,res)=>{ void handle(req,res,testWfs).catch(()=>res.destroy()); });
   server.listen(port,process.env.HOST ?? '127.0.0.1',()=>console.log(`WFS + built application: http://${process.env.HOST ?? '127.0.0.1'}:${port}`));
   return server;
 }
