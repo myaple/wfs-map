@@ -12,11 +12,11 @@ npm run build
 npm start
 ```
 
-Open **http://127.0.0.1:8787** and click **Load enabled sources**. The default development source generates three million points. `/?points=3000000&autoload=1` starts loading automatically.
+Open **http://127.0.0.1:8787** and go to **Data sources** to add your WFS endpoints. A new browser starts with an empty source list. To try generated data, expand **Optional test WFS server**, choose a point count/distribution, **Start test server**, then **Add as data source** and **Save changes**. The explicit fixture shortcut `/?points=3000000&autoload=1` remains available for tests and benchmarks.
 
 All npm dependencies, including native Linux x64 build packages, are committed in `vendor/npm-cache-parts/`, with licenses and exact versions in `vendor/licenses/`, `vendor/manifest.json`, and `package-lock.json`. The install script assembles the committed binary parts, checks their SHA-256, extracts the integrity-checked cache and invokes `npm ci --offline`; it does not contact an npm registry. Builds produce self-contained `dist/` assets, including both workers and MapLibre CSS. Once built, `node server/server.ts` uses only Node built-ins; no npm install, CDN, database, or API key is needed to run it.
 
-The default grid basemap works offline. On Data sources, configure an optional HTTP(S) XYZ raster tile URL containing `{z}`, `{x}` and `{y}`, plus attribution. Relative local tile URLs work offline when those tiles are hosted locally. The Basemap switch and URL are saved in this browser; an empty URL keeps the grid. OpenStreetMap is the initial optional tile provider. Connecting a remote WFS naturally requires access to that server.
+The default grid basemap works offline. On Data sources, configure an optional HTTP(S) XYZ raster tile URL containing `{z}`, `{x}` and `{y}`, plus attribution. Relative local tile URLs work offline when those tiles are hosted locally. The basemap URL and attribution use the page’s **Save changes** button; the Analysis basemap visibility switch saves immediately. An empty URL keeps the grid. OpenStreetMap is the initial optional tile provider. Connecting a remote WFS naturally requires access to that server.
 
 Development: `npm run dev` starts Vite on port 5173 and the WFS fixture on 8787, with a same-origin proxy. On a different build platform, install once online and run `npm run vendor` to prepare that platform's npm cache bundle. Node itself and optional browser-test Chromium binaries are not vendored.
 
@@ -31,11 +31,15 @@ Preload the `node:24-bookworm-slim` base image before an entirely disconnected D
 
 ## Analysis page
 
-WFS configuration lives on the **Data sources** subpage (`#configuration`). Add, name, configure and enable up to eight independent WFS sources; each can select its own endpoint, feature type, paging settings and development fixture size/distribution. More than one source can be enabled simultaneously. Source names, settings, colors and enable switches are saved in this browser.
+WFS configuration lives on the **Data sources** subpage (`#configuration`). The list shows each source’s name, endpoint, feature type and enable checkbox. **Add data source** opens an empty, generic WFS editor; **Configure** opens the same editor for an existing source. Enter a feature type manually or use **Discover layers**, and expand **WFS compatibility and limits** for format, version, CRS, coordinate order, sort and paging options. Up to eight independent sources can be enabled simultaneously.
+
+**Add to list** / **Update source** stages the editor changes. **Remove** stages removal and offers **Undo remove**, including for the last source. **Save changes** atomically saves the source list and map background in browser localStorage, applies additions/removals/settings and loads new or changed enabled sources. Until then, existing analysis keeps using the saved settings. **Discard changes** restores the saved list and background; Cancel or Escape dismisses an editor without changing the list. Unsaved changes and save failures are shown explicitly. Existing saved sources migrate automatically, retaining their names, IDs, enabled state, colours and connection settings. Generated fixture counts/distributions become normal URL query parameters. Analysis colour preferences continue to save immediately.
+
+**Optional test WFS server** is separate from the source editor and collapsed by default. Starting it activates the built-in `/test-wfs` endpoint in the app’s Node server. **Add as data source** pre-fills the ordinary editor with its URL and feature type; it never adds a special source automatically. Point count and distribution are ordinary endpoint query parameters, so multiple test sources can use different datasets. The endpoint stays active until the Node server restarts; start it again from the panel after a restart. This requires the bundled Node host (or Vite’s same-origin proxy); static-only hosts report an actionable error. The legacy `/wfs` fixture remains available for API tests and benchmarks.
 
 Click **Load enabled sources** to load the enabled set. Each source has its own worker, column store, GPU layer and color. The **Analyze source** selector switches the filters and charts to that source while every enabled source remains on the shared map. Chart layouts, manual rules, nested groups and chart selections stay separate and survive switching. Filters never propagate to another server, even when feature IDs or attribute names overlap. Double-click metadata identifies the source as well as the feature.
 
-At most two sources load concurrently; additional enabled sources wait in a queue. A source failure leaves other sources available. Disabling a source cancels its requests, terminates its worker, and releases its geometry/GPU buffers. Re-enabling reloads it and reapplies its analysis settings if the schema is unchanged. **Reload this source** applies edited connection settings; a changed schema resets that source's incompatible charts and filters. Clearing datasets keeps their small analysis settings. Source configs persist across browser reloads; filters and chart layouts persist only for the current page session.
+At most two sources load concurrently; additional enabled sources wait in a queue. A source failure leaves other sources available. Saving a disabled source cancels its requests, terminates its worker, and releases its geometry/GPU buffers. Re-enabling reloads it and reapplies its analysis settings if the schema is unchanged. **Save changes** applies edited connection settings; **Reload this source** reloads the saved connection. A changed schema resets that source's incompatible charts and filters. Clearing datasets keeps their small analysis settings. Source configs persist across browser reloads; filters and chart layouts persist only for the current page session.
 
 Charts are populated from DescribeFeatureType or the adapter's inferred schema. Initial charts choose categorical, date and numeric attributes when available. Add, remove, or reconfigure up to **12 charts**:
 
@@ -70,12 +74,12 @@ Double-click a map point for metadata. Picking checks enabled layers from top to
 
 ## Data source compatibility
 
-1. On **Data sources**, choose the source to edit and enter the WFS URL. Vendor parameters and URL tokens are preserved.
+1. On **Data sources**, use **Add data source** or **Configure** and enter the WFS URL. Vendor parameters and URL tokens are preserved.
 2. Choose a WFS version, **Discover layers**, and select a feature type.
 3. Set the exact advertised output format. Prefer `application/json`; simple GML Point output also works.
 4. Request `urn:ogc:def:crs:OGC:1.3:CRS84` for longitude/latitude. EPSG:4326 GML may require reversing the configured axis order. GeoJSON always uses longitude/latitude.
 5. Choose a stable unique sort attribute if necessary. Keep the dataset unchanged throughout loading.
-6. Load, then analyze attributes and inspect points.
+6. Use **Add to list** / **Update source**, then **Save changes**. Enabled new/changed sources load; use **Load enabled sources** after a browser reload. Analyze attributes and inspect points.
 
 The adapter uses GetCapabilities, DescribeFeatureType, GetFeature hits and bounded paged GetFeature requests. One-page lookahead overlaps transfer with packing. Unknown totals load until an empty page or the explicit client limit. Server page caps are supported. The fixture serves up to 50 million deterministic points with eight fields: `id`, `category`, `status`, `value`, `timestamp`, `active`, `source`, `quality`. It supports UK, world and dense distributions, generates only requested pages, and does not allocate the full dataset on the server.
 
@@ -136,10 +140,13 @@ npm run benchmark:sources -- 1500000
 node scripts/benchmark-controls.mjs 3000000
 node scripts/benchmark-controls.mjs 3000000 date
 node scripts/preview-charts.mjs
+node scripts/preview-sources.mjs
 node scripts/benchmark.mjs 3000000
 ```
 
-Current validation: **18 unit/API tests and 24 browser tests pass**, along with a fresh offline vendored install/build/test in an independent directory. Tests cover custom local basemap templates and persistence, time Y aggregation, scatter-only unbinned mode, exact-point picking and rectangle selection, geographic edge/antimeridian predicates, source-specific colour/box state, colour code memory and stable bins, and bounded non-scatter aggregation. Chart navigation tests cover canvas/WebGL zoom and reset without dataset changes, right-drag selection (including pie/time), date axes and millisecond precision across multi-year domains, modal enlargement/restoration, Escape, type switching, and removing an enlarged chart. Chart settings checks cover visible accessible labels, responsive control widths, category-specific controls, time Y visibility, and switching between raw scatter and bin counts in one dropdown.
+Current validation: **19 unit/API tests and 33 browser tests pass**, with an offline vendored install and TypeScript/Vite build. Tests cover custom local basemap templates and persistence, time Y aggregation, scatter-only unbinned mode, exact-point picking and rectangle selection, geographic edge/antimeridian predicates, source-specific colour/box state, colour code memory and stable bins, and bounded non-scatter aggregation. Chart navigation tests cover canvas/WebGL zoom and reset without dataset changes, right-drag selection (including pie/time), date axes and millisecond precision across multi-year domains, modal enlargement/restoration, Escape, type switching, and removing an enlarged chart. Chart settings checks cover visible accessible labels, responsive control widths, category-specific controls, time Y visibility, and switching between raw scatter and bin counts in one dropdown.
+
+Data source tests cover draft isolation, atomic saves, reload persistence, generic empty defaults, cancellation/discard, undo removal and removal of the final loaded source, legacy migration, normal query parameter preservation, test-server startup/addition, storage failure, discovery failure/cancellation, the eight-source limit, keyboard focus, and mobile layouts.
 
 Analysis tests independently check nested expression semantics, missing values, constants, Other categories, chart totals, exact clicked bin membership, fractional time boundaries, cancellation and invalid schemas. Browser tests exercise schema-driven chart types, pie clicks, scatter dragging, OR chart selections, nested manual rules, keyboard selection, latest-request wins, multi-source isolation, distinct schemas, persistence, disable/re-enable, source-aware picking, partial failure, subpage navigation, GML, high-zoom picking and truncation. CI installs npm dependencies from the committed offline bundle; browser binaries are fetched separately for tests.
 
@@ -149,6 +156,8 @@ The analysis benchmark writes worker and browser round-trip timings plus a scree
 | --- | --- |
 | `src/analysis.ts` | Nested column-mask filtering, cached profiles and exact chart aggregation |
 | `src/workspace.ts` | Filter groups, chart configuration, canvas plots, click/brush/keyboard selection |
+| `src/data-sources.ts` | Draft source list, modal connection editor, explicit Save and optional test-server controls |
+| `src/source-settings.ts` | Generic WFS defaults, saved settings migration and validation |
 | `src/main.ts` | MapLibre, configuration subpage, worker coordination, metadata and metrics |
 | `src/store.ts` | Typed metadata columns, dictionaries and duplicate detection |
 | `src/points-layer.ts` | GPU buffers, culling, rendering and double-click picking |

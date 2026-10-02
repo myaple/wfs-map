@@ -76,10 +76,12 @@ test('basemap template and attribution persist and use local tiles', async ({ pa
     await page.route('**/tiles/**', route => { requests.push(route.request().url()); return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64') }); });
     await ready(page);
     await page.locator('#configLink').click();
+    await page.locator('#backgroundSettings summary').click();
     await page.getByLabel('Raster basemap tile URL').fill('/tiles/{z}/{x}/{y}.png');
     await page.getByLabel('Raster basemap tile URL').press('Tab');
     await page.getByLabel('Basemap attribution', { exact: true }).fill('Local tiles');
     await page.getByLabel('Basemap attribution', { exact: true }).press('Tab');
+    await page.locator('#saveSettings').click();
     await page.locator('#analysisLink').click();
     await page.locator('#basemap').check();
     await expect.poll(() => requests.length).toBeGreaterThan(0);
@@ -88,9 +90,11 @@ test('basemap template and attribution persist and use local tiles', async ({ pa
     await page.reload();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3);
     await page.locator('#configLink').click();
+    await page.locator('#backgroundSettings summary').click();
     await expect(page.getByLabel('Raster basemap tile URL')).toHaveValue('/tiles/{z}/{x}/{y}.png');
     await expect(page.getByLabel('Basemap attribution', { exact: true })).toHaveValue('Local tiles');
     await page.getByLabel('Raster basemap tile URL').fill('javascript:bad');
+    await page.locator('#saveSettings').click();
     await page.getByLabel('Raster basemap tile URL').press('Tab');
     await expect(page.getByLabel('Raster basemap tile URL')).toHaveAttribute('aria-invalid', 'true');
 });
@@ -171,9 +175,10 @@ test('sources retain independent colour attributes and geographic selections acr
     await page.locator('#configLink').click();
     await page.locator('#addSource').click();
     await page.locator('#sourceName').fill('Other');
-    await page.locator('#points').fill('1024');
-    await page.locator('#sourceName').blur();
-    await page.getByRole('checkbox', { name: 'Enable Other', exact: true }).check();
+    await page.locator('#url').fill('/wfs?points=1024');
+    await page.locator('#layer').fill('demo:points');
+    await page.locator('#updateSource').click();
+    await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].workspace.results.length === 3);
     await page.locator('#analysisLink').click();
     const ids = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.id));

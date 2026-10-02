@@ -6,7 +6,10 @@ test('configuration is a subpage and navigation retains selection and chart stat
     await expect(page.locator('#url')).toBeHidden();
     await expect(page.locator('.chart-card')).toHaveCount(3);
     await page.locator('#configLink').click();
+    await expect(page.locator('#url')).toBeHidden();
+    await page.getByRole('button', { name: 'Configure WFS source', exact: true }).click();
     await expect(page.locator('#url')).toBeVisible();
+    await page.locator('#cancelSource').click();
     await expect(page.locator('#analysis')).toBeHidden();
     await page.locator('#analysisLink').click();
     await expect(page.locator('.chart-card')).toHaveCount(3);
