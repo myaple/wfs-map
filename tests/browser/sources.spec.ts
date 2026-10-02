@@ -18,6 +18,7 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
     await second(page);
     await expect(page.locator('#hud')).toContainText('Loaded 3,072');
+    await page.locator('.chart-card').first().getByRole('button', { name: 'Settings', exact: true }).click();
     await page.locator('.chart-card').first().getByLabel('Chart type').selectOption('pie');
     await page.evaluate(() => { const h = (window as any).__WFS_MAP__; h.filter([{ field: 'category', op: 'eq', value: 'sensor' }]); });
     await expect(page.locator('#filterStatus')).toContainText('256 matches');

@@ -177,6 +177,7 @@ class ChartView {
     private yField = chartField(this.y, 'Y attribute', '');
     private binsField = chartField(this.bins, 'Binning', '');
     private aggregateField = chartField(this.aggregate, 'Y aggregation', '');
+    private title = element('h3');
     private raw?: RawScatter;
     private plot = element('div');
     private interaction: ChartInteraction;
@@ -191,6 +192,10 @@ class ChartView {
         const header = element('div'), head = element('div');
         header.className = 'chart-header';
         head.className = 'chart-controls';
+        head.id = `chart-settings-${++nextChartControl}`;
+        head.hidden = true;
+        head.setAttribute('role', 'group');
+        head.setAttribute('aria-label', 'Chart settings');
         this.type.setAttribute('aria-label', 'Chart type');
         this.type.append(option('bar', 'Bar chart'), option('scatter', 'Scatter plot'), option('time', 'Time series'), option('pie', 'Pie chart'));
         this.type.value = spec.type;
@@ -198,16 +203,23 @@ class ChartView {
         this.aggregate.value = spec.aggregate ?? 'count';
         const actions = element('div');
         actions.className = 'chart-actions';
+        const settings = button('Settings', () => {
+            head.hidden = !head.hidden;
+            settings.setAttribute('aria-expanded', String(!head.hidden));
+        });
+        settings.setAttribute('aria-controls', head.id);
+        settings.setAttribute('aria-expanded', 'false');
         const removeButton = button('×', remove);
         removeButton.setAttribute('aria-label', 'Remove chart');
         this.expand.setAttribute('aria-haspopup', 'dialog');
         this.expand.setAttribute('aria-expanded', 'false');
         this.expand.onclick = () => this.enlarge();
-        actions.append(this.expand, removeButton);
+        actions.append(settings, this.expand, removeButton);
         const typeField = chartField(this.type, 'Chart type', '');
         typeField.hint.hidden = true;
-        header.append(typeField.root, actions);
-        head.append(this.xField.root, this.aggregateField.root, this.yField.root, this.binsField.root);
+        typeField.root.classList.add('chart-field-wide');
+        header.append(this.title, actions);
+        head.append(typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.binsField.root);
         this.canvas.tabIndex = 0;
         this.canvas.setAttribute('role', 'img');
         this.note.className = 'hint';
@@ -303,6 +315,7 @@ class ChartView {
         this.note.textContent = allowed.length ? '' : 'No compatible attributes in this dataset. Choose another chart type.';
     }
     private refreshSettings() {
+        this.title.textContent = this.type.selectedOptions[0].textContent;
         const scatter = this.spec.type === 'scatter', time = this.spec.type === 'time';
         const kind = this.fields.find(f => f.name === this.spec.x)?.kind;
         const categorical = kind === 'string' || kind === 'boolean';

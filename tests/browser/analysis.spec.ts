@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
-const ready = async (page: any) => { await page.goto('/?points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts?.length === 3); };
+const ready = async (page: any) => { await page.goto('/?points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts?.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
 test('configuration is a subpage and navigation retains selection and chart state', async ({ page }) => {
     await ready(page);
     await expect(page.locator('#url')).toBeHidden();

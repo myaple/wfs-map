@@ -272,13 +272,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
 }
 .chart-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   flex-wrap: wrap;
   gap: 12px;
   padding-bottom: 12px;
 }
-.chart-header .chart-field {
-  flex: 1 1 150px;
+.chart-header h3 {
+  flex: 1 1 85px;
+  margin: 0;
+  font-size: 13px;
 }
 .chart-controls {
   display: grid;

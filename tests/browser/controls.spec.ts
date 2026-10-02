@@ -1,6 +1,40 @@
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
-const ready = async (page: any) => { await page.goto('/?points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3); };
+const ready = async (page: any) => { await page.goto('/?points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
+test('every chart collapses all settings while keeping enlargement and removal available', async ({ page }) => {
+    await page.goto('/?points=4096&autoload=1');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3);
+    const cards = page.locator('.chart-card');
+    for (const card of await cards.all()) {
+        await expect(card.getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-expanded', 'false');
+        await expect(card.getByLabel('Chart type')).toBeHidden();
+        await expect(card.getByRole('button', { name: 'Enlarge', exact: true })).toBeVisible();
+        await expect(card.getByRole('button', { name: 'Remove chart' })).toBeVisible();
+    }
+    const card = cards.first(), toggle = card.getByRole('button', { name: 'Settings', exact: true });
+    for (const type of ['bar', 'pie', 'time', 'scatter']) {
+        await toggle.focus();
+        await page.keyboard.press('Enter');
+        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await card.getByLabel('Chart type').selectOption(type);
+        await page.waitForFunction(t => (window as any).__WFS_MAP__.workspace.results[0].type === t, type);
+        const before = await page.evaluate(() => ({ specs: (window as any).__WFS_MAP__.workspace.specs, filters: (window as any).__WFS_MAP__.sources[0].filterRequest }));
+        await toggle.click();
+        await expect(card.locator('.chart-controls')).toBeHidden();
+        await expect(card.getByRole('heading')).toHaveText({ bar: 'Bar chart', pie: 'Pie chart', time: 'Time series', scatter: 'Scatter plot' }[type]!);
+        await card.getByRole('button', { name: 'Enlarge', exact: true }).click();
+        await expect(page.getByRole('dialog').locator('.chart-controls')).toBeHidden();
+        await page.getByRole('dialog').getByRole('button', { name: 'Settings', exact: true }).click();
+        await expect(page.getByRole('dialog').getByLabel('Chart type')).toHaveValue(type);
+        await page.keyboard.press('Escape');
+        await expect(card.getByLabel('Chart type')).toBeVisible();
+        await toggle.click();
+        const after = await page.evaluate(() => ({ specs: (window as any).__WFS_MAP__.workspace.specs, filters: (window as any).__WFS_MAP__.sources[0].filterRequest }));
+        expect(after).toEqual(before);
+    }
+    await card.getByRole('button', { name: 'Remove chart' }).click();
+    await expect(cards).toHaveCount(2);
+});
 test('labeled chart settings expose only relevant controls and use one scatter binning dropdown', async ({ page }) => {
     await ready(page);
     const bar = page.locator('.chart-card').first(), time = page.locator('.chart-card').nth(1), scatter = page.locator('.chart-card').nth(2);
@@ -18,7 +52,7 @@ test('labeled chart settings expose only relevant controls and use one scatter b
     await time.getByLabel('Y aggregation').selectOption('count');
     await expect(time.getByLabel('Y attribute', { exact: true })).toBeHidden();
     await expect(time.locator('.chart-field').filter({ hasText: 'Y attribute' })).toBeHidden();
-    await expect(scatter.locator('.chart-controls select:visible')).toHaveCount(3);
+    await expect(scatter.locator('.chart-controls select:visible')).toHaveCount(4);
     const binning = scatter.getByLabel('Binning', { exact: true });
     await expect(binning.locator('option[value=exact]')).toHaveText('No bins — individual points');
     await binning.selectOption('exact');
