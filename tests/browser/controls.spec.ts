@@ -1,6 +1,42 @@
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 const ready = async (page: any) => { await page.goto('/?points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3); };
+test('labeled chart settings expose only relevant controls and use one scatter binning dropdown', async ({ page }) => {
+    await ready(page);
+    const bar = page.locator('.chart-card').first(), time = page.locator('.chart-card').nth(1), scatter = page.locator('.chart-card').nth(2);
+    await expect(bar.getByLabel('Group by', { exact: true })).toHaveValue('category');
+    await expect(bar.getByLabel('Binning', { exact: true })).toBeHidden();
+    await bar.getByLabel('Group by', { exact: true }).selectOption('value');
+    await expect(bar.getByLabel('Binning', { exact: true })).toBeVisible();
+    await expect(bar.getByLabel('Binning', { exact: true }).locator('option[value=exact]')).toHaveCount(0);
+    await bar.getByLabel('Binning', { exact: true }).selectOption('8');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[0].x.ranges?.length === 9);
+    await expect(time.getByLabel('Time attribute', { exact: true })).toHaveValue('timestamp');
+    await expect(time.getByLabel('Y attribute', { exact: true })).toBeHidden();
+    await time.getByLabel('Y aggregation').selectOption('mean');
+    await expect(time.getByLabel('Y attribute', { exact: true })).toBeVisible();
+    await time.getByLabel('Y aggregation').selectOption('count');
+    await expect(time.getByLabel('Y attribute', { exact: true })).toBeHidden();
+    await expect(time.locator('.chart-field').filter({ hasText: 'Y attribute' })).toBeHidden();
+    await expect(scatter.locator('.chart-controls select:visible')).toHaveCount(3);
+    const binning = scatter.getByLabel('Binning', { exact: true });
+    await expect(binning.locator('option[value=exact]')).toHaveText('No bins — individual points');
+    await binning.selectOption('exact');
+    await expect(binning).toBeEnabled();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].raw?.rows.length === 4096);
+    await binning.selectOption('16');
+    await page.waitForFunction(() => { const r = (window as any).__WFS_MAP__.workspace.results[2]; return !r.raw && r.x.ranges.length === 17 && r.y.ranges.length === 17; });
+    await expect(scatter.locator('.raw-scatter')).toHaveCount(0);
+    // Labels and descriptions remain associated after axis/type changes and at narrow widths.
+    for (const width of [1440, 820, 375]) {
+        await page.setViewportSize({ width, height: 900 });
+        const controls = await page.locator('.chart-card select:visible').evaluateAll(selects => selects.map(select => {
+            const s = select as HTMLSelectElement, rect = s.getBoundingClientRect(), card = s.closest('.chart-card')!.getBoundingClientRect();
+            return { label: s.labels?.[0]?.textContent, described: !!document.getElementById(s.getAttribute('aria-describedby')!), fits: rect.left >= card.left && rect.right <= card.right };
+        }));
+        expect(controls.every(c => c.label && c.described && c.fits)).toBe(true);
+    }
+});
 test('basemap template and attribution persist and use local tiles', async ({ page }) => {
     const requests: string[] = [];
     await page.route('**/tiles/**', route => { requests.push(route.request().url()); return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64') }); });
@@ -39,7 +75,7 @@ test('time Y mean and scatter mode are configurable; raw scatter clicks select o
     await expect(bar.getByLabel('Binning', { exact: true })).toBeHidden();
     await bar.getByLabel('Chart type').selectOption('pie');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[0].type === 'pie');
-    await expect(time.getByLabel('Binning', { exact: true })).toBeHidden();
+    await expect(time.getByLabel('Binning', { exact: true }).locator('option[value=exact]')).toHaveCount(0);
     const scatter = page.locator('.chart-card').nth(2);
     await scatter.getByLabel('Binning', { exact: true }).selectOption('exact');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].raw?.rows.length === 4096);

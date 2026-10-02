@@ -9,6 +9,18 @@ const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) =
     return e;
 };
 const option = (value: string, label = value) => { const e = element('option', label); e.value = value; return e; };
+let nextChartControl = 0;
+function chartField(select: HTMLSelectElement, name: string, help: string) {
+    const root = element('div'), label = element('label', name), hint = element('div', help);
+    root.className = 'chart-field';
+    select.id = `chart-control-${++nextChartControl}`;
+    label.htmlFor = select.id;
+    hint.id = `${select.id}-help`;
+    hint.className = 'chart-field-help';
+    select.setAttribute('aria-describedby', hint.id);
+    root.append(label, select, hint);
+    return { root, label, hint };
+}
 function button(text: string, click: () => void) { const b = element('button', text); b.type = 'button'; b.onclick = click; return b; }
 export class Workspace {
     fields: Field[] = [];
@@ -160,8 +172,11 @@ class ChartView {
     private y = element('select');
     private type = element('select');
     private bins = element('select');
-    private mode = element('select');
     private aggregate = element('select');
+    private xField = chartField(this.x, 'X attribute', '');
+    private yField = chartField(this.y, 'Y attribute', '');
+    private binsField = chartField(this.bins, 'Binning', '');
+    private aggregateField = chartField(this.aggregate, 'Y aggregation', '');
     private raw?: RawScatter;
     private plot = element('div');
     private interaction: ChartInteraction;
@@ -173,21 +188,13 @@ class ChartView {
     constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string) => void) {
         this.root.className = 'chart-card';
         this.root.dataset.chartId = spec.id;
-        const head = element('div');
+        const header = element('div'), head = element('div');
+        header.className = 'chart-header';
         head.className = 'chart-controls';
         this.type.setAttribute('aria-label', 'Chart type');
         this.type.append(option('bar', 'Bar chart'), option('scatter', 'Scatter plot'), option('time', 'Time series'), option('pie', 'Pie chart'));
         this.type.value = spec.type;
-        this.x.setAttribute('aria-label', 'X attribute');
-        this.y.setAttribute('aria-label', 'Y attribute');
-        this.bins.setAttribute('aria-label', 'Number of bins');
-        this.bins.append(...[8, 16, 24, 32, 48, 64].map(n => option(String(n), `${n} bins`)));
-        this.bins.value = String(spec.bins);
-        this.mode.setAttribute('aria-label', 'Binning');
-        this.mode.append(option('binned', 'Binning on'), option('exact', 'Binning off'));
-        this.mode.value = spec.binned === false ? 'exact' : 'binned';
-        this.aggregate.setAttribute('aria-label', 'Y aggregation');
-        this.aggregate.append(...['count', 'sum', 'mean', 'min', 'max'].map(v => option(v, v === 'count' ? 'Point count' : v)));
+        this.aggregate.append(...[['count', 'Point count'], ['sum', 'Sum'], ['mean', 'Average'], ['min', 'Minimum'], ['max', 'Maximum']].map(([v, label]) => option(v, label)));
         this.aggregate.value = spec.aggregate ?? 'count';
         const actions = element('div');
         actions.className = 'chart-actions';
@@ -197,7 +204,10 @@ class ChartView {
         this.expand.setAttribute('aria-expanded', 'false');
         this.expand.onclick = () => this.enlarge();
         actions.append(this.expand, removeButton);
-        head.append(this.type, this.x, this.y, this.aggregate, this.mode, this.bins, actions);
+        const typeField = chartField(this.type, 'Chart type', '');
+        typeField.hint.hidden = true;
+        header.append(typeField.root, actions);
+        head.append(this.xField.root, this.aggregateField.root, this.yField.root, this.binsField.root);
         this.canvas.tabIndex = 0;
         this.canvas.setAttribute('role', 'img');
         this.note.className = 'hint';
@@ -205,15 +215,27 @@ class ChartView {
         legend.append(element('summary', 'Counts and keyboard selection'), this.list);
         this.plot.className = 'chart-plot';
         this.plot.append(this.canvas);
-        this.root.append(head, this.plot, this.note, legend);
+        this.root.append(header, head, this.plot, this.note, legend);
         target.append(this.root);
         this.configure();
         this.type.onchange = () => { spec.type = this.type.value as ChartSpec['type']; this.configure(); changed(); };
-        this.x.onchange = () => { spec.x = this.x.value; changed(); };
+        this.x.onchange = () => { spec.x = this.x.value; this.refreshSettings(); changed(); };
         this.y.onchange = () => { spec.y = this.y.value; changed(); };
-        this.mode.onchange = () => { this.interaction.reset(); spec.binned = this.mode.value === 'binned'; this.bins.disabled = !spec.binned; this.result = undefined; this.raw?.destroy(); this.raw = undefined; changed(); };
-        this.aggregate.onchange = () => { spec.aggregate = this.aggregate.value as ChartSpec['aggregate']; this.y.hidden = spec.type === 'time' && spec.aggregate === 'count'; changed(); };
-        this.bins.onchange = () => { spec.bins = Number(this.bins.value); changed(); };
+        this.aggregate.onchange = () => { spec.aggregate = this.aggregate.value as ChartSpec['aggregate']; this.refreshSettings(); changed(); };
+        this.bins.onchange = () => {
+            const binned = this.bins.value !== 'exact';
+            if (binned !== (spec.binned !== false)) {
+                this.interaction.reset();
+                this.result = undefined;
+                this.raw?.destroy();
+                this.raw = undefined;
+            }
+            spec.binned = binned;
+            if (binned)
+                spec.bins = Number(this.bins.value);
+            this.refreshSettings();
+            changed();
+        };
         this.interaction = new ChartInteraction(this.canvas, this.plot, () => this.result?.type === 'pie' ? { left: 0, right: this.canvas.clientWidth, top: 0, bottom: this.canvas.clientHeight, width: this.canvas.clientWidth, height: this.canvas.clientHeight } : plotRect(this.canvas, this.result?.y?.kind === 'date'), () => this.draw(), (a, b) => this.selectRectangle(a, b), p => {
             const cell = this.cellAt(p);
             if (cell >= 0)
@@ -259,8 +281,6 @@ class ChartView {
         this.interaction?.reset();
         if (this.spec.type !== 'scatter')
             this.spec.binned = true;
-        this.mode.hidden = this.spec.type !== 'scatter';
-        this.mode.value = this.spec.binned === false ? 'exact' : 'binned';
         this.result = undefined;
         this.raw?.destroy();
         this.raw = undefined;
@@ -277,12 +297,27 @@ class ChartView {
         if (!numeric.some(f => f.name === this.spec.y))
             this.spec.y = numeric.find(f => f.name !== this.spec.x)?.name ?? numeric[0]?.name;
         this.y.value = this.spec.y ?? '';
-        this.y.hidden = this.spec.type !== 'scatter' && (this.spec.type !== 'time' || (this.spec.aggregate ?? 'count') === 'count');
-        this.aggregate.hidden = this.spec.type !== 'time';
-        this.bins.disabled = this.spec.binned === false;
+        this.refreshSettings();
         this.x.disabled = !allowed.length;
         this.root.classList.toggle('unavailable', !allowed.length);
         this.note.textContent = allowed.length ? '' : 'No compatible attributes in this dataset. Choose another chart type.';
+    }
+    private refreshSettings() {
+        const scatter = this.spec.type === 'scatter', time = this.spec.type === 'time';
+        const kind = this.fields.find(f => f.name === this.spec.x)?.kind;
+        const categorical = kind === 'string' || kind === 'boolean';
+        this.xField.root.classList.toggle('chart-field-wide', categorical && !scatter && !time);
+        this.xField.label.textContent = scatter ? 'X attribute' : time ? 'Time attribute' : 'Group by';
+        this.xField.hint.textContent = scatter ? 'Horizontal axis: number or date.' : time ? 'Date attribute on the horizontal axis.' : kind === 'string' ? 'Count points in each category; less frequent categories go into Other.' : kind === 'boolean' ? 'Count points in the false and true groups.' : 'Count points in each value range.';
+        this.yField.root.hidden = !scatter && (!time || (this.spec.aggregate ?? 'count') === 'count');
+        this.yField.hint.textContent = scatter ? 'Vertical axis: number or date.' : 'Numeric attribute used by the Y aggregation.';
+        this.aggregateField.root.hidden = !time;
+        this.aggregateField.hint.textContent = (this.spec.aggregate ?? 'count') === 'count' ? 'Count points in each time interval.' : 'Calculate this measure of the Y attribute in each time interval.';
+        this.binsField.root.hidden = categorical && !scatter && !time;
+        this.binsField.root.classList.toggle('chart-field-wide', scatter);
+        this.bins.replaceChildren(...(scatter ? [option('exact', 'No bins — individual points')] : []), ...[8, 16, 24, 32, 48, 64].map(n => option(String(n), scatter ? `${n} bins per axis` : time ? `${n} time intervals` : `${n} value ranges`)));
+        this.bins.value = scatter && this.spec.binned === false ? 'exact' : String(this.spec.bins);
+        this.binsField.hint.textContent = scatter ? this.spec.binned === false ? 'Draw every observation as a point, without grouping.' : 'Group nearby points into cells; circle size shows the point count. More bins give finer detail.' : time ? 'Split the full time span into equal intervals. More intervals give finer detail.' : 'Split the full value range into equal bins. More bins give finer detail.';
     }
     update(result: ChartResult) {
         if (this.result && (this.result.x.field !== result.x.field || this.result.y?.field !== result.y?.field))

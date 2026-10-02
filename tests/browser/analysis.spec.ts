@@ -39,7 +39,7 @@ test('all chart types configure from schema and scatter drag produces an exact A
     await page.locator('#reset').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     const scatter = page.locator('.chart-card').nth(2);
-    await scatter.getByLabel('Number of bins').selectOption('8');
+    await scatter.getByLabel('Binning', { exact: true }).selectOption('8');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].counts.length === 64);
     await scatter.locator('canvas').scrollIntoViewIfNeeded();
     const b = (await scatter.locator('canvas').boundingBox())!, dx = (b.width - 86) / 8, dy = (b.height - 82) / 8;

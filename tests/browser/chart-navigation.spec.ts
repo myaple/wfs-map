@@ -5,12 +5,12 @@ test('only scatter offers unbinned mode, and changing type resets it', async ({ 
     await ready(page);
     const cards = page.locator('.chart-card');
     await expect(cards.nth(0).getByLabel('Binning', { exact: true })).toBeHidden();
-    await expect(cards.nth(1).getByLabel('Binning', { exact: true })).toBeHidden();
+    await expect(cards.nth(1).getByLabel('Binning', { exact: true }).locator('option[value=exact]')).toHaveCount(0);
     const s = cards.nth(2);
     await s.getByLabel('Binning', { exact: true }).selectOption('exact');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].raw);
     await s.getByLabel('Chart type').selectOption('time');
-    await expect(s.getByLabel('Binning', { exact: true })).toBeHidden();
+    await expect(s.getByLabel('Binning', { exact: true }).locator('option[value=exact]')).toHaveCount(0);
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].type === 'time');
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results[2].raw)).toBeUndefined();
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results[2].x.ranges.length)).toBe(25);
