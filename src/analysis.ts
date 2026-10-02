@@ -1,0 +1,301 @@
+import { numericValue, type Rule } from './data.ts';
+import type { Store } from './store.ts';
+export type Expression = Rule | {
+    op: 'and' | 'or';
+    children: Expression[];
+};
+export type ChartSpec = {
+    id: string;
+    type: 'bar' | 'pie' | 'time' | 'scatter';
+    x: string;
+    y?: string;
+    bins: number;
+};
+export type Axis = {
+    field: string;
+    labels: string[];
+    ranges?: Float64Array;
+    rules: Expression[];
+};
+export type ChartResult = {
+    id: string;
+    type: ChartSpec['type'];
+    x: Axis;
+    y?: Axis;
+    counts: Uint32Array;
+    missing: number;
+};
+const BLOCK = 32768;
+export async function yieldEvents() {
+    if ((globalThis as any).scheduler?.yield)
+        return (globalThis as any).scheduler.yield();
+    if (typeof MessageChannel !== 'undefined')
+        return new Promise<void>(resolve => {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = () => { channel.port1.close(); channel.port2.close(); resolve(); };
+            channel.port2.postMessage(null);
+        });
+    return new Promise<void>(resolve => setTimeout(resolve, 0));
+}
+const group = (op: 'and' | 'or', children: Expression[]): Expression => ({ op, children });
+export const all = (rules: Rule[]): Expression => group('and', rules);
+type Node = {
+    mask: Uint8Array;
+    children?: Node[];
+    union?: boolean;
+    column?: number;
+    op?: Rule['op'];
+    target?: number;
+    pass?: Uint8Array;
+    text?: boolean;
+};
+async function compile(store: Store, expression: Expression, cancelled: () => boolean): Promise<Node> {
+    let size = 0;
+    async function visit(expr: Expression, depth: number): Promise<Node> {
+        if (++size > 128 || depth > 8)
+            throw new Error('Filters support up to 128 nodes and 8 levels of nesting');
+        const node: Node = { mask: new Uint8Array(BLOCK) };
+        if ('children' in expr) {
+            if (!['and', 'or'].includes(expr.op) || !Array.isArray(expr.children))
+                throw new Error('Invalid filter group');
+            node.children = [];
+            for (const child of expr.children)
+                node.children.push(await visit(child, depth + 1));
+            node.union = expr.op === 'or';
+            return node;
+        }
+        const column = store.fields.findIndex(f => f.name === expr.field);
+        if (column < 0)
+            throw new Error(`Unknown attribute ${expr.field}`);
+        const c = store.columns[column], op = expr.op;
+        if (!['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'null', 'notnull', 'in', 'notin'].includes(op))
+            throw new Error('Invalid filter operator');
+        const nullOp = op === 'null' || op === 'notnull', setOp = op === 'in' || op === 'notin';
+        if (!nullOp && !setOp && expr.value == null)
+            throw new Error('Missing filter value');
+        if (op === 'contains' && c.field.kind !== 'string')
+            throw new Error('Contains requires a text attribute');
+        node.column = column;
+        node.op = op;
+        node.text = c.field.kind === 'string';
+        if (node.text && !nullOp) {
+            const set = new Set(expr.values ?? []);
+            if (setOp && !Array.isArray(expr.values))
+                throw new Error('Missing category values');
+            const target = expr.value ?? '';
+            node.pass = new Uint8Array(c.dictionary.length);
+            for (let i = 0; i < c.dictionary.length; i++) {
+                if (i > 0 && i % BLOCK === 0) {
+                    await yieldEvents();
+                    if (cancelled())
+                        throw new Error('Superseded');
+                }
+                const v = c.dictionary[i];
+                node.pass[i] = Number(op === 'in' ? set.has(v) : op === 'notin' ? !set.has(v) :
+                    op === 'eq' ? v === target : op === 'ne' ? v !== target : op === 'contains' ? v.includes(target) :
+                        op === 'gt' ? v > target : op === 'gte' ? v >= target : op === 'lt' ? v < target : v <= target);
+            }
+        }
+        else {
+            if (setOp)
+                throw new Error('Category sets require a text attribute');
+            node.target = nullOp ? 0 : numericValue(expr.value, c.field.kind);
+        }
+        return node;
+    }
+    return visit(expression, 0);
+}
+function evaluate(node: Node, values: (Float64Array | Int32Array)[], base: number, n: number): Uint8Array {
+    const out = node.mask;
+    if (node.children) {
+        out.fill(node.union ? 0 : 1, 0, n);
+        for (const child of node.children) {
+            const next = evaluate(child, values, base, n);
+            if (node.union)
+                for (let i = 0; i < n; i++)
+                    out[i] |= next[i];
+            else
+                for (let i = 0; i < n; i++)
+                    out[i] &= next[i];
+        }
+        return out;
+    }
+    const column = values[node.column!], target = node.target!, op = node.op!;
+    if (node.pass) {
+        for (let i = 0; i < n; i++) {
+            const v = column[base + i];
+            out[i] = v < 0 ? 0 : node.pass[v];
+        }
+        return out;
+    }
+    for (let i = 0; i < n; i++) {
+        const v = column[base + i], missing = node.text ? v < 0 : !Number.isFinite(v);
+        out[i] = Number(op === 'null' ? missing : op === 'notnull' ? !missing : !missing &&
+            (op === 'eq' ? v === target : op === 'ne' ? v !== target : op === 'gt' ? v > target :
+                op === 'gte' ? v >= target : op === 'lt' ? v < target : v <= target));
+    }
+    return out;
+}
+type Profile = {
+    min: number;
+    max: number;
+    top?: number[];
+};
+type Prepared = {
+    result: ChartResult;
+    xi: number;
+    yi: number;
+    xbin: (v: number) => number;
+    ybin?: (v: number) => number;
+};
+export class Analyzer {
+    private profiles = new Map<number, Profile>();
+    private store: Store;
+    constructor(store: Store) { this.store = store; }
+    private async profile(j: number, cancelled: () => boolean): Promise<Profile> {
+        const cached = this.profiles.get(j);
+        if (cached)
+            return cached;
+        const c = this.store.columns[j], counts = c.field.kind === 'string' ? new Uint32Array(c.dictionary.length) : undefined;
+        let min = Infinity, max = -Infinity;
+        for (const chunk of this.store.chunks)
+            for (let base = 0; base < chunk.length; base += BLOCK) {
+                const values = chunk.values[j], end = Math.min(base + BLOCK, chunk.length);
+                for (let i = base; i < end; i++) {
+                    const v = values[i];
+                    if (counts) {
+                        if (v >= 0)
+                            counts[v]++;
+                    }
+                    else if (Number.isFinite(v)) {
+                        if (v < min)
+                            min = v;
+                        if (v > max)
+                            max = v;
+                    }
+                }
+                await yieldEvents();
+                if (cancelled())
+                    throw new Error('Superseded');
+            }
+        const top: number[] = [];
+        if (counts)
+            for (let code = 0; code < counts.length; code++) {
+                let p = 0;
+                while (p < top.length && counts[top[p]] >= counts[code])
+                    p++;
+                if (p < 23) {
+                    top.splice(p, 0, code);
+                    if (top.length > 23)
+                        top.pop();
+                }
+                if (code % BLOCK === 0) {
+                    await yieldEvents();
+                    if (cancelled())
+                        throw new Error('Superseded');
+                }
+            }
+        const result = { min, max, top: counts ? top : undefined };
+        this.profiles.set(j, result);
+        return result;
+    }
+    private async axis(name: string, bins: number, cancelled: () => boolean): Promise<{
+        axis: Axis;
+        column: number;
+        bin: (v: number) => number;
+    }> {
+        const j = this.store.fields.findIndex(f => f.name === name);
+        if (j < 0)
+            throw new Error(`Unknown chart attribute ${name}`);
+        const c = this.store.columns[j], p = await this.profile(j, cancelled);
+        if (c.field.kind === 'string') {
+            const codes = p.top!, labels = codes.map(code => c.dictionary[code]);
+            const rules: Expression[] = labels.map(value => ({ field: name, op: 'eq', value }));
+            const other = c.dictionary.length > codes.length;
+            const map = new Uint8Array(c.dictionary.length);
+            map.fill(codes.length);
+            codes.forEach((code, i) => map[code] = i);
+            if (other) {
+                rules.push({ field: name, op: 'notin', values: [...labels] });
+                labels.push('Other categories');
+            }
+            return { column: j, axis: { field: name, labels, rules }, bin: v => v < 0 ? -1 : map[v] };
+        }
+        if (c.field.kind === 'boolean')
+            return { column: j, axis: { field: name, labels: ['false', 'true'], rules: [{ field: name, op: 'eq', value: 'false' }, { field: name, op: 'eq', value: 'true' }] }, bin: v => Number.isFinite(v) ? v : -1 };
+        if (!Number.isFinite(p.min))
+            return { column: j, axis: { field: name, labels: [], rules: [] }, bin: () => -1 };
+        const n = p.min === p.max ? 1 : bins, width = (p.max - p.min) / n;
+        const ranges = new Float64Array(n + 1), labels: string[] = [], rules: Expression[] = [];
+        const str = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString() : String(v);
+        const label = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString().slice(0, 10) : Number(v.toPrecision(4)).toString();
+        const regular = Number.isFinite(width) && width > 0;
+        for (let i = 0; i <= n; i++) {
+            const edge = regular ? p.min + width * i : p.min * (1 - i / n) + p.max * (i / n);
+            ranges[i] = i === n ? p.max : c.field.kind === 'date' ? Math.ceil(edge) : edge;
+        }
+        for (let i = 0; i < n; i++) {
+            labels.push(n === 1 ? label(p.min) : `${label(ranges[i])} – ${label(ranges[i + 1])}`);
+            rules.push(group('and', [{ field: name, op: 'gte', value: str(ranges[i]) }, { field: name, op: i === n - 1 ? 'lte' : 'lt', value: str(ranges[i + 1]) }]));
+        }
+        const bin = (v: number) => {
+            if (!Number.isFinite(v)) return -1;
+            if (n === 1) return 0;
+            if (!regular) {
+                let lo = 0, hi = n;
+                while (lo + 1 < hi) { const mid = (lo + hi) >>> 1; if (v >= ranges[mid]) lo = mid; else hi = mid; }
+                return lo;
+            }
+            let index = Math.min(n - 1, Math.max(0, Math.floor((v - p.min) / width)));
+            // Correct IEEE rounding at exact bin edges; filters use these same edges.
+            while (index > 0 && v < ranges[index]) index--;
+            while (index < n - 1 && v >= ranges[index + 1]) index++;
+            return index;
+        };
+        return { column: j, axis: { field: name, labels, ranges, rules }, bin };
+    }
+    async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false) {
+        if (specs.length > 12)
+            throw new Error('Up to 12 charts are supported');
+        const root = await compile(this.store, expression, cancelled), prepared: Prepared[] = [];
+        for (const s of specs) {
+            if (!['bar', 'pie', 'time', 'scatter'].includes(s.type) || !Number.isInteger(s.bins) || s.bins < 2 || s.bins > 64)
+                throw new Error('Invalid chart configuration');
+            const field = this.store.fields.find(f => f.name === s.x);
+            if (s.type === 'time' && field?.kind !== 'date')
+                throw new Error('Time series requires a date attribute');
+            if (s.type === 'scatter' && (!s.y || !['number', 'date'].includes(field?.kind ?? '') || !['number', 'date'].includes(this.store.fields.find(f => f.name === s.y)?.kind ?? '')))
+                throw new Error('Scatter axes require numeric or date attributes');
+            const x = await this.axis(s.x, s.bins, cancelled), y = s.type === 'scatter' ? await this.axis(s.y!, s.bins, cancelled) : undefined;
+            prepared.push({ result: { id: s.id, type: s.type, x: x.axis, y: y?.axis, counts: new Uint32Array(x.axis.labels.length * (y?.axis.labels.length ?? 1)), missing: 0 }, xi: x.column, yi: y?.column ?? -1, xbin: x.bin, ybin: y?.bin });
+        }
+        const unfiltered = 'children' in expression && expression.op === 'and' && !expression.children.length;
+        const indices = unfiltered ? null : new Uint32Array(this.store.length);
+        let count = 0;
+        for (const chunk of this.store.chunks)
+            for (let base = 0; base < chunk.length; base += BLOCK) {
+                const n = Math.min(BLOCK, chunk.length - base), mask = evaluate(root, chunk.values, base, n);
+                for (let i = 0; i < n; i++)
+                    if (mask[i]) {
+                        if (indices)
+                            indices[count] = chunk.offset + base + i;
+                        count++;
+                    }
+                for (const chart of prepared) {
+                    const x = chunk.values[chart.xi], y = chart.yi >= 0 ? chunk.values[chart.yi] : undefined, nx = chart.result.x.labels.length;
+                    for (let i = 0; i < n; i++)
+                        if (mask[i]) {
+                            const xb = chart.xbin(x[base + i]), yb = y ? chart.ybin!(y[base + i]) : 0;
+                            if (xb < 0 || yb < 0)
+                                chart.result.missing++;
+                            else
+                                chart.result.counts[yb * nx + xb]++;
+                        }
+                }
+                await yieldEvents();
+                if (cancelled())
+                    throw new Error('Superseded');
+            }
+        return { indices: indices?.subarray(0, count) ?? null, count, charts: prepared.map(p => p.result) };
+    }
+}
