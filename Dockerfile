@@ -1,9 +1,11 @@
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+COPY vendor/npm-cache-parts ./vendor/npm-cache-parts/
+COPY scripts/install-offline.mjs ./scripts/
+RUN --network=none node scripts/install-offline.mjs
 COPY . .
-RUN npm run build
+RUN --network=none npm run build
 
 FROM node:24-bookworm-slim
 WORKDIR /app

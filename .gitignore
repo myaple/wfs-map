@@ -4,3 +4,5 @@ vendor/npm-cache/
 test-results/
 playwright-report/
 *.log
+vendor/npm-cache.tar.gz
+vendor/npm-cache.tar.gz.tmp

@@ -1,7 +1,7 @@
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 export type FieldKind = 'number' | 'string' | 'date' | 'boolean';
 export type Field = { name: string; kind: FieldKind };
-export type Rule = { field: string; op: 'eq'|'ne'|'gt'|'gte'|'lt'|'lte'|'contains'|'null'|'notnull'; value?: string };
+export type Rule = { field: string; op: 'eq'|'ne'|'gt'|'gte'|'lt'|'lte'|'contains'|'null'|'notnull'|'in'|'notin'; value?: string; values?: string[] };
 export type Feature = { id?: string|number; geometry: {type: string; coordinates: number[]}; properties: Record<string,unknown> };
 export type Page = { features: Feature[]; numberMatched?: number };
 export const xmlParser = new XMLParser({ ignoreAttributes:false, removeNSPrefix:true, attributeNamePrefix:'@_', parseTagValue:false });

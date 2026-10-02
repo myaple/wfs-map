@@ -1,0 +1,103 @@
+{
+  "measuredAt": "2026-10-02T17:24:38.880Z",
+  "featuresPerSource": 1500000,
+  "totalLoaded": 3000000,
+  "allReadyMs": 16501.719942,
+  "sources": [
+    {
+      "name": "UK observations",
+      "loaded": 1500000,
+      "selected": 187366,
+      "workerMs": 70.79999999981374,
+      "charts": [
+        {
+          "id": "chart-1",
+          "type": "bar",
+          "bins": 4,
+          "plotted": 187366,
+          "missing": 0
+        },
+        {
+          "id": "chart-2",
+          "type": "time",
+          "bins": 24,
+          "plotted": 187366,
+          "missing": 0
+        },
+        {
+          "id": "chart-3",
+          "type": "scatter",
+          "bins": 576,
+          "plotted": 187366,
+          "missing": 0
+        }
+      ],
+      "gpuBytes": 30749464,
+      "loadMs": 15851.299999999814
+    },
+    {
+      "name": "World observations",
+      "loaded": 1500000,
+      "selected": 76840,
+      "workerMs": 75.5,
+      "charts": [
+        {
+          "id": "chart-1",
+          "type": "bar",
+          "bins": 4,
+          "plotted": 76840,
+          "missing": 0
+        },
+        {
+          "id": "chart-2",
+          "type": "time",
+          "bins": 24,
+          "plotted": 76840,
+          "missing": 0
+        },
+        {
+          "id": "chart-3",
+          "type": "scatter",
+          "bins": 576,
+          "plotted": 76840,
+          "missing": 0
+        }
+      ],
+      "gpuBytes": 30307360,
+      "loadMs": 15870.200000000186
+    }
+  ],
+  "selections": [
+    [
+      {
+        "field": "category",
+        "op": "eq",
+        "value": "sensor"
+      },
+      {
+        "field": "value",
+        "op": "gte",
+        "value": "50"
+      }
+    ],
+    [
+      {
+        "field": "category",
+        "op": "eq",
+        "value": "vehicle"
+      },
+      {
+        "field": "quality",
+        "op": "gte",
+        "value": "80"
+      }
+    ]
+  ],
+  "independentExpected": [
+    187366,
+    76840
+  ],
+  "errors": [],
+  "note": "Two simultaneous sources, separate workers, independent filters and three charts each. Software GPU; responses include automation and GPU upload but do not wait for map paint or establish smoothness.",
+  "selectionResponseMs": 110.20781699999861
+}

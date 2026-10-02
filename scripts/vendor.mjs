@@ -2,7 +2,7 @@
 // packages installed on this platform. npm ci --offline reads the vendored cache.
 import { readFile, mkdir, readdir, copyFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 const lock=JSON.parse(await readFile('package-lock.json','utf8'));
 const packages=Object.entries(lock.packages).filter(([path,p])=>path&&p.resolved&&existsSync(path));
 await mkdir('vendor/licenses',{recursive:true});
@@ -27,3 +27,7 @@ async function collect() {
 await Promise.all(Array.from({length:4},collect));
 await writeFile('vendor/manifest.json',JSON.stringify({platform:process.platform,arch:process.arch,node:process.version,packages:manifest.sort((a,b)=>a.name.localeCompare(b.name))},null,2));
 console.log(`Offline source build prepared for ${process.platform}/${process.arch}. Built dist/ runs on any supported Node platform without npm install.`);
+
+execFileSync('tar',['-czf','vendor/npm-cache.tar.gz','-C','vendor','npm-cache/_cacache'],{stdio:'inherit'});
+
+execFileSync(process.execPath,['scripts/split-vendor.mjs'],{stdio:'inherit'});
