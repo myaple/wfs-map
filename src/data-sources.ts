@@ -89,7 +89,7 @@ export class DataSources {
     syncColoring(source: SavedSource) {
         for (const settings of [this.saved, this.draft]) {
             const s = settings.sources.find(s => s.id === source.id);
-            if (s) s.coloring = structuredClone(source.coloring);
+            if (s) { s.coloring = structuredClone(source.coloring); s.color = source.color ? [...source.color] : undefined; }
         }
         this.updateState();
     }

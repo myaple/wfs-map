@@ -23,12 +23,12 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     await page.evaluate(() => { const h = (window as any).__WFS_MAP__; h.filter([{ field: 'category', op: 'eq', value: 'sensor' }]); });
     await expect(page.locator('#filterStatus')).toContainText('256 matches');
     const ids = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.id));
-    await page.locator('#analysisSource').selectOption(ids[1]);
+    await page.locator('#filterSource').selectOption(ids[1]);
     await expect(page.locator(`.chart-card[data-source-id="${ids[1]}"]`).first().getByLabel('Chart type')).toHaveValue('bar');
     await expect(page.locator('.chart-card')).toHaveCount(6);
     await page.evaluate(() => { const h = (window as any).__WFS_MAP__; h.workspace.select({ field: 'category', op: 'eq', value: 'vehicle' }, 'Vehicles'); });
     await expect(page.locator('#filterStatus')).toContainText('512 matches');
-    await page.locator('#analysisSource').selectOption(ids[0]);
+    await page.locator('#filterSource').selectOption(ids[0]);
     await expect(page.locator('.chart-card').first().getByLabel('Chart type')).toHaveValue('pie');
     await expect(page.locator('#filterStatus')).toContainText('256 matches');
     await expect(page.locator('#hud')).toHaveText('Loaded 3,072 points');
@@ -47,7 +47,7 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].metrics.filterCount === 512);
     await page.locator('#analysisLink').click();
-    await page.locator('#analysisSource').selectOption(ids[1]);
+    await page.locator('#filterSource').selectOption(ids[1]);
     await expect(page.locator('#rules .selection')).toContainText('Vehicles');
     await expect(page.locator('#filterStatus')).toContainText('512 matches');
     expect(errors).toEqual([]);
@@ -83,7 +83,7 @@ test('source lists persist and failure in one source leaves others available', a
     await expect(page.locator('.chart-card')).toHaveCount(3);
     await page.reload();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
-    await expect(page.locator('#analysisSource option')).toHaveCount(2);
+    await expect(page.locator('#filterSource option')).toHaveCount(2);
     await page.locator('#configLink').click();
     await expect(page.getByRole('checkbox', { name: 'Enable Unavailable WFS', exact: true })).toBeChecked();
 });
@@ -107,7 +107,7 @@ test('sources with different schemas expose only their own fields and counts', a
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].metrics.analysisCharts);
     await page.locator('#analysisLink').click();
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
-    await page.locator('#analysisSource').selectOption(id);
+    await page.locator('#filterSource').selectOption(id);
     await page.locator('#addRule').click();
     await expect(page.getByLabel('Attribute', {exact:true}).locator('option')).toHaveText(['temperature (number)', 'name (string)']);
     await page.getByLabel('Attribute', {exact:true}).selectOption('temperature');

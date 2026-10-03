@@ -27,7 +27,7 @@ test('all charts stay visible and each source selector repopulates axes, aggrega
     await chart.getByLabel('Y attribute', { exact: true }).selectOption('temperature');
     await page.waitForFunction(id => (window as any).__WFS_MAP__.sources[1].workspace.results.some((r: any) => r.id === id && r.measure?.includes('temperature')), chartId, { timeout: 10000 });
     await chart.getByRole('button', { name: 'Return to normal size', exact: true }).click();
-    await page.locator('#analysisSource').selectOption(ids[1]); await page.locator('#analysisSource').selectOption(ids[0]);
+    await page.locator('#filterSource').selectOption(ids[1]); await page.locator('#filterSource').selectOption(ids[0]);
     await expect(page.locator('.chart-card')).toHaveCount(6);
     await expect(chart.getByLabel('Time attribute', { exact: true })).toHaveValue('day');
     await chart.getByLabel('Chart type').selectOption('bar'); await chart.getByLabel('Group by', { exact: true }).selectOption('station');
@@ -36,7 +36,7 @@ test('all charts stay visible and each source selector repopulates axes, aggrega
     await chart.getByRole('button', { name: /station: north/ }).click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].selected === 1);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(16);
-    await page.locator('#analysisSource').selectOption(ids[1]); await expect(page.locator('#rules .selection')).toContainText('station: north');
+    await page.locator('#filterSource').selectOption(ids[1]); await expect(page.locator('#rules .selection')).toContainText('station: north');
     await chart.getByLabel('Data source', { exact: true }).selectOption(ids[0]);
     await expect(chart.getByLabel('Group by', { exact: true }).locator('option')).not.toContainText(['station']);
     await expect(chart).toHaveAttribute('data-source-id', ids[0]);
@@ -47,7 +47,7 @@ test('disabled and reloaded sources retain visible cards and source removal affe
     const csvCards = page.locator(`.chart-card[data-source-id="${ids[1]}"]`);
     await page.locator('#configLink').click(); await page.getByRole('checkbox', { name: 'Enable CSV temperatures', exact: true }).uncheck(); await page.locator('#saveSettings').click(); await page.locator('#analysisLink').click();
     await expect(page.locator('.chart-card')).toHaveCount(6); await expect(csvCards.first()).toContainText('Load this source');
-    await page.locator('#analysisSource').selectOption(ids[1]); await expect(page.locator('.chart-card')).toHaveCount(6);
+    await page.locator('#filterSource').selectOption(ids[1]); await expect(page.locator('.chart-card')).toHaveCount(6);
     await page.locator('#configLink').click(); await page.getByRole('checkbox', { name: 'Enable CSV temperatures', exact: true }).check(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].workspace.results.length === 3);
     await page.locator('#analysisLink').click(); await expect(csvCards.first()).toContainText('2 plotted');

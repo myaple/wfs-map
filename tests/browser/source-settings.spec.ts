@@ -71,7 +71,7 @@ test('removal can be undone and saved removal of the last loaded source releases
     const cleared = await page.evaluate(() => { const s = (window as any).__removedSource; return { loaded: s.loaded, bytes: s.layer.gpuBytes, worker: !!s.worker }; });
     expect(cleared).toEqual({ loaded: 0, bytes: 0, worker: false });
     await page.locator('#analysisLink').click(); await expect(page.locator('#hud')).toContainText('Loaded 0');
-    await expect(page.locator('#analysisSource')).toBeDisabled(); await page.reload();
+    await expect(page.locator('#filterSource')).toBeDisabled(); await page.reload();
     await page.locator('#configLink').click(); await expect(page.locator('.source-row')).toHaveCount(0);
     await add(page, 'Replacement'); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
