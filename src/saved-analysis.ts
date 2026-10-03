@@ -1,9 +1,11 @@
-import { settingsKey, setSettingsScope } from './source-settings.ts';
+import { settingsKey, setSettingsScope, type Settings } from './source-settings.ts';
+import { setFileUser } from './source-storage.ts';
 import { localSettings, type AnalysisDocument, type AnalysisState } from './analysis-state.ts';
 import { api, createAnalysis, saveAnalysis } from './analyses-api.ts';
 export let currentAnalysis: AnalysisDocument | undefined;
 export async function prepareAnalysis(doc: AnalysisDocument, user: string) {
     currentAnalysis = doc;
+    setFileUser(user);
     setSettingsScope(`wfs-analysis-settings:${encodeURIComponent(user)}:${doc.readOnly ? 'shared:' : ''}${doc.id}`);
     const settings = localSettings(doc.state);
     let bindings: Record<string, string> = {};
@@ -11,12 +13,12 @@ export async function prepareAnalysis(doc: AnalysisDocument, user: string) {
     for (const s of settings.sources) if (s.config.type === 'csv' && bindings[s.config.csvRef]) s.config.csvRef = bindings[s.config.csvRef];
     localStorage.setItem(settingsKey, JSON.stringify(settings));
 }
-export function rememberBindings(state: AnalysisState) {
+export function rememberBindings(settings: Settings) {
     if (!currentAnalysis) return;
     let bindings: Record<string, string> = {};
     try { bindings = JSON.parse(localStorage.getItem(settingsKey + ':bindings') ?? '{}'); } catch {}
     for (const source of currentAnalysis.state.settings.sources) {
-        const next = state.settings.sources.find(s => s.id === source.id);
+        const next = settings.sources.find(s => s.id === source.id);
         if (source.config.type === 'csv' && source.config.csvRef && next?.config.csvRef) bindings[source.config.csvRef] = next.config.csvRef;
     }
     localStorage.setItem(settingsKey + ':bindings', JSON.stringify(bindings));
@@ -40,11 +42,11 @@ export function mountAnalysisControls(snapshot: () => AnalysisState) {
         };
         return button;
     };
-    const save = async () => { const state = snapshot(); rememberBindings(state); currentAnalysis = await saveAnalysis(currentAnalysis!, name.value.trim(), state); document.title = `${currentAnalysis.name} · WFS analysis`; status.textContent = 'Analysis configuration saved'; };
+    const save = async () => { const state = snapshot(); rememberBindings(state.settings); currentAnalysis = await saveAnalysis(currentAnalysis!, name.value.trim(), state); document.title = `${currentAnalysis.name} · WFS analysis`; status.textContent = 'Analysis configuration saved'; };
     bar.append(back, name);
     if (!doc.readOnly) bar.append(action('Save analysis', save));
     bar.append(action('Save a copy', async () => {
-        const state = snapshot(); rememberBindings(state);
+        const state = snapshot(); rememberBindings(state.settings);
         const copy = await createAnalysis(name.value.trim().slice(0, 113) + ' (copy)', state);
         location.href = '/?analysis=' + encodeURIComponent(copy.id) + location.hash;
     }));

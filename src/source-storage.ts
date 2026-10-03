@@ -1,6 +1,12 @@
 import { settingsKey, settingsMetadata, type Settings } from './source-settings.ts';
 
-const databaseName = 'wfs-source-files', storeName = 'csv';
+let databaseName = 'wfs-source-files';
+const storeName = 'csv';
+// Named analyses/copies may reuse immutable files within one user, but never
+// resolve another user's references or the unauthenticated legacy cache.
+export function setFileUser(user: string) {
+    databaseName = 'wfs-source-files:user:' + encodeURIComponent(user);
+}
 function openFiles(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(databaseName, 1);

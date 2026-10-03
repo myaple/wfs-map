@@ -8,9 +8,9 @@ The landing page lists **My analyses** for the authenticated user. Create a name
 
 **Share** saves the configuration and creates a live read-only link. Recipients authenticate through the same gateway, connect directly to WFS services, and attach their own local CSVs through Data sources → Configure. Saved column mappings and filters survive attachment; required column names are checked and filter/chart restoration also checks their inferred types. A filename alone does not establish that two CSVs contain the same data. The local attachment survives reload without changing the owner's configuration. **Save a copy** creates the recipient's own editable analysis; **Stop sharing** revokes the link. Links can be opened by any authenticated holder, so this first version has no team directory or recipient ACL.
 
-Different analyses use separate browser settings and in-memory state. Two tabs editing the same analysis can work independently, but a stale **Save analysis** returns a conflict and offers reopening or saving a copy instead of overwriting another tab's changes. CSV blobs remain in IndexedDB and are retained for other analyses/copies. Clearing browser storage removes those local files; the remote setup then prompts for reattachment.
+Different analyses use separate browser settings and in-memory state. Two tabs editing the same analysis can work independently, but a stale **Save analysis** returns a conflict and offers reopening or saving a copy instead of overwriting another tab's changes. CSV blobs remain in IndexedDB, in a separate database for each authenticated user, and are retained for that user's other analyses/copies. A shared reference never resolves a different user's file in the same browser profile. Authenticated analyses do not automatically read the older, unscoped local cache; reattach those files through Data sources. Clearing browser storage removes local files; the remote setup then prompts for reattachment. Browser storage is local application state, not an OS security boundary between people who control the same browser profile.
 
-Relative time choices (for example Last 24 hours) resolve against the current time when reopened, making daily reuse useful. Custom time ranges and the geographic request box restore exactly. Saved filter values and categorical colour overrides are configuration and can themselves contain sensitive literals; they are part of the remote metadata explicitly selected for saving. Row-index selections from individual scatter observations are local to a particular load and are excluded: an expression containing such a selection is saved as an empty AND filter. Attribute/range/chart-bin filters are portable.
+Relative time choices (for example Last 24 hours) resolve against the current time when reopened, making daily reuse useful. Custom time ranges and the geographic request box restore exactly. Saved filter values and categorical colour overrides are configuration and can themselves contain sensitive literals; they are part of the remote metadata explicitly selected for saving. Individual scatter-observation selections refer to row indices in one local load. **Save analysis**, **Share** and **Save a copy** refuse a setup containing those selections and explain which selection chips to remove; all current filters and the saved configuration remain intact. Attribute/range/chart-bin filters retain their exact nested AND/OR semantics when saved.
 
 The browser uses an explicit configuration serializer; the API independently validates a bounded allowlist and rejects raw CSV text, rows, features, results and runtime metrics. Dataset retrieval, parsing, filtering, chart aggregation, metadata inspection and CSV export all execute on the workstation. The Rust API serves static assets and saves JSON configuration in PostgreSQL; it never fetches WFS/tile URLs or accepts file uploads. The existing `.tar.gz` backup feature remains a **local full-data export** containing CSV contents; downloading or importing that archive does not send it to the configuration API.
 
@@ -73,6 +73,46 @@ docker build --pull=false --network=none -t wfs-map .
 ```
 
 Every Dockerfile install/compile step explicitly uses `--network=none`; dependencies come from the repository bundles. CI runs the real API ownership/revision/share tests against PostGIS, then starts the built application plus PostGIS on an internal Docker network to verify static assets, the custom identity header and migrations without Internet access.
+
+### Local full-stack testing
+
+`deploy/compose.e2e.yml` runs the frontend (nginx and the built UI), Rust API, PostGIS and a normal generated WFS service as separate containers. Only the frontend publishes a port, on **127.0.0.1:8787**. It injects `X-E2E-User` and the API runs in normal proxy-auth mode with that header configured. This is a local test gateway that impersonates **alice** by default, without mTLS. Open `/__test/user/bob` or `/__test/user/alice` to switch identities; `/__test/user/none` tests missing authentication. The gateway overwrites incoming identity headers. Use `deploy/compose.yml` with your real mTLS gateway for deployment.
+
+Preload the base/database images on a connected machine (transfer them with `docker save`/`docker load` for disconnected testing):
+
+```sh
+docker pull node:24-bookworm-slim
+docker pull rust:1.90-bookworm
+docker pull debian:bookworm-slim
+docker pull postgis/postgis:16-3.4
+docker pull nginx:1.28-alpine
+# Only needed for the containerized browser-test runner:
+docker pull mcr.microsoft.com/playwright:v1.56.1-noble
+```
+
+Start the stack for manual testing:
+
+```sh
+docker compose -f deploy/compose.e2e.yml up -d --build --wait
+# Open http://127.0.0.1:8787
+# Optional: WFS_E2E_PORT=18787 to use another local port.
+```
+
+Run the real-stack browser/API regressions against that stack:
+
+```sh
+docker compose -f deploy/compose.e2e.yml --profile tests run --build --rm tests
+```
+
+Or build, start, test and clean up a new disposable stack in one command:
+
+```sh
+npm run test:e2e:docker
+```
+
+The runner bundles its Chromium binary and installs npm dependencies offline. The suite does not mock the workspace API: it covers header injection, private-analysis ownership, read-only sharing/revocation, simultaneous analysis tabs, revision conflicts, per-user local CSV attachment/copy/reload, absence of row uploads, and preservation of filters when a save is refused. Services and the runner use an internal Docker network; builds/install steps need no package-registry access after image preload. CI executes the same Compose suite against the application image it just built. Failure traces are written to `test-results/e2e`.
+
+`docker compose -f deploy/compose.e2e.yml down` stops a manually started stack and retains its test database. Add `--volumes` to discard that test database. The one-command disposable runner cleans up only its own project and volume. If Playwright is already installed locally, `WFS_E2E_URL=http://127.0.0.1:8787 npm run test:e2e` runs the same suite without the runner container.
 
 ## Analysis page
 

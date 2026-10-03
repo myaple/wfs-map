@@ -11,6 +11,12 @@ RUN --network=none node scripts/install-rust-offline.mjs
 COPY . .
 RUN --network=none npm run build && node scripts/collect-rust-licenses.mjs
 
+# Local E2E frontend: the same built assets, with a test identity gateway.
+# The production runtime below continues to serve both the API and UI.
+FROM nginx:1.28-alpine AS test-frontend
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY deploy/nginx.e2e.conf /etc/nginx/conf.d/default.conf
+
 FROM rust:1.90-bookworm AS rust-build
 WORKDIR /app/backend
 COPY --from=build /app/backend/vendor ./vendor
@@ -21,7 +27,7 @@ COPY backend/migrations ./migrations
 # libpq and OpenSSL are built from the vendored sources and linked statically.
 RUN --network=none cargo build --release --locked --offline
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 COPY --from=rust-build /app/backend/target/release/wfs-workspaces ./wfs-workspaces
 COPY --from=build /app/dist ./dist

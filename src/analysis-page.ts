@@ -191,7 +191,7 @@ function applySettings(next: Settings, restore = false) {
     for (const s of sources) s.workspace.refreshSources();
     state();
     for (const s of load) loadSource(s);
-    if (currentAnalysis) rememberBindings(savedState());
+    if (currentAnalysis) rememberBindings(snapshot());
 }
 function switchFilters(id: string) {
     const previous = filterSource();

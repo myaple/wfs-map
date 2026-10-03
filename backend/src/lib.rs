@@ -5,10 +5,7 @@ use diesel::{
     r2d2::{ConnectionManager, Pool},
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-use poem::{
-    EndpointExt, Error, Request, Route, endpoint::StaticFilesEndpoint, http::StatusCode,
-    middleware::SizeLimit,
-};
+use poem::{EndpointExt, Error, Request, Route, endpoint::StaticFilesEndpoint, http::StatusCode};
 use poem_openapi::{Object, OpenApi, OpenApiService, param::Path, payload::Json, types::Any};
 use serde_json::Value;
 use uuid::Uuid;
@@ -392,19 +389,26 @@ impl Api {
 async fn health() -> Json<Health> {
     Json(Health { ok: true })
 }
+// Bound the bytes actually received, including requests without Content-Length
+// (GETs, empty share/revoke requests, and chunked JSON). A header-only size
+// check both rejects normal browser GETs and cannot bound streamed bodies.
+async fn bounded_request(mut req: Request) -> poem::Result<Request> {
+    let bytes = req.take_body().into_bytes_limit(1_064_960).await?;
+    req.set_body(bytes);
+    Ok(req)
+}
 pub fn app(pool: DbPool, auth: Auth, assets: &str) -> Route {
     let api = OpenApiService::new(Api { pool }, "WFS analysis workspaces", "1.0.0").server("/api");
     let spec = api.spec_endpoint();
     let routes = Route::new()
         .at("/openapi.json", spec)
         .nest("/", api)
-        .with(SizeLimit::new(1_064_960))
         .before(move |mut req| {
             let auth = auth.clone();
             async move {
                 let actor = auth.identify(&req)?;
                 req.extensions_mut().insert(actor);
-                Ok(req)
+                bounded_request(req).await
             }
         })
         .after(|result| async move {
@@ -439,5 +443,36 @@ mod tests {
             Auth::Development("local".into()).identify(&req).unwrap().0,
             "local"
         );
+    }
+    #[tokio::test]
+    async fn limits_actual_bytes_without_requiring_a_length_header() {
+        use poem::{endpoint::make_sync, test::TestClient};
+        let client = TestClient::new(make_sync(|_| "ok").before(bounded_request));
+        for method in ["GET", "POST", "DELETE"] {
+            client
+                .request(method.parse().unwrap(), "/")
+                .send()
+                .await
+                .assert_status_is_ok();
+        }
+        client
+            .post("/")
+            .body("{}")
+            .send()
+            .await
+            .assert_status_is_ok();
+        client
+            .post("/")
+            .body("x".repeat(1_064_961))
+            .send()
+            .await
+            .assert_status(StatusCode::PAYLOAD_TOO_LARGE);
+        client
+            .post("/")
+            .header("content-length", "2")
+            .body("x".repeat(1_064_961))
+            .send()
+            .await
+            .assert_status(StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

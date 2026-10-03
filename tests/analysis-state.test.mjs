@@ -15,7 +15,19 @@ test('remote workspace serialization contains configuration and no CSV bytes or 
     assert.equal(localSettings(state).sources[0].config.csvRef,'file-id');
     assert.equal(emptyState().settings.sources.length,0);
 });
-test('row-index selections are cleared as a whole instead of silently changing group semantics',()=>{
-    const e={op:'or',children:[{field:'category',op:'eq',value:'A'},{op:'row',index:4}]};
-    assert.deepEqual(shareExpression(e),{op:'and',children:[]});
+test('saving row-index selections fails explicitly and preserves every live predicate',()=>{
+    for (const op of ['and', 'or']) {
+        const e={op,children:[{field:'category',op:'eq',value:'A'},{op:'or',children:[{op:'row',index:4}]}]};
+        const before=structuredClone(e);
+        assert.throws(()=>shareExpression(e),/Individual-observation selections cannot be saved/);
+        assert.deepEqual(e,before);
+        assert.throws(()=>configurationState(emptyState().settings,emptyState().query,[{id:'csv',fields:[],expression:e,charts:[]}]),/Remove those selection chips/);
+    }
+});
+test('portable nested filters round-trip with their exact group semantics',()=>{
+    const e={op:'and',children:[{field:'category',op:'eq',value:'A'},{op:'or',children:[{field:'value',op:'gte',value:'8'},{op:'bbox',west:-5,east:1,south:50,north:55}]}]};
+    const saved=shareExpression(e);
+    assert.deepEqual(saved,e);
+    saved.children.pop();
+    assert.equal(e.children.length,2);
 });

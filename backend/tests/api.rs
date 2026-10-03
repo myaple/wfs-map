@@ -18,6 +18,12 @@ async fn ownership_revisions_sharing_and_configuration_only_storage() {
     let alice = format!("test-alice-{}", uuid::Uuid::new_v4());
     let bob = format!("test-bob-{}", uuid::Uuid::new_v4());
     client
+        .get("/api/me")
+        .header("x-analyst-id", &alice)
+        .send()
+        .await
+        .assert_status_is_ok();
+    client
         .get("/api/analyses")
         .send()
         .await
@@ -39,6 +45,23 @@ async fn ownership_revisions_sharing_and_configuration_only_storage() {
     let doc: Value = create.0.into_body().into_json().await.unwrap();
     let id = doc["id"].as_str().unwrap();
     let url = format!("/api/analyses/{id}");
+    let list = client
+        .get("/api/analyses")
+        .header("x-analyst-id", &bob)
+        .send()
+        .await;
+    list.assert_status_is_ok();
+    let list: Value = list.0.into_body().into_json().await.unwrap();
+    assert_eq!(list, json!([]));
+    for method in ["POST", "DELETE"] {
+        client
+            .request(method.parse().unwrap(), format!("{url}/share"))
+            .header("x-analyst-id", &bob)
+            .header("x-workspace-request", "1")
+            .send()
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+    }
     client
         .get(&url)
         .header("x-analyst-id", &bob)

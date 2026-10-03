@@ -66,3 +66,11 @@ jobs:
 
       - name: Test runtime on an internal network without Internet access
         run: bash scripts/test-container.sh "ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA:0:7}"
+
+      - name: Preload local E2E frontend and browser runner images
+        run: |
+          docker pull nginx:1.28-alpine
+          docker pull mcr.microsoft.com/playwright:v1.56.1-noble
+
+      - name: Test real frontend, Rust API, identity gateway and PostGIS
+        run: WFS_TEST_IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA:0:7}" bash scripts/test-e2e.sh

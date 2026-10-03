@@ -7,10 +7,11 @@ export type AnalysisState = { schemaVersion: 1; settings: Settings; query: { cho
 export type AnalysisDocument = { id: string; name: string; state: AnalysisState; revision: number; updatedAt: string; readOnly: boolean; shared: boolean };
 export type AnalysisSummary = Omit<AnalysisDocument, 'state' | 'readOnly'>;
 export function shareExpression(expression: Expression): Expression {
-    // Local observation indices are meaningless on someone else's CSV/WFS load.
-    // If any occur, clear the whole expression rather than widening an OR/AND silently.
+    // Observation indices are tied to one local load. Reject saving rather than
+    // silently discarding other predicates or changing AND/OR semantics.
     const hasRow = (e: Expression): boolean => e.op === 'row' || ('children' in e && e.children.some(hasRow));
-    return hasRow(expression) ? { op: 'and', children: [] } : structuredClone(expression);
+    if (hasRow(expression)) throw Error('Individual-observation selections cannot be saved. Remove those selection chips from Dataset filters, then save again. Your other filters and current selection have not changed.');
+    return structuredClone(expression);
 }
 export function configurationState(settings: Settings, query: AnalysisState['query'], analyses: SourceAnalysis[]): AnalysisState {
     return {
