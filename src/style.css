@@ -574,3 +574,5 @@ button.danger { color: #a23129; }
 .query-area { border-top: 1px solid #d5e6e8; padding-top: 10px; }
 .query-area button { padding: 6px 10px; font-size: 12px; }
 @media(max-width:600px) { .query-panel { padding: 12px; } .query-controls { gap: 8px; } #customTime { flex-basis: 100%; } #customTime label { width: 100%; } }
+
+.source-type-fields { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 8px; }

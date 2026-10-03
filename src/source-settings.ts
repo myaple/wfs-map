@@ -1,6 +1,6 @@
-export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField'] as const;
+export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField'] as const;
 export type Config = Record<typeof configKeys[number], string>;
-export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '' };
+export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '' };
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
@@ -16,6 +16,7 @@ export function migrateSource(input: any): SavedSource | undefined {
     if (!input || typeof input.name !== 'string' || !input.config || typeof input.config.url !== 'string') return;
     const config = { ...defaultConfig };
     for (const key of configKeys) if (typeof input.config[key] === 'string') config[key] = input.config[key];
+    if (config.type === 'csv' && config.csvText && !config.csvRef) config.csvRef = crypto.randomUUID();
     try {
         const url = new URL(config.url, location.href);
         if (url.origin === location.origin && url.pathname === '/wfs' && ['points', 'distribution'].some(key => typeof input.config[key] === 'string')) {
@@ -41,6 +42,13 @@ export function readSettings(): Settings {
     } catch { return empty; }
 }
 export function validateConfig(config: Config) {
+    if (config.type === 'csv') {
+        if (!config.csvRef && !config.csvText.trim()) throw Error('Choose a CSV file.');
+        if (!['xy', 'wkt', 'geojson'].includes(config.geometryMode)) throw Error('Choose a CSV geometry format.');
+        if (config.geometryMode === 'xy' ? !config.longitudeField || !config.latitudeField : !config.geometryField) throw Error('Choose the CSV geometry columns.');
+        return;
+    }
+    if (config.type !== 'wfs') throw Error('Choose WFS or CSV as the source type.');
     const url = new URL(config.url, location.href);
     if (!config.url.trim() || !['http:', 'https:'].includes(url.protocol)) throw Error('Enter an HTTP(S) WFS endpoint or a relative URL.');
     if (!config.layer.trim()) throw Error('Enter a feature type or discover the server’s layers.');
@@ -53,4 +61,12 @@ export function validateBackground(background: Background) {
     if (!background.url) return;
     const url = new URL(background.url, location.href);
     if (!['http:', 'https:'].includes(url.protocol) || !['{z}', '{x}', '{y}'].every(token => background.url.includes(token))) throw Error('Use an HTTP(S) XYZ tile URL with {z}, {x}, and {y}, or leave it empty.');
+}
+
+// File references identify immutable CSV contents without comparing megabytes.
+export function configIdentity(config: Config) {
+    return JSON.stringify({ ...config, csvText: config.csvRef ? '' : config.csvText });
+}
+export function settingsMetadata(settings: Settings): Settings {
+    return { ...settings, sources: settings.sources.map(s => ({ ...s, config: { ...s.config, csvText: '' } })) };
 }
