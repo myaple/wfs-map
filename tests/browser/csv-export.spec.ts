@@ -45,7 +45,7 @@ test('CSV downloads isolate sources and export the applied AND/OR and chart sele
     await page.evaluate(() => (window as any).__WFS_MAP__.filterSource('b', [{ field: 'category', op: 'eq', value: 'absent' }]));
     await expect(page.locator('#filterStatus')).toContainText('0 matches');
     expect((await download(page)).rows).toHaveLength(0);
-    await page.locator('#exportSource').selectOption('c'); await expect(page.locator('#exportCSV')).toBeDisabled();
+    await expect(page.locator('#exportSource option')).toHaveText(['First', 'Second']);
     expect(requests).toBe(before); expect(errors).toEqual([]);
 });
 

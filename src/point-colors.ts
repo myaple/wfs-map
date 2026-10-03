@@ -37,13 +37,14 @@ export class PointColors {
             };
         }
     }
-    private current() { return this.sources().find(s => s.id === this.source.value); }
+    private current() { return this.sources().find(s => s.enabled && s.id === this.source.value); }
     refresh() {
-        const id = this.source.value;
-        this.source.replaceChildren(...this.sources().map(s => new Option(s.name + (s.enabled ? '' : ' (disabled)'), s.id)));
-        if (this.sources().some(s => s.id === id)) this.source.value = id;
-        if (!this.sources().length) this.source.add(new Option('No data sources', ''));
-        this.source.disabled = !this.sources().length;
+        const id = this.source.value, sources = this.sources().filter(s => s.enabled);
+        this.source.replaceChildren(...sources.map(s => new Option(s.name, s.id)));
+        if (sources.some(s => s.id === id)) this.source.value = id;
+        if (!sources.length) this.source.add(new Option('No enabled data sources', ''));
+        this.source.disabled = !sources.length;
+        if (id !== this.source.value) { this.search.value = ''; this.limit = 50; }
         this.update();
     }
     update() {
@@ -68,7 +69,7 @@ export class PointColors {
         const ramp = document.getElementById('colorRamp')!;
         ramp.hidden = !gradient;
         if (s) ramp.style.background = `linear-gradient(to right,${s.coloring.low},${s.coloring.high})`;
-        document.getElementById('colorLegend')!.textContent = s ? `${s.name} · ${!s.enabled ? 'Source disabled' : !s.done ? 'Attributes available after loading' : s.colorLegend || 'Single colour for every point'}` : 'Add a data source to configure point colours.';
+        document.getElementById('colorLegend')!.textContent = s ? `${s.name} · ${!s.done ? 'Attributes available after loading' : s.colorLegend || 'Single colour for every point'}` : 'Add or enable a data source to configure point colours.';
         attribute.disabled = !s?.enabled || !s.done;
         input('sourceColor').disabled = !s || !!s.coloring.field;
         for (const id of ['colorBins', 'colorLow', 'colorHigh']) input(id).disabled = !s?.enabled || !s.done || !gradient;
