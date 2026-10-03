@@ -69,9 +69,30 @@ test('raw observations follow the chosen source and a new schema refreshes the s
     await chart.locator('.raw-scatter canvas:not(.raw-scatter-axes)').press('Enter');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].selected === 1);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(16);
+    // Hold the persisted-file read so replacement always races the editor restore,
+    // rather than depending on runner speed or IndexedDB scheduling.
+    await page.evaluate(() => {
+        const original = Blob.prototype.text;
+        Blob.prototype.text = function() {
+            if (this instanceof File) return original.call(this);
+            return new Promise(resolve => {
+                (window as any).__resumeCSVRestore = async () => {
+                    Blob.prototype.text = original;
+                    resolve(await original.call(this));
+                };
+            });
+        };
+    });
     await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure CSV temperatures', exact: true }).click();
+    await page.waitForFunction(() => typeof (window as any).__resumeCSVRestore === 'function');
+    await expect(page.locator('#csvTime')).toHaveValue('day');
+    await expect(page.locator('#longitudeField')).toHaveValue('lon');
+    await expect(page.locator('#latitudeField')).toHaveValue('lat');
     await page.locator('#csvFile').setInputFiles({ name: 'new.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,day,pressure\n-1,54,2026-10-01,1000\n-2,53,2026-10-02,1002') });
     await expect(page.locator('#csvFileStatus')).toContainText('4 columns');
+    await expect(page.locator('#csvTime')).toHaveValue('day');
+    await page.evaluate(() => (window as any).__resumeCSVRestore());
+    await expect(page.locator('#csvFileStatus')).toContainText('new.csv · 4 columns');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].done && (window as any).__WFS_MAP__.sources[1].selected === 2);
     await page.locator('#analysisLink').click(); await expect(page.locator('.chart-card')).toHaveCount(6);
