@@ -73,7 +73,7 @@ export class Workspace {
         const children = element('div');
         children.className = 'group-children';
         head.append(logic, target, button('+ Rule', () => this.addRule(group)), button('+ Group', () => { this.makeGroup(children, 'or'); this.markActive(); }));
-        if (parent.id !== 'rules')
+        if (parent !== this.rules)
             head.append(button('×', () => {
                 if (group.contains(this.active ?? null)) {
                     this.active = this.rules.querySelector<HTMLDivElement>(':scope > .filter-group') ?? undefined;

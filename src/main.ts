@@ -5,6 +5,7 @@ import { PointsLayer } from './points-layer.ts';
 import { wfsURL, fieldKind, xmlDocument, type Field, type Rule } from './data.ts';
 import { Workspace } from './workspace.ts';
 import { all, type Expression } from './analysis.ts';
+import { PointColors } from './point-colors.ts';
 import { DataSources } from './data-sources.ts';
 import { configIdentity, defaultConfig, readSettings, settingsKey, type Config, type Settings } from './source-settings.ts';
 import { queryFilter, timeBounds, validateTime, type QueryBounds, type QueryFields } from './wfs-query.ts';
@@ -15,10 +16,10 @@ const value = (id: string) => $<HTMLInputElement>(id).value;
 const params = new URLSearchParams(location.search);
 $('app').innerHTML = `
 <header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav><a href="#analysis" id="analysisLink">Analysis</a><a href="#configuration" id="configLink">Data sources</a></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
-<div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="filterStatus" role="status"></div></div>
+<div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="sourceSummary" class="hint"></div></div>
 <section id="configuration" hidden></section>
-<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><label for="timeStart">Start (UTC)</label><input id="timeStart" type="datetime-local" step="1"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="datetime-local" step="1"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="source-analysis"><label for="analysisSource">Analyze source</label><select id="analysisSource" aria-label="Analyze source"></select><label for="colorAttribute">Point colour</label><select id="colorAttribute" aria-label="Point colour attribute"></select><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select><input id="colorLow" type="color" aria-label="Low value colour" value="#2463d4"><input id="colorHigh" type="color" aria-label="High value colour" value="#ee5539"><span id="colorRamp" aria-hidden="true"></span><span id="colorLegend" class="hint"></span><span id="sourceSummary" class="hint"></span><button id="reloadSource">Reload this source</button></div><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Nested AND / OR groups. Chart selections go into the highlighted group. Numeric and time bins use inclusive lower bounds and exclusive upper bounds (last bin includes the maximum). Dataset filters apply to the chosen source. Each chart uses its own selected source and that source’s filters. The map shows all enabled sources.</p><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button></div></details>
-<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><button id="addChart" disabled>+ Add chart</button></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
+<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><label for="timeStart">Start (UTC)</label><input id="timeStart" type="datetime-local" step="1"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="datetime-local" step="1"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Each source keeps its own colour attribute, bins and palette.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply only to this source. Chart selections use its highlighted AND / OR group.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
+<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
 type Source = {
     id: string;
@@ -69,10 +70,10 @@ const settings = readSettings();
 let background = settings.background;
 const sources: Source[] = [];
 let queryBounds: QueryBounds = params.get('time') === 'all' ? {} : { time: timeBounds(24) };
-let activeId = '', popup: maplibregl.Popup | undefined, benchmarkRunning = false, mapReady = false, loadSlots = 0;
+let filterSourceId = '', popup: maplibregl.Popup | undefined, benchmarkRunning = false, mapReady = false, loadSlots = 0;
 const loadQueue: Source[] = [];
 const layerOrder: Source[] = [];
-function active(): Source | undefined { return sources.find(s => s.id === activeId) ?? sources[0]; }
+function filterSource(): Source | undefined { return sources.find(s => s.id === filterSourceId) ?? sources[0]; }
 function createSource(input: {
     id?: string;
     name?: string;
@@ -103,7 +104,7 @@ if (!settings.sources.length && (params.has('points') || params.has('url'))) {
     settings.sources.push({ id: crypto.randomUUID(), name: 'WFS source', enabled: true, config: { ...defaultConfig, url: url.href, layer: params.get('layer') ?? 'demo:points' } });
 }
 for (const [i, source] of settings.sources.entries()) createSource(source, i === 0);
-activeId = sources[0]?.id ?? '';
+filterSourceId = sources[0]?.id ?? '';
 function snapshot(): Settings {
     return { sources: sources.map(({ id, name, enabled, color, config, coloring }) => ({ id, name, enabled, color, config, coloring })), background: { ...background } };
 }
@@ -112,15 +113,27 @@ function persist() {
     catch { status('Could not save analysis preferences in this browser.', true); }
 }
 function renderSources() {
-    const select = $<HTMLSelectElement>('analysisSource');
-    select.replaceChildren(...sources.map(s => new Option(s.name + (s.enabled ? '' : ' (disabled)'), s.id)));
-    if (!sources.length) select.add(new Option('No data sources', ''));
-    select.disabled = !sources.length;
-    select.value = activeId;
+    for (const id of ['filterSource', 'chartSource']) {
+        const select = $<HTMLSelectElement>(id), previous = select.value;
+        select.replaceChildren(...sources.map(s => new Option(s.name + (s.enabled ? '' : ' (disabled)'), s.id)));
+        if (!sources.length) select.add(new Option('No data sources', ''));
+        select.disabled = !sources.length;
+        if (sources.some(s => s.id === previous)) select.value = previous;
+    }
+    $<HTMLSelectElement>('filterSource').value = filterSourceId;
+    pointColors.refresh();
 }
 const sourceSettings = new DataSources(snapshot(), applySettings);
+const pointColors = new PointColors(() => sources, (source, previous) => {
+    const s = sources.find(s => s.id === source.id)!;
+    s.layer.color = s.color;
+    sourceSettings.syncColoring(s); persist();
+    if (s.layer.colorCodes && previous.field === s.coloring.field && previous.bins === s.coloring.bins) s.layer.setPalette(s.coloring.low, s.coloring.high);
+    else applyColors(s);
+    map.triggerRepaint();
+});
 function applySettings(next: Settings) {
-    const oldActive = active();
+    const previousFilterSource = filterSource();
     for (const s of [...sources]) if (!next.sources.some(n => n.id === s.id)) {
         clearSource(s); s.workspace.reset(); sources.splice(sources.indexOf(s), 1);
     }
@@ -137,32 +150,30 @@ function applySettings(next: Settings) {
     }
     background = { ...next.background };
     applyBackground();
-    if (!sources.some(s => s.id === activeId)) activeId = sources[0]?.id ?? '';
-    const current = active();
-    if (current && current !== oldActive) switchAnalysis(current.id);
+    if (!sources.some(s => s.id === filterSourceId)) filterSourceId = sources[0]?.id ?? '';
+    const current = filterSource();
+    if (current && current !== previousFilterSource) switchFilters(current.id);
     if (!current) {
         $('rules').replaceChildren();
         $('charts').replaceChildren();
         const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = 'Add a data source to create charts from its attributes.'; $('charts').append(empty);
-        popup?.remove(); showColors();
+        popup?.remove();
     }
     renderSources();
     for (const s of sources) s.workspace.refreshSources();
     state();
     for (const s of load) loadSource(s);
 }
-function switchAnalysis(id: string) {
-    const previous = active();
+function switchFilters(id: string) {
+    const previous = filterSource();
     const s = sources.find(s => s.id === id);
     if (!s)
         return;
-    activeId = id;
+    filterSourceId = id;
     $('rules').replaceWith(s.rules);
     previous?.workspace.visibilityChanged();
     s.workspace.visibilityChanged();
-    $<HTMLSelectElement>('analysisSource').value = id;
-    popup?.remove();
-    showColors();
+    $<HTMLSelectElement>('filterSource').value = id;
     state();
 }
 function route() {
@@ -173,12 +184,15 @@ function route() {
         s.workspace.visibilityChanged();
     $('configLink').classList.toggle('current', config);
     $('analysisLink').classList.toggle('current', !config);
-    if (mapReady)
+    if (mapReady) {
         requestAnimationFrame(() => map.resize());
+        if (!config) ensureSourcesLoaded();
+    }
     state();
 }
 window.addEventListener('hashchange', route);
-$('analysisSource').onchange = () => switchAnalysis(value('analysisSource'));
+$('filterSource').onchange = () => switchFilters(value('filterSource'));
+$('chartSource').onchange = state;
 const gridFeatures: any[] = [];
 for (let x = -180; x <= 180; x += 10)
     gridFeatures.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[x, -85], [x, 85]] } });
@@ -231,24 +245,23 @@ new ResizeObserver(() => map.resize()).observe($('map'));
 function status(text: string, error = false) { $('status').textContent = text; $('status').classList.toggle('error', error); }
 function enabled(id: string, on: boolean) { $<HTMLButtonElement>(id).disabled = !on; }
 function state() {
-    const s = active();
-    enabled('load', mapReady && sources.some(s => s.enabled && !s.loading));
+    const s = filterSource(), enabledSources = sources.filter(s => s.enabled);
+    enabled('load', mapReady && enabledSources.some(s => !s.loading));
     enabled('cancel', sources.some(s => s.loading || s.loaded > 0));
-    for (const id of ['addRule', 'apply', 'reset', 'addChart'])
-        enabled(id, !!s && s.enabled && s.done && s.loaded > 0);
-    enabled('reloadSource', mapReady && !!s && s.enabled && !s.loading);
-    for (const id of ['fit', 'benchmark'])
-        enabled(id, sources.some(s => !!s && s.enabled && s.done && s.loaded > 0));
-    status(s ? s.name + ' · ' + s.status : 'Ready. Add a data source to get started.', s?.error);
+    for (const id of ['addRule', 'apply', 'reset']) enabled(id, !!s && s.enabled && s.done && s.loaded > 0);
+    const chartSource = sources.find(s => s.id === value('chartSource'));
+    enabled('addChart', !!chartSource?.enabled && chartSource.done && chartSource.loaded > 0);
+    for (const id of ['fit', 'benchmark']) enabled(id, enabledSources.some(s => s.done && s.loaded > 0));
+    status(enabledSources.length ? enabledSources.map(s => s.name + ' · ' + s.status).join('\n') : 'Ready. Add or enable a data source to get started.', enabledSources.some(s => s.error));
     $('filterStatus').textContent = s?.filterStatus ? s.name + ' · ' + s.filterStatus : '';
+    $('filterOwner').textContent = s ? `Filters for ${s.name} · ${!s.enabled ? 'source disabled' : s.loading ? 'loading…' : !s.done ? 'load source to edit filters' : s.selected.toLocaleString() + ' matching points'}` : 'Add a data source to build filters.';
+    $('rules').setAttribute('aria-label', s ? `Filters for ${s.name}` : 'Dataset filters');
+    $('rules').inert = !s?.enabled || !s.done;
     $('sourceSummary').textContent = sources.map(s => `${s.name}: ${s.enabled ? s.loading ? 'loading' : s.selected.toLocaleString() + ' displayed' : 'disabled'}`).join(' · ');
     const progress = $<HTMLProgressElement>('progress');
-    if (s?.total !== undefined && s.total > 0)
-        progress.value = s.loaded / s.total;
-    else if (s?.loading)
-        progress.removeAttribute('value');
-    else
-        progress.value = s?.done ? 1 : 0;
+    if (enabledSources.some(s => s.loading)) progress.removeAttribute('value');
+    else progress.value = enabledSources.length && enabledSources.every(s => s.done) ? 1 : 0;
+    pointColors.update();
     hud();
 }
 function endpoint(config: Config) { return new URL(config.url, location.href).href; }
@@ -312,7 +325,7 @@ function clearSource(s: Source) {
     s.workspace.discardObservationSelections();
     s.workspace.suspend();
     s.workspace.refreshSources();
-    if (s.id === activeId)
+    if (s.id === filterSourceId)
         popup?.remove();
 }
 function clear() {
@@ -420,8 +433,6 @@ async function performLoad(s: Source) {
                     if (!bounds.bbox) fit();
                     filter(undefined, s);
                     applyColors(s);
-                    if (s.id === activeId)
-                        showColors();
                     resolve();
                 }
                 if (m.type === 'error') {
@@ -442,13 +453,9 @@ async function performLoad(s: Source) {
                 if (m.type === 'colored' && m.request === s.colorRequest) {
                     s.layer.setColors(m.codes, s.coloring.low, s.coloring.high, m.axis.labels.length);
                     s.colorLegend = m.axis.labels.length ? `${m.axis.labels[0]} … ${m.axis.labels.at(-1)} · grey = missing` : 'No values';
-                    if (s.id === activeId)
-                        showColors();
                 }
                 if (m.type === 'colorError' && m.request === s.colorRequest) {
                     s.colorLegend = m.message;
-                    if (s.id === activeId)
-                        showColors();
                 }
                 if (m.type === 'filterError' && m.request === s.filterRequest) {
                     s.workspace.settled();
@@ -474,7 +481,7 @@ function fit() {
         return;
     map.fitBounds([[Math.min(...bounds.map(b => b[0])), Math.min(...bounds.map(b => b[1]))], [Math.max(...bounds.map(b => b[2])), Math.max(...bounds.map(b => b[3]))]], { padding: 35, duration: 0 });
 }
-function filter(rules?: Rule[] | Expression, s = active()) {
+function filter(rules?: Rule[] | Expression, s = filterSource()) {
     if (!s?.enabled || !s.done)
         return;
     const expression = Array.isArray(rules) ? all(rules) : rules ?? s.workspace.expression();
@@ -562,7 +569,7 @@ async function benchmark() {
         await new Promise<void>(resolve => { map.once('moveend', () => resolve()); map.easeTo({ center: [start.lng + dx, start.lat + dy], zoom: zoom + dz, duration: 2000, easing: t => t }); });
     animationActive = false;
     map.off('render', collect);
-    const metrics = active()?.metrics ?? {};
+    const metrics = filterSource()?.metrics ?? {};
     const selected = sources.filter(s => s.enabled).reduce((n, s) => n + s.selected, 0);
     metrics.panZoom = { nominalDurationMs: 6000, actualDurationMs: performance.now() - began, mapFrames: frames.length, frameMedianMs: quantile(frames, .5), frameP95Ms: quantile(frames, .95), frameMaxMs: Math.max(...frames, 0), over33ms: frames.filter(x => x > 33.34).length, rafMedianMs: quantile(raf, .5), rafP95Ms: quantile(raf, .95), pointSize: Number(value('size')), selected, renderer: gpuName() };
     benchmarkRunning = false;
@@ -572,11 +579,10 @@ async function benchmark() {
 }
 $('load').onclick = () => void load();
 $('cancel').onclick = clear;
-$('reloadSource').onclick = () => { const s = active(); if (s) { clearSource(s); loadSource(s); } };
-$('addRule').onclick = () => active()?.workspace.addRule();
-$('addChart').onclick = () => { active()?.workspace.addChart(); filter(); };
+$('addRule').onclick = () => filterSource()?.workspace.addRule();
+$('addChart').onclick = () => { const s = sources.find(s => s.id === value('chartSource')); if (s) { s.workspace.addChart(); filter(undefined, s); } };
 $('apply').onclick = () => filter();
-$('reset').onclick = () => active()?.workspace.clearFilters();
+$('reset').onclick = () => filterSource()?.workspace.clearFilters();
 $('fit').onclick = fit;
 $('benchmark').onclick = () => void benchmark();
 $('size').oninput = () => {
@@ -586,18 +592,17 @@ $('size').oninput = () => {
 };
 $<HTMLInputElement>('basemap').onchange = () => { background.enabled = $<HTMLInputElement>('basemap').checked; sourceSettings.syncBackgroundEnabled(background.enabled); applyBackground(); persist(); };
 $('export').onclick = () => { const blob = new Blob([JSON.stringify({ sources: sources.map(s => ({ id: s.id, name: s.name, enabled: s.enabled, metrics: s.metrics })) }, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wfs-map-metrics.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
-(window as any).__WFS_MAP__ = { map, get layer() { return active()?.layer; }, get metrics() { return active()?.metrics; }, get done() { return active()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get workspace() { return active()?.workspace; }, get sources() { return sources; }, switchSource: switchAnalysis, filterSource: (id: string, rules: Rule[] | Expression) => {
+(window as any).__WFS_MAP__ = { map, get layer() { return filterSource()?.layer; }, get metrics() { return filterSource()?.metrics; }, get done() { return filterSource()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get workspace() { return filterSource()?.workspace; }, get sources() { return sources; }, switchSource: switchFilters, filterSource: (id: string, rules: Rule[] | Expression) => {
         const s = sources.find(s => s.id === id);
         if (s)
             filter(rules, s);
-    }, getPoint: (index: number) => { const s = active(); s?.worker?.postMessage({ type: 'get', index, request: s.request }); } };
+    }, getPoint: (index: number) => { const s = filterSource(); s?.worker?.postMessage({ type: 'get', index, request: s.request }); } };
 renderSources();
 route();
 map.on('load', () => {
     mapReady = true;
     state();
-    if (params.get('autoload') === '1')
-        void load();
+    ensureSourcesLoaded();
 });
 function applyBackground() {
     $<HTMLInputElement>('basemap').checked = background.enabled && !!background.url;
@@ -609,32 +614,17 @@ function applyBackground() {
         map.addLayer({ id: 'osm', type: 'raster', source: 'osm', layout: { visibility: background.enabled ? 'visible' : 'none' } }, 'grid');
     }
 }
-function showColors() {
-    const s = active(), select = $<HTMLSelectElement>('colorAttribute');
-    select.replaceChildren(new Option('Source colour', ''), ...(s?.fields ?? []).map(f => new Option(f.name, f.name)));
-    select.value = s?.coloring.field ?? '';
-    $<HTMLSelectElement>('colorBins').value = String(s?.coloring.bins ?? 24);
-    $<HTMLInputElement>('colorLow').value = s?.coloring.low ?? '#2463d4';
-    $<HTMLInputElement>('colorHigh').value = s?.coloring.high ?? '#ee5539';
-    $('colorLegend').textContent = s?.colorLegend ?? '';
-    $('colorRamp').hidden = !s?.coloring.field;
-    if (s) $('colorRamp').style.background = `linear-gradient(to right,${s.coloring.low},${s.coloring.high})`;
-    for (const id of ['colorAttribute', 'colorBins', 'colorLow', 'colorHigh']) $<HTMLInputElement | HTMLSelectElement>(id).disabled = !s?.done;
+function ensureSourcesLoaded() {
+    for (const s of sources) if (s.enabled && !s.error) loadSource(s);
 }
-function applyColors(s: Source) { const request = ++s.colorRequest; if (!s.coloring.field) {
-    s.layer.setColors(undefined);
-    s.colorLegend = '';
-    return;
-} if (s.done)
-    s.worker?.postMessage({ type: 'colors', request, field: s.coloring.field, bins: s.coloring.bins }); }
-for (const id of ['colorAttribute', 'colorBins', 'colorLow', 'colorHigh'])
-    $(id).onchange = () => { const s = active(); if (!s) return; const previous = s.coloring; s.coloring = { field: value('colorAttribute'), bins: Number(value('colorBins')), low: value('colorLow'), high: value('colorHigh') }; sourceSettings.syncColoring(s); persist(); if (s.layer.colorCodes && previous.field === s.coloring.field && previous.bins === s.coloring.bins) {
-        s.layer.setPalette(s.coloring.low, s.coloring.high);
-        showColors();
+function applyColors(s: Source) {
+    const request = ++s.colorRequest;
+    if (!s.coloring.field) { s.layer.setColors(undefined); s.colorLegend = ''; }
+    else if (s.done) {
+        s.colorLegend = 'Updating colours…';
+        s.worker?.postMessage({ type: 'colors', request, field: s.coloring.field, bins: s.coloring.bins });
     }
-    else
-        applyColors(s); };
-showColors();
+}
 const mapCanvas = map.getCanvas(), geoBox = document.createElement('div');
 geoBox.className = 'geo-box';
 geoBox.hidden = true;
