@@ -7,7 +7,8 @@ export type SavedSource = {
     coloring?: { field: string; bins: number; low: string; high: string; categories?: Record<string, Record<string, string>> };
 };
 export type Background = { url: string; attribution: string; enabled: boolean };
-export type Settings = { sources: SavedSource[]; background: Background };
+export type MapSettings = { center: [number, number]; zoom: number; pointSize: number };
+export type Settings = { sources: SavedSource[]; background: Background; map?: MapSettings };
 export const settingsKey = 'wfs-settings';
 const defaultBackground: Background = { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap contributors', enabled: false };
 // Old fixture settings become ordinary endpoint query parameters. Other servers
@@ -38,7 +39,9 @@ export function readSettings(): Settings {
             if (legacy && typeof legacy.url === 'string') candidates = [{ name: 'WFS source', enabled: true, config: legacy }];
         }
         const sources = candidates.map(migrateSource).filter((s): s is SavedSource => !!s).slice(0, 8);
-        return { sources, background: { ...defaultBackground, ...oldBackground } };
+        let map: MapSettings | undefined;
+        try { if (saved?.map) { validateMapSettings(saved.map); map = saved.map; } } catch { }
+        return { sources, background: { ...defaultBackground, ...oldBackground }, ...(map ? { map } : {}) };
     } catch { return empty; }
 }
 export function validateConfig(config: Config) {
@@ -62,6 +65,12 @@ export function validateBackground(background: Background) {
     const url = new URL(background.url, location.href);
     if (!['http:', 'https:'].includes(url.protocol) || !['{z}', '{x}', '{y}'].every(token => background.url.includes(token))) throw Error('Use an HTTP(S) XYZ tile URL with {z}, {x}, and {y}, or leave it empty.');
 }
+export function validateMapSettings(map: MapSettings) {
+    if (!map || !Array.isArray(map.center) || map.center.length !== 2 || !map.center.every(Number.isFinite)
+        || Math.abs(map.center[0]) > 180 || Math.abs(map.center[1]) > 85.051129
+        || !Number.isFinite(map.zoom) || map.zoom < 1 || map.zoom > 22
+        || !Number.isFinite(map.pointSize) || map.pointSize < 1 || map.pointSize > 8) throw Error('Invalid map view or point size.');
+}
 
 // File references identify immutable CSV contents without comparing megabytes.
 export function configIdentity(config: Config) {
@@ -70,4 +79,3 @@ export function configIdentity(config: Config) {
 export function settingsMetadata(settings: Settings): Settings {
     return { ...settings, sources: settings.sources.map(s => ({ ...s, config: { ...s.config, csvText: '' } })) };
 }
-

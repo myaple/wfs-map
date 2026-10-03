@@ -73,7 +73,7 @@ test('labeled chart settings expose only relevant controls and use one scatter b
 });
 test('basemap template and attribution persist and use local tiles', async ({ page }) => {
     const requests: string[] = [];
-    await page.route('**/tiles/**', route => { requests.push(route.request().url()); return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64') }); });
+    await page.route('**/tiles/**', route => { requests.push(route.request().url()); return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=', 'base64') }); });
     await ready(page);
     await page.locator('#configLink').click();
     await page.locator('#backgroundSettings summary').click();

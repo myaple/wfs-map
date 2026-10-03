@@ -9,7 +9,7 @@ import { Workspace } from './workspace.ts';
 import { all, type Expression } from './analysis.ts';
 import { PointColors } from './point-colors.ts';
 import { DataSources } from './data-sources.ts';
-import { configIdentity, defaultConfig, readSettings, settingsKey, type Config, type Settings, type SavedSource } from './source-settings.ts';
+import { configIdentity, defaultConfig, readSettings, settingsKey, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
 import { queryFilter, timeBounds, validateTime, type QueryBounds, type QueryFields } from './wfs-query.ts';
 import './style.css';
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
@@ -72,6 +72,9 @@ const colors: [
 ][] = [[.02, .45, .68], [.83, .39, .17], [.5, .31, .71], [.05, .59, .42], [.75, .24, .43], [.35, .4, .55], [.57, .52, .15], [.1, .6, .65]];
 const settings = readSettings();
 let background = settings.background;
+let mapSettings: MapSettings = settings.map ?? { center: [-3, 54], zoom: 5, pointSize: 2 };
+let preserveMapView = !!settings.map;
+$<HTMLInputElement>('size').value = String(mapSettings.pointSize);
 const sources: Source[] = [];
 let queryBounds: QueryBounds = params.get('time') === 'all' ? {} : { time: timeBounds(24) };
 let filterSourceId = '', popup: maplibregl.Popup | undefined, benchmarkRunning = false, mapReady = false, loadSlots = 0;
@@ -110,7 +113,7 @@ if (!settings.sources.length && (params.has('points') || params.has('url'))) {
 for (const [i, source] of settings.sources.entries()) createSource(source, i === 0);
 filterSourceId = filterSource()?.id ?? '';
 function snapshot(): Settings {
-    return { sources: sources.map(({ id, name, enabled, color, config, coloring }) => ({ id, name, enabled, color, config, coloring })), background: { ...background } };
+    return { sources: sources.map(({ id, name, enabled, color, config, coloring }) => ({ id, name, enabled, color, config, coloring })), background: { ...background }, map: structuredClone(mapSettings) };
 }
 function persist() {
     try { localStorage.setItem(settingsKey, JSON.stringify(snapshot())); }
@@ -145,8 +148,8 @@ const pointColors = new PointColors(() => sources, (source, previous) => {
     else applyColors(s);
     map.triggerRepaint();
 });
-function applySettings(next: Settings) {
-    for (const s of [...sources]) if (!next.sources.some(n => n.id === s.id)) {
+function applySettings(next: Settings, restore = false) {
+    for (const s of [...sources]) if (restore || !next.sources.some(n => n.id === s.id)) {
         clearSource(s); s.workspace.reset(); sources.splice(sources.indexOf(s), 1);
     }
     const load: Source[] = [];
@@ -161,6 +164,13 @@ function applySettings(next: Settings) {
         }
     }
     background = { ...next.background };
+    if (next.map) {
+        mapSettings = structuredClone(next.map);
+        if (restore) preserveMapView = true;
+        $<HTMLInputElement>('size').value = String(mapSettings.pointSize);
+        for (const s of sources) s.layer.pointSize = mapSettings.pointSize;
+        map.jumpTo({ center: mapSettings.center, zoom: mapSettings.zoom });
+    }
     applyBackground();
     if (!sources.length) {
         $('charts').replaceChildren();
@@ -209,7 +219,16 @@ for (let y = -80; y <= 80; y += 10)
     gridFeatures.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[-180, y], [180, y]] } });
 $<HTMLInputElement>('basemap').checked = background.enabled && !!background.url;
 const style: StyleSpecification = { version: 8, sources: { grid: { type: 'geojson', data: { type: 'FeatureCollection', features: gridFeatures } }, osm: { type: 'raster', tiles: background.url ? [background.url] : [], tileSize: 256, attribution: background.attribution, maxzoom: 19 } }, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#e8eff3' } }, { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: background.enabled && background.url ? 'visible' : 'none' } }, { id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': '#b5c7d1', 'line-width': .5 } }] };
-const map = new maplibregl.Map({ container: 'map', style, center: [-3, 54], zoom: 5, maxZoom: 22, minZoom: 1, maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false, renderWorldCopies: false, pixelRatio: Math.min(devicePixelRatio, 2), canvasContextAttributes: { antialias: false }, attributionControl: { compact: true } });
+const map = new maplibregl.Map({ container: 'map', style, center: mapSettings.center, zoom: mapSettings.zoom, maxZoom: 22, minZoom: 1, maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false, renderWorldCopies: false, pixelRatio: Math.min(devicePixelRatio, 2), canvasContextAttributes: { antialias: false }, attributionControl: { compact: true } });
+function rememberMap() {
+    const center = map.getCenter().wrap();
+    mapSettings = { center: [center.lng, center.lat], zoom: map.getZoom(), pointSize: Number(value('size')) };
+    sourceSettings.syncMap(mapSettings);
+    // Layout/initial camera events also emit moveend. Keep a first visit and
+    // unsaved source drafts unpersisted until the user explicitly saves them.
+    if (localStorage.getItem(settingsKey) !== null) persist();
+}
+map.on('moveend', rememberMap);
 map.touchZoomRotate.disableRotation();
 map.keyboard.disableRotation();
 map.doubleClickZoom.disable();
@@ -445,7 +464,7 @@ async function performLoad(s: Source) {
                     s.metrics.readyMs = performance.now() - began;
                     s.metrics.gpuBytes = s.layer.gpuBytes;
                     s.status = `${s.loaded.toLocaleString()} points loaded in ${(m.elapsedMs / 1000).toFixed(1)} s.${m.truncated ? ' LIMIT REACHED: dataset is incomplete.' : ''}${m.warning ? '\n' + m.warning : ''}`;
-                    if (!bounds.bbox) fit();
+                    if (!bounds.bbox && !preserveMapView) fit();
                     filter(undefined, s);
                     applyColors(s);
                     resolve();
@@ -621,6 +640,7 @@ $('size').oninput = () => {
     for (const s of sources)
         s.layer.pointSize = Number(value('size'));
     map.triggerRepaint();
+    rememberMap();
 };
 $<HTMLInputElement>('basemap').onchange = () => { background.enabled = $<HTMLInputElement>('basemap').checked; sourceSettings.syncBackgroundEnabled(background.enabled); applyBackground(); persist(); };
 function download(blob: Blob, filename: string) {

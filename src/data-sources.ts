@@ -1,7 +1,8 @@
 import { readCSVText, saveSettings } from './source-storage.ts';
 import { parseCSV } from './csv.ts';
+import { createBackup, readBackup } from './source-backup.ts';
 import { wfsURL, xmlDocument } from './data.ts';
-import { configKeys, defaultConfig, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource } from './source-settings.ts';
+import { configKeys, defaultConfig, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const input = (id: string) => $<HTMLInputElement>(id);
 export class DataSources {
@@ -16,7 +17,9 @@ export class DataSources {
     private fileName = '';
     private fileRevision = 0;
     private removed?: { source: SavedSource; index: number };
-    constructor(settings: Settings, private apply: (settings: Settings) => void) {
+    private backupBusy = false;
+    private pendingBackup?: Settings;
+    constructor(settings: Settings, private apply: (settings: Settings, restore?: boolean) => void) {
         this.draft = structuredClone(settings);
         this.saved = structuredClone(settings);
         $('configuration').innerHTML = `
@@ -24,9 +27,11 @@ export class DataSources {
           <div class="sources-heading"><div><h2>Data sources</h2><p class="hint">Connect WFS servers or import CSV points to explore on the map.</p></div><button id="addSource" class="primary">+ Add data source</button></div>
           <section class="settings-card" aria-labelledby="sourcesTitle"><div class="settings-card-head"><h3 id="sourcesTitle">Your data sources</h3><span id="sourceCount" class="hint"></span></div><p class="hint">Enable a source to load it after saving. Configure opens its connection settings.</p><ul id="sourceList" class="source-list"></ul><div id="sourceUndo" hidden><span id="removedName"></span> <button id="undoRemove">Undo remove</button></div></section>
           <details class="settings-card" id="backgroundSettings"><summary>Map background</summary><div class="settings-fields"><label for="basemapURL">Raster basemap tile URL</label><input id="basemapURL" placeholder="https://…/{z}/{x}/{y}.png"><label for="basemapAttribution">Basemap attribution</label><input id="basemapAttribution"><p class="hint">XYZ raster tiles. Leave the URL empty to use the offline grid.</p></div></details>
+          <section class="settings-card" aria-labelledby="backupTitle"><h3 id="backupTitle">Backup &amp; share</h3><p class="hint">Download the current list, including unsaved changes and disabled sources, as a .tar.gz. Includes complete CSV files, WFS connection settings, source colours, and map background, view and point size. WFS features are fetched again when loaded.</p><div class="row"><button id="exportBackup">Download backup</button><button id="importBackup">Import backup</button><input id="backupFile" type="file" accept=".tar.gz,.tgz,application/gzip" hidden aria-label="Choose backup archive"></div><p id="backupStatus" class="hint" role="status"></p><p id="backupError" class="error" role="alert" hidden></p></section>
           <details class="settings-card" id="testServer"><summary>Optional test WFS server</summary><p class="hint">Start a local server with generated points to try the app. Add its endpoint using the same connection settings as any WFS source.</p><div class="test-fields"><div><label for="points">Generated point count</label><input id="points" type="number" min="1" max="50000000" value="1000000" required></div><div><label for="distribution">Point distribution</label><select id="distribution"><option value="uk">UK spread</option><option value="world">Worldwide</option><option value="dense">Dense 2 km square</option></select></div></div><div class="row"><button id="startTestServer">Start test server</button><button id="addTestSource" disabled>Add as data source</button></div><p id="testServerStatus" class="hint" role="status">Requires the app’s Node server. The test endpoint stays running until that server restarts.</p><label for="testEndpoint" hidden id="testEndpointLabel">Test WFS endpoint</label><input id="testEndpoint" readonly hidden></details>
           <div class="settings-save"><div><strong id="saveState" role="status">All changes saved</strong><p class="hint">Save applies changes and keeps them in this browser for your next visit.</p><p id="saveError" class="error" role="alert" hidden></p></div><div class="row"><button id="discardSettings" disabled>Discard changes</button><button id="saveSettings" class="primary" disabled>Save changes</button></div></div>
         </div>
+        <dialog id="backupDialog" class="source-dialog backup-dialog" aria-labelledby="backupDialogTitle"><h2 id="backupDialogTitle">Restore backup</h2><p>This replaces your current source list and map settings, including unsaved changes. Dataset filters and charts are reset. CSV files will be saved in this browser.</p><p id="backupSummary"></p><ul id="backupSources"></ul><p id="restoreError" class="error" role="alert" hidden></p><div class="row"><button id="cancelBackup">Cancel</button><button id="restoreBackup" class="primary">Replace sources &amp; restore</button></div></dialog>
         <dialog id="sourceDialog" class="source-dialog" aria-labelledby="sourceDialogTitle"><form id="sourceForm"><div class="source-dialog-head"><div><h2 id="sourceDialogTitle">Add data source</h2><p class="hint">Choose a source type and configure its dataset.</p></div><button id="closeSource" type="button" aria-label="Close source settings">×</button></div><div class="settings-fields">
           <label for="sourceName">Source name</label><input id="sourceName" required maxlength="120" placeholder="e.g. Weather stations">
           <label for="type">Source type</label><select id="type"><option value="wfs">WFS server</option><option value="csv">CSV file</option></select>
@@ -59,6 +64,12 @@ export class DataSources {
         $('geometryMode').onchange = () => this.showGeometry();
         $('delimiter').onchange = () => { try { this.csvColumns(); } catch (e) { this.showError(e); } };
         $('csvFile').onchange = () => void this.readCSV();
+        $('exportBackup').onclick = () => void this.exportBackup();
+        $('importBackup').onclick = () => input('backupFile').click();
+        $('backupFile').onchange = () => void this.importBackup();
+        $('cancelBackup').onclick = () => this.cancelBackup();
+        $<HTMLDialogElement>('backupDialog').addEventListener('cancel', e => { e.preventDefault(); this.cancelBackup(); });
+        $('restoreBackup').onclick = () => void this.restoreBackup();
         input('basemapURL').value = settings.background.url;
         input('basemapAttribution').value = settings.background.attribution;
         for (const id of ['basemapURL', 'basemapAttribution']) $(id).oninput = () => {
@@ -94,6 +105,59 @@ export class DataSources {
         this.updateState();
     }
     syncBackgroundEnabled(enabled: boolean) { this.saved.background.enabled = this.draft.background.enabled = enabled; }
+    syncMap(map: MapSettings) { this.saved.map = structuredClone(map); this.draft.map = structuredClone(map); }
+    private setBackupBusy(busy: boolean) {
+        this.backupBusy = busy;
+        document.querySelector<HTMLElement>('.sources-page')!.inert = busy;
+        for (const id of ['restoreBackup', 'cancelBackup']) $<HTMLButtonElement>(id).disabled = busy;
+    }
+    private async exportBackup() {
+        if (this.backupBusy || this.saving) return;
+        this.setBackupBusy(true); $('backupError').hidden = true; $('backupStatus').textContent = 'Preparing complete backup…';
+        try {
+            const blob = await createBackup(this.draft, readCSVText);
+            const link = document.createElement('a'), url = URL.createObjectURL(blob);
+            link.href = url; link.download = `wfs-map-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.tar.gz`; link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            $('backupStatus').textContent = 'Backup downloaded.';
+        } catch (e) { this.backupError('Could not export backup', e); }
+        finally { this.setBackupBusy(false); }
+    }
+    private backupError(prefix: string, e: unknown) {
+        $('backupStatus').textContent = '';
+        $('backupError').textContent = `${prefix}: ${(e as Error).message}`; $('backupError').hidden = false;
+    }
+    private async importBackup() {
+        const file = input('backupFile').files?.[0]; input('backupFile').value = '';
+        if (!file || this.backupBusy || this.saving) return;
+        this.setBackupBusy(true); $('backupError').hidden = true; $('backupStatus').textContent = 'Checking backup…';
+        try {
+            this.pendingBackup = await readBackup(file);
+            const sources = this.pendingBackup.sources, csv = sources.filter(s => s.config.type === 'csv').length;
+            $('backupSummary').textContent = `${sources.length} sources: ${csv} CSV files and ${sources.length - csv} WFS connections.`;
+            $('backupSources').replaceChildren(...sources.map(s => { const item = document.createElement('li'); item.textContent = `${s.name} (${s.config.type.toUpperCase()}, ${s.enabled ? 'enabled' : 'disabled'})`; return item; }));
+            $('restoreError').hidden = true; $('backupStatus').textContent = '';
+            $<HTMLDialogElement>('backupDialog').showModal();
+        } catch (e) { this.pendingBackup = undefined; this.backupError('Could not import backup', e); }
+        finally { this.setBackupBusy(false); }
+    }
+    private cancelBackup() {
+        if (this.backupBusy) return;
+        this.pendingBackup = undefined; $<HTMLDialogElement>('backupDialog').close();
+    }
+    private async restoreBackup() {
+        if (!this.pendingBackup || this.backupBusy || this.saving) return;
+        this.setBackupBusy(true); $('restoreError').hidden = true;
+        try {
+            const saved = await saveSettings(this.pendingBackup);
+            this.saved = structuredClone(saved); this.draft = structuredClone(saved); this.removed = undefined;
+            this.pendingBackup = undefined; this.csvText = '';
+            input('basemapURL').value = saved.background.url; input('basemapAttribution').value = saved.background.attribution;
+            this.apply(structuredClone(saved), true); this.render();
+            $<HTMLDialogElement>('backupDialog').close(); $('backupStatus').textContent = 'Backup restored and saved in this browser.';
+        } catch (e) { $('restoreError').textContent = `Could not restore backup: ${(e as Error).message}`; $('restoreError').hidden = false; }
+        finally { this.setBackupBusy(false); }
+    }
     private updateState() {
         const dirty = JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved));
         $('saveState').textContent = dirty ? 'Unsaved changes' : 'All changes saved';

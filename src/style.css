@@ -545,6 +545,10 @@ button.danger { color: #a23129; }
 .source-dialog { width: min(580px,calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: 0; border: 0; border-radius: 12px; color: #233f50; }
 .source-dialog::backdrop { background: #132c4688; }
 .source-dialog form { padding: 24px; }
+.backup-dialog { padding: 24px; }
+.backup-dialog h2 { font-size: 20px; }
+.backup-dialog .row { flex-wrap: wrap; }
+.backup-dialog li { overflow-wrap: anywhere; }
 .source-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .source-dialog-head h2 { font-size: 20px; }
 .source-dialog-head p { margin: 6px 0 0; }
