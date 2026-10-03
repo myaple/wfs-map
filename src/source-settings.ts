@@ -1,6 +1,6 @@
-export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField'] as const;
+export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField'] as const;
 export type Config = Record<typeof configKeys[number], string>;
-export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '' };
+export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '' };
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
@@ -41,6 +41,13 @@ export function readSettings(): Settings {
     } catch { return empty; }
 }
 export function validateConfig(config: Config) {
+    if (config.type === 'csv') {
+        if (!config.csvText.trim()) throw Error('Choose a CSV file.');
+        if (!['xy', 'wkt', 'geojson'].includes(config.geometryMode)) throw Error('Choose a CSV geometry format.');
+        if (config.geometryMode === 'xy' ? !config.longitudeField || !config.latitudeField : !config.geometryField) throw Error('Choose the CSV geometry columns.');
+        return;
+    }
+    if (config.type !== 'wfs') throw Error('Choose WFS or CSV as the source type.');
     const url = new URL(config.url, location.href);
     if (!config.url.trim() || !['http:', 'https:'].includes(url.protocol)) throw Error('Enter an HTTP(S) WFS endpoint or a relative URL.');
     if (!config.layer.trim()) throw Error('Enter a feature type or discover the server’s layers.');

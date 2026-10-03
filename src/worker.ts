@@ -1,3 +1,6 @@
+import { csvDataset } from './csv.ts';
+import type { Config as SourceConfig } from './source-settings.ts';
+import type { QueryBounds } from './wfs-query.ts';
 import { Analyzer, all } from './analysis.ts';
 import { decodePage, countFrom, inferFields, packPositions, spatialPage, wfsURL, type Field, type Rule } from './data.ts';
 import { Store } from './store.ts';
@@ -109,8 +112,28 @@ async function load(c: Config) {
     post({ type: 'done', loaded, total, bounds: store?.bounds, pages, bytes, parseMs, elapsedMs: performance.now() - start,
         truncated: total !== undefined ? loaded < total : loaded === c.limit, warning: warning + (loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '') });
 }
+async function loadCSV(config: SourceConfig, bounds: QueryBounds) {
+    const start = performance.now();
+    const dataset = csvDataset(config, bounds), total = dataset.features.length;
+    store = new Store(dataset.fields);
+    post({ type: 'init', capacity: total, total });
+    post({ type: 'fields', fields: store.fields });
+    let pages = 0;
+    for (let offset = 0; offset < total; offset += 50000) {
+        const features = dataset.features.slice(offset, offset + 50000);
+        const positions = packPositions(features), spatial = spatialPage(positions, offset);
+        store.append(features); pages++;
+        post({ type: 'chunk', offset, positions, ...spatial }, [positions.buffer, spatial.indices.buffer, spatial.groups.buffer]);
+        post({ type: 'progress', loaded: offset + features.length, total, pages, elapsedMs: performance.now() - start });
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    store.finish(); analyzer = new Analyzer(store);
+    post({ type: 'done', loaded: total, total, bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false });
+}
 ctx.onmessage = (event: MessageEvent) => {
     const m = event.data;
+    if (m.type === 'loadCSV')
+        void loadCSV(m.config, m.bounds).catch(e => post({ type: 'error', message: (e as Error).message }));
     if (m.type === 'load')
         void load(m.config).catch(e => post({ type: 'error', message: (e as Error).message }));
     if (m.type === 'get') {
