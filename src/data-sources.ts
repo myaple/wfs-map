@@ -149,7 +149,7 @@ export class DataSources {
         this.stopDiscovery(); const controller = new AbortController(); this.discovery = controller;
         const config = this.config();
         $('discoveryStatus').textContent = 'Reading available layers…'; $<HTMLButtonElement>('discover').disabled = true;
-        const timeout = setTimeout(() => controller.abort(), 15000);
+        const timeout = setTimeout(() => controller.abort(), 45000);
         try {
             const url = new URL(config.url, location.href);
             if (!config.url || !['http:', 'https:'].includes(url.protocol)) throw Error('Enter an HTTP(S) WFS endpoint first.');
@@ -162,7 +162,19 @@ export class DataSources {
             if (controller.signal.aborted) return;
             $('discoveredLayers').replaceChildren(...types.map(name => new Option(name, name)));
             if (!types.includes(input('layer').value)) input('layer').value = types[0];
-            $('discoveryStatus').textContent = `${types.length} layer(s) found. Choose a feature type above.`;
+            // deegree advertises outputFormat globally; GeoServer usually puts
+            // it on GetFeature. Per-layer formats take precedence over both.
+            const featureType = [...doc.getElementsByTagNameNS('*', 'FeatureType')].find(el => el.getElementsByTagNameNS('*', 'Name')[0]?.textContent === input('layer').value);
+            const layerFormats = [...(featureType?.getElementsByTagNameNS('*', 'OutputFormats') ?? [])].flatMap(el => [...el.getElementsByTagNameNS('*', 'Format')].map(v => v.textContent?.trim() ?? ''));
+            const parameters = [...doc.getElementsByTagNameNS('*', 'Parameter')].filter(el => el.getAttribute('name') === 'outputFormat' && (el.parentElement?.localName === 'OperationsMetadata' || el.parentElement?.getAttribute('name') === 'GetFeature'));
+            const formats = layerFormats.length ? layerFormats : parameters.flatMap(el => [...el.getElementsByTagNameNS('*', 'Value')].map(v => v.textContent?.trim() ?? ''));
+            const json = formats.find(f => /^application\/(?:geo\+)?json$/i.test(f)) ?? formats.find(f => /^json$/i.test(f));
+            let formatNotice = '';
+            if (formats.length && !formats.includes(input('format').value) && json) {
+                input('format').value = json;
+                formatNotice = ` Output format set to ${json}.`;
+            }
+            $('discoveryStatus').textContent = `${types.length} layer(s) found. Choose a feature type above.${formatNotice}`;
         } catch (e) { if (this.discovery === controller && $<HTMLDialogElement>('sourceDialog').open) $('discoveryStatus').textContent = `Discovery failed: ${(e as Error).message}. You can enter a feature type manually.`; }
         finally { clearTimeout(timeout); if (this.discovery === controller) { $<HTMLButtonElement>('discover').disabled = false; this.discovery = undefined; } }
     }

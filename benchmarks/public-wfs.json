@@ -1,0 +1,2298 @@
+{
+  "checkedAt": "2026-10-02T21:15:36.161Z",
+  "requestsAreLive": true,
+  "rendering": "Chromium SwiftShader",
+  "transport": {
+    "proxy": true,
+    "ignoreHTTPSErrors": true
+  },
+  "cases": [
+    {
+      "service": "Hamburg street trees",
+      "endpoint": "https://geodienste.hamburg.de/HH_WFS_Strassenbaumkataster",
+      "layer": "de.hh.up:strassenbaumkataster",
+      "version": "2.0.0",
+      "format": "auto",
+      "pass": true,
+      "discovery": "1 layer(s) found. Choose a feature type above. Output format set to application/geo+json.",
+      "initial": {
+        "loaded": 250,
+        "error": false,
+        "status": "250 points loaded in 4.9 s. LIMIT REACHED: dataset is incomplete.",
+        "fields": [
+          {
+            "name": "baumid",
+            "kind": "number"
+          },
+          {
+            "name": "baumnummer",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_latein",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "art",
+            "kind": "string"
+          },
+          {
+            "name": "art_latein",
+            "kind": "string"
+          },
+          {
+            "name": "art_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "sorte",
+            "kind": "string"
+          },
+          {
+            "name": "sorte_latein",
+            "kind": "string"
+          },
+          {
+            "name": "sorte_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "number"
+          },
+          {
+            "name": "kronendurchmesser",
+            "kind": "number"
+          },
+          {
+            "name": "kronendurchmesser_z",
+            "kind": "string"
+          },
+          {
+            "name": "stammumfang",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfang_z",
+            "kind": "string"
+          },
+          {
+            "name": "strasse",
+            "kind": "string"
+          },
+          {
+            "name": "hausnummer",
+            "kind": "string"
+          },
+          {
+            "name": "ortsteil_nr",
+            "kind": "number"
+          },
+          {
+            "name": "stadtteil",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          },
+          {
+            "name": "daten_aus_vorjahr",
+            "kind": "number"
+          }
+        ],
+        "metrics": {
+          "sourceId": "cff6d0b7-0b85-4744-aaab-96b11a7d41d7",
+          "sourceName": "Hamburg street trees",
+          "startedAt": "2026-10-02T21:15:58.354Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {},
+          "viewport": {
+            "width": 400,
+            "height": 300
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 2239.89999999851,
+          "loaded": 250,
+          "total": 229876,
+          "pages": 3,
+          "bytes": 300900,
+          "parseMs": 8.200000002980232,
+          "elapsedMs": 4863.300000000745,
+          "bounds": [
+            9.84412515114738,
+            53.52104422956445,
+            9.858400631007523,
+            53.53659297009152
+          ],
+          "truncated": true,
+          "warning": "",
+          "readyMs": 4877.89999999851,
+          "gpuBytes": 5000,
+          "lastFilterMs": 2.099999997764826,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 24,
+              "plotted": 250,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 576,
+              "plotted": 250,
+              "missing": 0
+            }
+          ],
+          "filterCount": 250
+        }
+      },
+      "pagingMatchesIndependentQuery": true,
+      "localFilter": {
+        "field": "baumnummer",
+        "matched": 1,
+        "noServerRequests": true
+      },
+      "timelessSourceRejectsTimeBounds": true,
+      "area": {
+        "loaded": 6,
+        "error": false,
+        "status": "6 points loaded in 1.9 s.",
+        "fields": [
+          {
+            "name": "baumid",
+            "kind": "number"
+          },
+          {
+            "name": "baumnummer",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_latein",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "art",
+            "kind": "string"
+          },
+          {
+            "name": "art_latein",
+            "kind": "string"
+          },
+          {
+            "name": "art_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "sorte",
+            "kind": "string"
+          },
+          {
+            "name": "sorte_latein",
+            "kind": "string"
+          },
+          {
+            "name": "sorte_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "number"
+          },
+          {
+            "name": "kronendurchmesser",
+            "kind": "number"
+          },
+          {
+            "name": "kronendurchmesser_z",
+            "kind": "string"
+          },
+          {
+            "name": "stammumfang",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfang_z",
+            "kind": "string"
+          },
+          {
+            "name": "strasse",
+            "kind": "string"
+          },
+          {
+            "name": "hausnummer",
+            "kind": "string"
+          },
+          {
+            "name": "ortsteil_nr",
+            "kind": "number"
+          },
+          {
+            "name": "stadtteil",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          },
+          {
+            "name": "daten_aus_vorjahr",
+            "kind": "number"
+          }
+        ],
+        "metrics": {
+          "sourceId": "cff6d0b7-0b85-4744-aaab-96b11a7d41d7",
+          "sourceName": "Hamburg street trees",
+          "startedAt": "2026-10-02T21:16:23.088Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {
+            "bbox": {
+              "west": 9.845986849166735,
+              "east": 9.846591150825873,
+              "south": 53.52532092961846,
+              "north": 53.5256270698292
+            }
+          },
+          "viewport": {
+            "width": 751,
+            "height": 640
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1864.5,
+          "loaded": 6,
+          "total": 6,
+          "pages": 1,
+          "bytes": 7151,
+          "parseMs": 1.5,
+          "elapsedMs": 1853.0999999977648,
+          "bounds": [
+            9.846132739552083,
+            53.52533692429834,
+            9.846391958321144,
+            53.525585512832194
+          ],
+          "truncated": false,
+          "warning": "",
+          "readyMs": 1864.6000000014901,
+          "gpuBytes": 120,
+          "lastFilterMs": 1.300000000745058,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 6,
+              "plotted": 6,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 576,
+              "plotted": 6,
+              "missing": 0
+            }
+          ],
+          "filterCount": 6
+        }
+      },
+      "outsideGeographicBox": [],
+      "nativeCRSEnvelopeBroadening": 0,
+      "bboxMatchesIndependentQuery": true,
+      "bbox": {
+        "west": 9.845986849166735,
+        "east": 9.846591150825873,
+        "south": 53.52532092961846,
+        "north": 53.5256270698292
+      }
+    },
+    {
+      "service": "Hamburg street trees",
+      "endpoint": "https://geodienste.hamburg.de/HH_WFS_Strassenbaumkataster",
+      "layer": "de.hh.up:strassenbaumkataster",
+      "version": "2.0.0",
+      "format": "application/gml+xml; version=3.2",
+      "pass": true,
+      "discovery": "1 layer(s) found. Choose a feature type above. Output format set to application/geo+json.",
+      "initial": {
+        "loaded": 250,
+        "error": false,
+        "status": "250 points loaded in 4.6 s. LIMIT REACHED: dataset is incomplete.",
+        "fields": [
+          {
+            "name": "baumid",
+            "kind": "number"
+          },
+          {
+            "name": "baumnummer",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_latein",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "art",
+            "kind": "string"
+          },
+          {
+            "name": "art_latein",
+            "kind": "string"
+          },
+          {
+            "name": "art_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "sorte",
+            "kind": "string"
+          },
+          {
+            "name": "sorte_latein",
+            "kind": "string"
+          },
+          {
+            "name": "sorte_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "number"
+          },
+          {
+            "name": "kronendurchmesser",
+            "kind": "number"
+          },
+          {
+            "name": "kronendurchmesser_z",
+            "kind": "string"
+          },
+          {
+            "name": "stammumfang",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfang_z",
+            "kind": "string"
+          },
+          {
+            "name": "strasse",
+            "kind": "string"
+          },
+          {
+            "name": "hausnummer",
+            "kind": "string"
+          },
+          {
+            "name": "ortsteil_nr",
+            "kind": "number"
+          },
+          {
+            "name": "stadtteil",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          },
+          {
+            "name": "daten_aus_vorjahr",
+            "kind": "number"
+          }
+        ],
+        "metrics": {
+          "sourceId": "37e42fba-f5c4-4169-85be-0742598620c9",
+          "sourceName": "Hamburg street trees",
+          "startedAt": "2026-10-02T21:17:03.946Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {},
+          "viewport": {
+            "width": 400,
+            "height": 300
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 2174.699999999255,
+          "loaded": 250,
+          "total": 229876,
+          "pages": 3,
+          "bytes": 537701,
+          "parseMs": 127.39999999850988,
+          "elapsedMs": 4557.699999999255,
+          "bounds": [
+            9.844125,
+            53.521044,
+            9.858401,
+            53.536593
+          ],
+          "truncated": true,
+          "warning": "",
+          "readyMs": 4575,
+          "gpuBytes": 5000,
+          "lastFilterMs": 8.400000002235174,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 24,
+              "plotted": 250,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 576,
+              "plotted": 250,
+              "missing": 0
+            }
+          ],
+          "filterCount": 250
+        }
+      },
+      "pagingMatchesIndependentQuery": true,
+      "localFilter": {
+        "field": "baumnummer",
+        "matched": 1,
+        "noServerRequests": true
+      },
+      "timelessSourceRejectsTimeBounds": true,
+      "area": {
+        "loaded": 6,
+        "error": false,
+        "status": "6 points loaded in 1.8 s.",
+        "fields": [
+          {
+            "name": "baumid",
+            "kind": "number"
+          },
+          {
+            "name": "baumnummer",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_latein",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "art",
+            "kind": "string"
+          },
+          {
+            "name": "art_latein",
+            "kind": "string"
+          },
+          {
+            "name": "art_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "sorte",
+            "kind": "string"
+          },
+          {
+            "name": "sorte_latein",
+            "kind": "string"
+          },
+          {
+            "name": "sorte_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "number"
+          },
+          {
+            "name": "kronendurchmesser",
+            "kind": "number"
+          },
+          {
+            "name": "kronendurchmesser_z",
+            "kind": "string"
+          },
+          {
+            "name": "stammumfang",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfang_z",
+            "kind": "string"
+          },
+          {
+            "name": "strasse",
+            "kind": "string"
+          },
+          {
+            "name": "hausnummer",
+            "kind": "string"
+          },
+          {
+            "name": "ortsteil_nr",
+            "kind": "number"
+          },
+          {
+            "name": "stadtteil",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          },
+          {
+            "name": "daten_aus_vorjahr",
+            "kind": "number"
+          }
+        ],
+        "metrics": {
+          "sourceId": "37e42fba-f5c4-4169-85be-0742598620c9",
+          "sourceName": "Hamburg street trees",
+          "startedAt": "2026-10-02T21:17:28.353Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {
+            "bbox": {
+              "west": 9.845986849166735,
+              "east": 9.846591150825873,
+              "south": 53.52532092961846,
+              "north": 53.5256270698292
+            }
+          },
+          "viewport": {
+            "width": 751,
+            "height": 640
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1793.0999999977648,
+          "loaded": 6,
+          "total": 6,
+          "pages": 1,
+          "bytes": 13813,
+          "parseMs": 7.600000001490116,
+          "elapsedMs": 1763.699999999255,
+          "bounds": [
+            9.846133,
+            53.525337,
+            9.846392,
+            53.525586
+          ],
+          "truncated": false,
+          "warning": "",
+          "readyMs": 1793.5,
+          "gpuBytes": 120,
+          "lastFilterMs": 1.4000000022351742,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 6,
+              "plotted": 6,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 576,
+              "plotted": 6,
+              "missing": 0
+            }
+          ],
+          "filterCount": 6
+        }
+      },
+      "outsideGeographicBox": [],
+      "nativeCRSEnvelopeBroadening": 0,
+      "bboxMatchesIndependentQuery": true,
+      "bbox": {
+        "west": 9.845986849166735,
+        "east": 9.846591150825873,
+        "south": 53.52532092961846,
+        "north": 53.5256270698292
+      }
+    },
+    {
+      "service": "Berlin street trees",
+      "endpoint": "https://gdi.berlin.de/services/wfs/baumbestand",
+      "layer": "baumbestand:strassenbaeume",
+      "version": "2.0.0",
+      "format": "auto",
+      "pass": true,
+      "discovery": "2 layer(s) found. Choose a feature type above.",
+      "initial": {
+        "loaded": 250,
+        "error": false,
+        "status": "250 points loaded in 3.5 s. LIMIT REACHED: dataset is incomplete.",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "e99bba26-1d9d-4683-ad65-a91aee501449",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:18:02.981Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {},
+          "viewport": {
+            "width": 400,
+            "height": 300
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1692.699999999255,
+          "loaded": 250,
+          "total": 434765,
+          "pages": 3,
+          "bytes": 175185,
+          "parseMs": 9.899999998509884,
+          "elapsedMs": 3510.5,
+          "bounds": [
+            13.42752822,
+            52.42318582,
+            13.48209256,
+            52.49174723
+          ],
+          "truncated": true,
+          "warning": "",
+          "readyMs": 3522.5,
+          "gpuBytes": 5000,
+          "lastFilterMs": 2.100000001490116,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 24,
+              "plotted": 250,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 45,
+              "missing": 205
+            }
+          ],
+          "filterCount": 250
+        }
+      },
+      "pagingMatchesIndependentQuery": true,
+      "localFilter": {
+        "field": "gisid",
+        "matched": 1,
+        "noServerRequests": true
+      },
+      "timelessSourceRejectsTimeBounds": true,
+      "area": {
+        "loaded": 5,
+        "error": false,
+        "status": "5 points loaded in 1.6 s.",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "e99bba26-1d9d-4683-ad65-a91aee501449",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:18:23.061Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {
+            "bbox": {
+              "west": 13.447981999168661,
+              "east": 13.44858630082777,
+              "south": 52.44299498587392,
+              "north": 52.443308893566666
+            }
+          },
+          "viewport": {
+            "width": 751,
+            "height": 640
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1615.199999999255,
+          "loaded": 5,
+          "total": 5,
+          "pages": 1,
+          "bytes": 3742,
+          "parseMs": 1.199999999254942,
+          "elapsedMs": 1607.199999999255,
+          "bounds": [
+            13.4480707,
+            52.44299267,
+            13.4485108,
+            52.44332003
+          ],
+          "truncated": false,
+          "warning": "",
+          "readyMs": 1615.699999999255,
+          "gpuBytes": 100,
+          "lastFilterMs": 1.199999999254942,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 5,
+              "plotted": 5,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 5,
+              "missing": 0
+            }
+          ],
+          "filterCount": 5
+        }
+      },
+      "outsideGeographicBox": [
+        {
+          "id": "strassenbaeume.00008100_000bbafe",
+          "coordinates": [
+            13.4485108,
+            52.44332003
+          ]
+        },
+        {
+          "id": "strassenbaeume.00008100_000be024",
+          "coordinates": [
+            13.4480707,
+            52.44299267
+          ]
+        }
+      ],
+      "nativeCRSEnvelopeBroadening": 2,
+      "bboxMatchesIndependentQuery": true,
+      "bbox": {
+        "west": 13.447981999168661,
+        "east": 13.44858630082777,
+        "south": 52.44299498587392,
+        "north": 52.443308893566666
+      }
+    },
+    {
+      "service": "Berlin street trees",
+      "endpoint": "https://gdi.berlin.de/services/wfs/baumbestand",
+      "layer": "baumbestand:strassenbaeume",
+      "version": "2.0.0",
+      "format": "application/gml+xml; version=3.2",
+      "pass": true,
+      "discovery": "2 layer(s) found. Choose a feature type above.",
+      "initial": {
+        "loaded": 250,
+        "error": false,
+        "status": "250 points loaded in 3.5 s. LIMIT REACHED: dataset is incomplete.",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "a08163b1-9d05-494f-a2b7-0a14474e8ec6",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:18:56.499Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {},
+          "viewport": {
+            "width": 400,
+            "height": 300
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1650.300000000745,
+          "loaded": 250,
+          "total": 434765,
+          "pages": 3,
+          "bytes": 479549,
+          "parseMs": 75.29999999701977,
+          "elapsedMs": 3505.5,
+          "bounds": [
+            13.42752822,
+            52.42318582,
+            13.48209256,
+            52.49174723
+          ],
+          "truncated": true,
+          "warning": "",
+          "readyMs": 3517.099999997765,
+          "gpuBytes": 5000,
+          "lastFilterMs": 2.800000000745058,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 24,
+              "plotted": 250,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 45,
+              "missing": 205
+            }
+          ],
+          "filterCount": 250
+        }
+      },
+      "pagingMatchesIndependentQuery": true,
+      "localFilter": {
+        "field": "gisid",
+        "matched": 1,
+        "noServerRequests": true
+      },
+      "timelessSourceRejectsTimeBounds": true,
+      "area": {
+        "loaded": 5,
+        "error": false,
+        "status": "5 points loaded in 1.3 s.",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "a08163b1-9d05-494f-a2b7-0a14474e8ec6",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:19:14.892Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {
+            "bbox": {
+              "west": 13.447981999168661,
+              "east": 13.44858630082777,
+              "south": 52.44299498587392,
+              "north": 52.443308893566666
+            }
+          },
+          "viewport": {
+            "width": 751,
+            "height": 640
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1312.300000000745,
+          "loaded": 5,
+          "total": 5,
+          "pages": 1,
+          "bytes": 10720,
+          "parseMs": 5.100000001490116,
+          "elapsedMs": 1303.800000000745,
+          "bounds": [
+            13.4480707,
+            52.44299267,
+            13.4485108,
+            52.44332003
+          ],
+          "truncated": false,
+          "warning": "",
+          "readyMs": 1312.5,
+          "gpuBytes": 100,
+          "lastFilterMs": 1.800000000745058,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 5,
+              "plotted": 5,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 5,
+              "missing": 0
+            }
+          ],
+          "filterCount": 5
+        }
+      },
+      "outsideGeographicBox": [
+        {
+          "id": "strassenbaeume.00008100_000bbafe",
+          "coordinates": [
+            13.4485108,
+            52.44332003
+          ]
+        },
+        {
+          "id": "strassenbaeume.00008100_000be024",
+          "coordinates": [
+            13.4480707,
+            52.44299267
+          ]
+        }
+      ],
+      "nativeCRSEnvelopeBroadening": 2,
+      "bboxMatchesIndependentQuery": true,
+      "bbox": {
+        "west": 13.447981999168661,
+        "east": 13.44858630082777,
+        "south": 52.44299498587392,
+        "north": 52.443308893566666
+      }
+    },
+    {
+      "service": "Berlin street trees",
+      "endpoint": "https://gdi.berlin.de/services/wfs/baumbestand",
+      "layer": "baumbestand:strassenbaeume",
+      "version": "1.1.0",
+      "format": "application/json",
+      "pass": true,
+      "discovery": "2 layer(s) found. Choose a feature type above.",
+      "initial": {
+        "loaded": 250,
+        "error": false,
+        "status": "250 points loaded in 3.5 s. LIMIT REACHED: dataset is incomplete.",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "cd493967-f012-43fb-92ed-75c241ca7959",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:19:52.981Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {},
+          "viewport": {
+            "width": 400,
+            "height": 300
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1672.4000000022352,
+          "loaded": 250,
+          "total": 434765,
+          "pages": 3,
+          "bytes": 173518,
+          "parseMs": 10.200000002980232,
+          "elapsedMs": 3536,
+          "bounds": [
+            13.42752822,
+            52.42318582,
+            13.48209256,
+            52.49174723
+          ],
+          "truncated": true,
+          "warning": "",
+          "readyMs": 3550.60000000149,
+          "gpuBytes": 5000,
+          "lastFilterMs": 1.800000000745058,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 24,
+              "plotted": 250,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 45,
+              "missing": 205
+            }
+          ],
+          "filterCount": 250
+        }
+      },
+      "pagingMatchesIndependentQuery": true,
+      "localFilter": {
+        "field": "gisid",
+        "matched": 1,
+        "noServerRequests": true
+      },
+      "timelessSourceRejectsTimeBounds": true,
+      "area": {
+        "loaded": 5,
+        "error": false,
+        "status": "5 points loaded in 1.6 s.",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "cd493967-f012-43fb-92ed-75c241ca7959",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:20:12.641Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {
+            "bbox": {
+              "west": 13.447981999168661,
+              "east": 13.44858630082777,
+              "south": 52.44299498587392,
+              "north": 52.443308893566666
+            }
+          },
+          "viewport": {
+            "width": 751,
+            "height": 640
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1583.3999999985099,
+          "loaded": 5,
+          "total": 5,
+          "pages": 1,
+          "bytes": 3742,
+          "parseMs": 1.300000000745058,
+          "elapsedMs": 1566.6000000014901,
+          "bounds": [
+            13.4480707,
+            52.44299267,
+            13.4485108,
+            52.44332003
+          ],
+          "truncated": false,
+          "warning": "",
+          "readyMs": 1583.3999999985099,
+          "gpuBytes": 100,
+          "lastFilterMs": 1.2000000029802322,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 5,
+              "plotted": 5,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 5,
+              "missing": 0
+            }
+          ],
+          "filterCount": 5
+        }
+      },
+      "outsideGeographicBox": [
+        {
+          "id": "strassenbaeume.00008100_000bbafe",
+          "coordinates": [
+            13.4485108,
+            52.44332003
+          ]
+        },
+        {
+          "id": "strassenbaeume.00008100_000be024",
+          "coordinates": [
+            13.4480707,
+            52.44299267
+          ]
+        }
+      ],
+      "nativeCRSEnvelopeBroadening": 2,
+      "bboxMatchesIndependentQuery": true,
+      "bbox": {
+        "west": 13.447981999168661,
+        "east": 13.44858630082777,
+        "south": 52.44299498587392,
+        "north": 52.443308893566666
+      }
+    },
+    {
+      "service": "Berlin street trees",
+      "endpoint": "https://gdi.berlin.de/services/wfs/baumbestand",
+      "layer": "baumbestand:strassenbaeume",
+      "version": "1.1.0",
+      "format": "text/xml; subtype=gml/3.1.1",
+      "pass": true,
+      "discovery": "2 layer(s) found. Choose a feature type above.",
+      "initial": {
+        "loaded": 250,
+        "error": false,
+        "status": "250 points loaded in 3.2 s. LIMIT REACHED: dataset is incomplete.",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "ba8b92ce-1415-4906-b23b-8c7456e577bb",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:20:46.282Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {},
+          "viewport": {
+            "width": 400,
+            "height": 300
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1561.4000000022352,
+          "loaded": 250,
+          "total": 434765,
+          "pages": 3,
+          "bytes": 457781,
+          "parseMs": 79,
+          "elapsedMs": 3218.10000000149,
+          "bounds": [
+            13.42752822,
+            52.42318582,
+            13.48209256,
+            52.49174723
+          ],
+          "truncated": true,
+          "warning": "",
+          "readyMs": 3229.300000000745,
+          "gpuBytes": 5000,
+          "lastFilterMs": 2.600000001490116,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 24,
+              "plotted": 250,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 45,
+              "missing": 205
+            }
+          ],
+          "filterCount": 250
+        }
+      },
+      "pagingMatchesIndependentQuery": true,
+      "localFilter": {
+        "field": "gisid",
+        "matched": 1,
+        "noServerRequests": true
+      },
+      "timelessSourceRejectsTimeBounds": true,
+      "area": {
+        "loaded": 5,
+        "error": false,
+        "status": "5 points loaded in 1.5 s.",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "ba8b92ce-1415-4906-b23b-8c7456e577bb",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:21:06.634Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {
+            "bbox": {
+              "west": 13.447981999168661,
+              "east": 13.44858630082777,
+              "south": 52.44299498587392,
+              "north": 52.443308893566666
+            }
+          },
+          "viewport": {
+            "width": 751,
+            "height": 640
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 1542.5,
+          "loaded": 5,
+          "total": 5,
+          "pages": 1,
+          "bytes": 10267,
+          "parseMs": 4.699999999254942,
+          "elapsedMs": 1521.199999999255,
+          "bounds": [
+            13.4480707,
+            52.44299267,
+            13.4485108,
+            52.44332003
+          ],
+          "truncated": false,
+          "warning": "",
+          "readyMs": 1542.5,
+          "gpuBytes": 100,
+          "lastFilterMs": 1,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 5,
+              "plotted": 5,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 5,
+              "missing": 0
+            }
+          ],
+          "filterCount": 5
+        }
+      },
+      "outsideGeographicBox": [
+        {
+          "id": "strassenbaeume.00008100_000bbafe",
+          "coordinates": [
+            13.4485108,
+            52.44332003
+          ]
+        },
+        {
+          "id": "strassenbaeume.00008100_000be024",
+          "coordinates": [
+            13.4480707,
+            52.44299267
+          ]
+        }
+      ],
+      "nativeCRSEnvelopeBroadening": 2,
+      "bboxMatchesIndependentQuery": true,
+      "bbox": {
+        "west": 13.447981999168661,
+        "east": 13.44858630082777,
+        "south": 52.44299498587392,
+        "north": 52.443308893566666
+      }
+    },
+    {
+      "service": "Berlin street trees",
+      "endpoint": "https://gdi.berlin.de/services/wfs/baumbestand",
+      "layer": "baumbestand:strassenbaeume",
+      "version": "1.0.0",
+      "format": "GML2",
+      "pass": true,
+      "discovery": "2 layer(s) found. Choose a feature type above.",
+      "initial": {
+        "loaded": 250,
+        "error": false,
+        "status": "250 points loaded in 2.2 s. LIMIT REACHED: dataset is incomplete.\nWFS 1.0 has no standard hits count; loading until empty page or limit. ",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "6bf1fb66-d055-40f3-986e-1fb4cdf53e1b",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:21:37.933Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {},
+          "viewport": {
+            "width": 400,
+            "height": 300
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 737.8000000007451,
+          "loaded": 250,
+          "pages": 3,
+          "bytes": 403513,
+          "parseMs": 64.59999999776483,
+          "elapsedMs": 2195.800000000745,
+          "bounds": [
+            13.42752822,
+            52.42318582,
+            13.48209256,
+            52.49174723
+          ],
+          "truncated": true,
+          "warning": "WFS 1.0 has no standard hits count; loading until empty page or limit. ",
+          "readyMs": 2206.400000002235,
+          "gpuBytes": 5000,
+          "lastFilterMs": 1.8999999985098839,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 24,
+              "plotted": 250,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 45,
+              "missing": 205
+            }
+          ],
+          "filterCount": 250
+        }
+      },
+      "pagingMatchesIndependentQuery": true,
+      "localFilter": {
+        "field": "gisid",
+        "matched": 1,
+        "noServerRequests": true
+      },
+      "timelessSourceRejectsTimeBounds": true,
+      "area": {
+        "loaded": 5,
+        "error": false,
+        "status": "5 points loaded in 1.6 s.\nWFS 1.0 has no standard hits count; loading until empty page or limit. ",
+        "fields": [
+          {
+            "name": "gisid",
+            "kind": "string"
+          },
+          {
+            "name": "pitid",
+            "kind": "string"
+          },
+          {
+            "name": "standortnr",
+            "kind": "string"
+          },
+          {
+            "name": "kennzeich",
+            "kind": "string"
+          },
+          {
+            "name": "namenr",
+            "kind": "string"
+          },
+          {
+            "name": "art_dtsch",
+            "kind": "string"
+          },
+          {
+            "name": "art_bot",
+            "kind": "string"
+          },
+          {
+            "name": "gattung_deutsch",
+            "kind": "string"
+          },
+          {
+            "name": "gattung",
+            "kind": "string"
+          },
+          {
+            "name": "art_gruppe",
+            "kind": "string"
+          },
+          {
+            "name": "strnr",
+            "kind": "string"
+          },
+          {
+            "name": "strname",
+            "kind": "string"
+          },
+          {
+            "name": "hausnr",
+            "kind": "string"
+          },
+          {
+            "name": "zusatz",
+            "kind": "string"
+          },
+          {
+            "name": "pflanzjahr",
+            "kind": "string"
+          },
+          {
+            "name": "standalter",
+            "kind": "number"
+          },
+          {
+            "name": "kronedurch",
+            "kind": "number"
+          },
+          {
+            "name": "stammumfg",
+            "kind": "number"
+          },
+          {
+            "name": "baumhoehe",
+            "kind": "number"
+          },
+          {
+            "name": "eigentuemer",
+            "kind": "string"
+          },
+          {
+            "name": "bezirk",
+            "kind": "string"
+          }
+        ],
+        "metrics": {
+          "sourceId": "6bf1fb66-d055-40f3-986e-1fb4cdf53e1b",
+          "sourceName": "Berlin street trees",
+          "startedAt": "2026-10-02T21:21:54.899Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+          "queryBounds": {
+            "bbox": {
+              "west": 13.447981999168661,
+              "east": 13.44858630082777,
+              "south": 52.44299498587392,
+              "north": 52.443308893566666
+            }
+          },
+          "viewport": {
+            "width": 751,
+            "height": 640
+          },
+          "devicePixelRatio": 1,
+          "pointSize": 2,
+          "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+          "note": "Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.",
+          "firstPointsMs": 830.6999999992549,
+          "loaded": 5,
+          "pages": 1,
+          "bytes": 9715,
+          "parseMs": 7,
+          "elapsedMs": 1605.699999999255,
+          "bounds": [
+            13.4480707,
+            52.44299267,
+            13.4485108,
+            52.44332003
+          ],
+          "truncated": false,
+          "warning": "WFS 1.0 has no standard hits count; loading until empty page or limit. ",
+          "readyMs": 1621.2999999970198,
+          "gpuBytes": 5000,
+          "lastFilterMs": 1.5999999977648258,
+          "analysisCharts": [
+            {
+              "id": "chart-1",
+              "type": "bar",
+              "bins": 5,
+              "plotted": 5,
+              "missing": 0
+            },
+            {
+              "id": "chart-2",
+              "type": "scatter",
+              "bins": 24,
+              "plotted": 5,
+              "missing": 0
+            }
+          ],
+          "filterCount": 5
+        }
+      },
+      "outsideGeographicBox": [
+        {
+          "id": "strassenbaeume.00008100_000bbafe",
+          "coordinates": [
+            13.4485108,
+            52.44332003
+          ]
+        },
+        {
+          "id": "strassenbaeume.00008100_000be024",
+          "coordinates": [
+            13.4480707,
+            52.44299267
+          ]
+        }
+      ],
+      "nativeCRSEnvelopeBroadening": 2,
+      "bboxMatchesIndependentQuery": true,
+      "bbox": {
+        "west": 13.447981999168661,
+        "east": 13.44858630082777,
+        "south": 52.44299498587392,
+        "north": 52.443308893566666
+      }
+    }
+  ]
+}

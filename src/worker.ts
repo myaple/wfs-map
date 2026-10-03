@@ -38,11 +38,16 @@ async function load(c: Config) {
     if (c.sort)
         common.sortBy = c.sort + ' A';
     let total: number | undefined, warning = '';
-    try {
-        total = countFrom(await fetchText(wfsURL(c.url, c.version, 'GetFeature', { ...common, resultType: 'hits' })));
-    }
-    catch {
-        warning = 'GetFeature hits unavailable; loading until empty page or limit. ';
+    // resultType=hits was introduced in WFS 1.1. GeoServer's 1.0 response
+    // reports zero rather than the dataset size, so it must not stop a load.
+    if (c.version === '1.0.0') warning = 'WFS 1.0 has no standard hits count; loading until empty page or limit. ';
+    else {
+        try {
+            total = countFrom(await fetchText(wfsURL(c.url, c.version, 'GetFeature', { ...common, resultType: 'hits' })));
+        }
+        catch {
+            warning = 'GetFeature hits unavailable; loading until empty page or limit. ';
+        }
     }
     post({ type: 'init', capacity: Math.min(total ?? c.limit, c.limit), total, warning });
     let loaded = 0, pages = 0, parseMs = 0, bytes = 0, previousSignature = '';
