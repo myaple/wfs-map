@@ -77,7 +77,7 @@ let queryBounds: QueryBounds = params.get('time') === 'all' ? {} : { time: timeB
 let filterSourceId = '', popup: maplibregl.Popup | undefined, benchmarkRunning = false, mapReady = false, loadSlots = 0;
 const loadQueue: Source[] = [];
 const layerOrder: Source[] = [];
-function filterSource(): Source | undefined { return sources.find(s => s.id === filterSourceId) ?? sources[0]; }
+function filterSource(): Source | undefined { return sources.find(s => s.enabled && s.id === filterSourceId) ?? sources.find(s => s.enabled); }
 function createSource(input: {
     id?: string;
     name?: string;
@@ -96,7 +96,7 @@ function createSource(input: {
     charts.setAttribute('aria-live', 'polite');
     const color = input.color ?? colors[sources.length % colors.length];
     const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, filtering: false, exportRequest: 0, exporting: false, exportStatus: '', colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
-    s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, available: source.enabled && source.done })));
+    s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, enabled: source.enabled, available: source.enabled && source.done })));
     sources.push(s);
     return s;
 }
@@ -108,7 +108,7 @@ if (!settings.sources.length && (params.has('points') || params.has('url'))) {
     settings.sources.push({ id: crypto.randomUUID(), name: 'WFS source', enabled: true, config: { ...defaultConfig, url: url.href, layer: params.get('layer') ?? 'demo:points' } });
 }
 for (const [i, source] of settings.sources.entries()) createSource(source, i === 0);
-filterSourceId = sources[0]?.id ?? '';
+filterSourceId = filterSource()?.id ?? '';
 function snapshot(): Settings {
     return { sources: sources.map(({ id, name, enabled, color, config, coloring }) => ({ id, name, enabled, color, config, coloring })), background: { ...background } };
 }
@@ -117,14 +117,23 @@ function persist() {
     catch { status('Could not save analysis preferences in this browser.', true); }
 }
 function renderSources() {
+    const enabledSources = sources.filter(s => s.enabled);
+    filterSourceId = filterSource()?.id ?? '';
     for (const id of ['filterSource', 'chartSource', 'exportSource']) {
         const select = $<HTMLSelectElement>(id), previous = select.value;
-        select.replaceChildren(...sources.map(s => new Option(s.name + (s.enabled ? '' : ' (disabled)'), s.id)));
-        if (!sources.length) select.add(new Option('No data sources', ''));
-        select.disabled = !sources.length;
-        if (sources.some(s => s.id === previous)) select.value = previous;
+        select.replaceChildren(...enabledSources.map(s => new Option(s.name, s.id)));
+        if (!enabledSources.length) select.add(new Option('No enabled data sources', ''));
+        select.disabled = !enabledSources.length;
+        if (enabledSources.some(s => s.id === previous)) select.value = previous;
     }
     $<HTMLSelectElement>('filterSource').value = filterSourceId;
+    const current = filterSource();
+    if (current && $('rules') !== current.rules) switchFilters(current.id);
+    if (!current) {
+        // Detach the old editor so its filters survive disabling/re-enabling.
+        const empty = document.createElement('div'); empty.id = 'rules';
+        $('rules').replaceWith(empty);
+    }
     pointColors.refresh();
 }
 const sourceSettings = new DataSources(snapshot(), applySettings);
@@ -137,7 +146,6 @@ const pointColors = new PointColors(() => sources, (source, previous) => {
     map.triggerRepaint();
 });
 function applySettings(next: Settings) {
-    const previousFilterSource = filterSource();
     for (const s of [...sources]) if (!next.sources.some(n => n.id === s.id)) {
         clearSource(s); s.workspace.reset(); sources.splice(sources.indexOf(s), 1);
     }
@@ -154,11 +162,7 @@ function applySettings(next: Settings) {
     }
     background = { ...next.background };
     applyBackground();
-    if (!sources.some(s => s.id === filterSourceId)) filterSourceId = sources[0]?.id ?? '';
-    const current = filterSource();
-    if (current && current !== previousFilterSource) switchFilters(current.id);
-    if (!current) {
-        $('rules').replaceChildren();
+    if (!sources.length) {
         $('charts').replaceChildren();
         const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = 'Add a data source to create charts from its attributes.'; $('charts').append(empty);
         popup?.remove();
@@ -170,7 +174,7 @@ function applySettings(next: Settings) {
 }
 function switchFilters(id: string) {
     const previous = filterSource();
-    const s = sources.find(s => s.id === id);
+    const s = sources.find(s => s.enabled && s.id === id);
     if (!s)
         return;
     filterSourceId = id;
@@ -259,7 +263,7 @@ function state() {
     for (const id of ['fit', 'benchmark']) enabled(id, enabledSources.some(s => s.done && s.loaded > 0));
     status(enabledSources.length ? enabledSources.map(s => s.name + ' · ' + s.status).join('\n') : 'Ready. Add or enable a data source to get started.', enabledSources.some(s => s.error));
     $('filterStatus').textContent = s?.filterStatus ? s.name + ' · ' + s.filterStatus : '';
-    $('filterOwner').textContent = s ? `Filters for ${s.name} · ${!s.enabled ? 'source disabled' : s.loading ? 'loading…' : !s.done ? 'load source to edit filters' : s.selected.toLocaleString() + ' matching points'}` : 'Add a data source to build filters.';
+    $('filterOwner').textContent = s ? `Filters for ${s.name} · ${s.loading ? 'loading…' : !s.done ? 'load source to edit filters' : s.selected.toLocaleString() + ' matching points'}` : 'Add or enable a data source to build filters.';
     $('rules').setAttribute('aria-label', s ? `Filters for ${s.name}` : 'Dataset filters');
     $('rules').inert = !s?.enabled || !s.done;
     $('sourceSummary').textContent = sources.map(s => `${s.name}: ${s.enabled ? s.loading ? 'loading' : s.selected.toLocaleString() + ' displayed' : 'disabled'}`).join(' · ');
@@ -268,7 +272,7 @@ function state() {
     else progress.value = enabledSources.length && enabledSources.every(s => s.done) ? 1 : 0;
     const exportSource = sources.find(s => s.id === value('exportSource'));
     enabled('exportCSV', !!exportSource?.enabled && exportSource.done && !!exportSource.worker && !exportSource.filtering && !exportSource.exporting);
-    let csvStatus = !exportSource ? 'Add a data source to export.' : !exportSource.enabled ? 'Source disabled.' : !exportSource.done ? 'Load this source to export.' : exportSource.filtering ? 'Updating selection…' : exportSource.exportStatus || `${exportSource.selected.toLocaleString()} matching points`;
+    let csvStatus = !exportSource ? 'Add or enable a data source to export.' : !exportSource.done ? 'Load this source to export.' : exportSource.filtering ? 'Updating selection…' : exportSource.exportStatus || `${exportSource.selected.toLocaleString()} matching points`;
     if (exportSource?.enabled && exportSource.done && exportSource.metrics.truncated) csvStatus += ' · load limit reached; exports loaded points only';
     $('csvExportStatus').textContent = csvStatus;
     pointColors.update();

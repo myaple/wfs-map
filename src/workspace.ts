@@ -10,7 +10,7 @@ const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) =
 };
 const option = (value: string, label = value) => { const e = element('option', label); e.value = value; return e; };
 let nextChartControl = 0, nextChart = 0;
-export type ChartSource = { id: string; name: string; workspace: Workspace; available: boolean };
+export type ChartSource = { id: string; name: string; workspace: Workspace; enabled: boolean; available: boolean };
 function chartField(select: HTMLSelectElement, name: string, help: string) {
     const root = element('div'), label = element('label', name), hint = element('div', help);
     root.className = 'chart-field';
@@ -352,8 +352,15 @@ class ChartView {
     }
     setFields(fields: Field[]) { this.fields = fields; this.configure(); }
     setSources(id: string, sources: ChartSource[]) {
-        this.source.replaceChildren(...sources.map(s => option(s.id, s.name + (s.available ? '' : ' (not loaded)'))));
-        this.source.value = id;
+        const enabledSources = sources.filter(s => s.enabled);
+        this.source.replaceChildren(...enabledSources.map(s => option(s.id, s.name + (s.available ? '' : ' (not loaded)'))));
+        this.source.disabled = !enabledSources.length;
+        if (!enabledSources.some(s => s.id === id)) {
+            const placeholder = option('', enabledSources.length ? 'Choose an enabled data source' : 'No enabled data sources');
+            placeholder.disabled = true;
+            this.source.prepend(placeholder);
+        }
+        this.source.value = enabledSources.some(s => s.id === id) ? id : '';
         const source = sources.find(s => s.id === id);
         this.sourceName.textContent = source?.name ?? '';
         this.root.dataset.sourceId = id;

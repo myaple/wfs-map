@@ -47,7 +47,12 @@ test('disabled and reloaded sources retain visible cards and source removal affe
     const csvCards = page.locator(`.chart-card[data-source-id="${ids[1]}"]`);
     await page.locator('#configLink').click(); await page.getByRole('checkbox', { name: 'Enable CSV temperatures', exact: true }).uncheck(); await page.locator('#saveSettings').click(); await page.locator('#analysisLink').click();
     await expect(page.locator('.chart-card')).toHaveCount(6); await expect(csvCards.first()).toContainText('Load this source');
-    await page.locator('#filterSource').selectOption(ids[1]); await expect(page.locator('.chart-card')).toHaveCount(6);
+    await expect(page.locator('#filterSource option')).toHaveCount(1);
+    await csvCards.first().getByRole('button', { name: 'Settings', exact: true }).click();
+    const source = csvCards.first().getByLabel('Data source', { exact: true });
+    await expect(source.locator('option')).toHaveText(['Choose an enabled data source', 'WFS source']);
+    await expect(source).toHaveValue('');
+    await expect(csvCards.first()).toHaveAttribute('data-source-id', ids[1]);
     await page.locator('#configLink').click(); await page.getByRole('checkbox', { name: 'Enable CSV temperatures', exact: true }).check(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].workspace.results.length === 3);
     await page.locator('#analysisLink').click(); await expect(csvCards.first()).toContainText('2 plotted');
