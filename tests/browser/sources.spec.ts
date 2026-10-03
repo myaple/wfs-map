@@ -30,7 +30,8 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     await page.locator('#analysisSource').selectOption(ids[0]);
     await expect(page.locator('.chart-card').first().getByLabel('Chart type')).toHaveValue('pie');
     await expect(page.locator('#filterStatus')).toContainText('256 matches');
-    await expect(page.locator('#hud')).toContainText('displayed 768');
+    await expect(page.locator('#hud')).toHaveText('Loaded 3,072 points');
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.reduce((n: number, s: any) => n + s.selected, 0))).toBe(768);
     await page.locator('#configLink').click();
     await page.getByRole('checkbox', { name: 'Enable Second WFS', exact: true }).uncheck();
     await page.locator('#saveSettings').click();

@@ -3,7 +3,7 @@ async function add(page: Page, name = 'Stations', url = '/wfs?points=128&vendor=
     await page.locator('#addSource').click();
     await page.getByLabel('Source name', { exact: true }).fill(name);
     await page.getByLabel('WFS endpoint', { exact: true }).fill(url);
-    await page.getByLabel('Feature type', { exact: true }).fill('demo:points');
+    await page.getByLabel('Custom layer name', { exact: true }).fill('demo:points');
     await page.getByRole('button', { name: 'Add to list', exact: true }).click();
 }
 const sourceStorage = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('wfs-settings') ?? 'null'));
@@ -170,4 +170,61 @@ test('closing or changing endpoints aborts discovery and cannot populate another
     await page.locator('#url').fill('/wfs?points=16'); await page.locator('#discover').click();
     await expect(page.locator('#discoveryStatus')).toContainText('1 layer(s)'); await expect(page.locator('#layer')).toHaveValue('demo:points');
     await page.locator('#cancelSource').click();
+});
+
+test('discovery offers all layers in a dropdown; selected and custom names survive Save and Configure', async ({ page }) => {
+    const capabilities = `<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0">
+      <wfs:FeatureTypeList>
+        <wfs:FeatureType><wfs:Name> demo:points </wfs:Name><wfs:Title>Observation stations</wfs:Title><wfs:OutputFormats><wfs:Format>application/json</wfs:Format></wfs:OutputFormats></wfs:FeatureType>
+        <wfs:FeatureType><wfs:Name>demo:other</wfs:Name><wfs:Title>Other observations</wfs:Title><wfs:OutputFormats><wfs:Format>application/geo+json</wfs:Format></wfs:OutputFormats></wfs:FeatureType>
+        <wfs:FeatureType><wfs:Name>demo:third</wfs:Name></wfs:FeatureType>
+      </wfs:FeatureTypeList></wfs:WFS_Capabilities>`;
+    await page.route('**/wfs?*', async route => {
+        if (new URL(route.request().url()).searchParams.get('request') === 'GetCapabilities')
+            await route.fulfill({ contentType: 'application/xml', body: capabilities });
+        else await route.continue();
+    });
+    await page.goto('/?time=all#configuration');
+    await page.locator('#addSource').click();
+    await page.getByLabel('Source name', { exact: true }).fill('Layers');
+    await page.getByLabel('WFS endpoint', { exact: true }).fill('/wfs?points=16');
+    await page.locator('#discover').click();
+    await expect(page.locator('#discoveryStatus')).toContainText('3 layer(s) found');
+    const layers = page.getByLabel('Feature layer', { exact: true });
+    await expect(layers.locator('option')).toHaveText([
+        'Observation stations (demo:points)', 'Other observations (demo:other)', 'demo:third', 'Custom layer name…'
+    ]);
+    await expect(layers).toHaveValue('demo:points');
+    await expect(page.getByLabel('Custom layer name', { exact: true })).toBeHidden();
+    await layers.focus(); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+    await expect(layers).toHaveValue('demo:other');
+    await page.locator('#wfsCompatibility summary').click();
+    await expect(page.locator('#format')).toHaveValue('application/geo+json');
+    await page.locator('#updateSource').click();
+    await page.getByRole('checkbox', { name: 'Enable Layers', exact: true }).uncheck();
+    await page.locator('#saveSettings').click();
+    expect((await sourceStorage(page)).sources[0].config.layer).toBe('demo:other');
+    await page.getByRole('button', { name: 'Configure Layers', exact: true }).click();
+    await expect(layers).toHaveValue('demo:other');
+    await page.locator('#discover').click();
+    await expect(page.locator('#discoveryStatus')).toContainText('3 layer(s) found');
+    await expect(layers).toHaveValue('demo:other');
+    await layers.selectOption('');
+    await expect(page.getByLabel('Custom layer name', { exact: true })).toBeFocused();
+    await page.getByLabel('Custom layer name', { exact: true }).fill('vendor:manual');
+    await page.locator('#discover').click();
+    await expect(page.locator('#discoveryStatus')).toContainText('3 layer(s) found');
+    await expect(layers).toHaveValue('');
+    await expect(page.locator('#layer')).toHaveValue('vendor:manual');
+    await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+    expect((await sourceStorage(page)).sources[0].config.layer).toBe('vendor:manual');
+    await page.reload();
+    await page.getByRole('button', { name: 'Configure Layers', exact: true }).click();
+    await expect(layers).toHaveValue('vendor:manual');
+    await layers.selectOption(''); await expect(page.locator('#layer')).toHaveValue('vendor:manual');
+    await page.locator('#discover').click(); await expect(page.locator('#discoveryStatus')).toContainText('3 layer(s) found');
+    await page.locator('#url').fill('/other-wfs');
+    await expect(layers.locator('option')).toHaveCount(1);
+    await expect(page.locator('#layer')).toBeVisible();
+    await expect(page.locator('#discoveryStatus')).toBeEmpty();
 });

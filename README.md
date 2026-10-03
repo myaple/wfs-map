@@ -62,7 +62,7 @@ Bar, pie and time-series charts always aggregate the full selection into bounded
 
 Every chart uses the same mouse gestures: **left-drag a rectangle to zoom**, **right-drag to select**, and **double left-click to reset zoom**. Zoom only changes the local viewport; it does not filter the dataset, issue WFS requests or upload point data again. Single segment/point clicks and keyboard selection still filter. Scatter axes have numeric/date value ticks, axis titles, gridlines and readable UTC dates/times that adapt to the zoom level. Canvas and WebGL geometry use the same actual plot dimensions, including enlargement. Binned scatter selection chooses cells intersected by the range; raw scatter selection uses exact numeric/date bounds. Pie rectangle selection intersects its sectors.
 
-Use **Enlarge** on any chart for a large modal view. **Return to normal size** or Escape restores the original position and size while retaining the zoom and source selection. Raw scatter supports arrow keys to step through original observations; Enter selects one.
+Use **Enlarge** on the map or any chart for a large modal view. The map keeps its current centre, zoom, enabled layers, colours and selections, and its overlay shows only the total number of loaded points. **Return to normal size** or Escape restores the original position and size while retaining the zoom and source selection. Raw scatter supports arrow keys to step through original observations; Enter selects one.
 
 Category charts retain the 23 most frequent categories from the full dataset and an exact **Other categories** segment when needed. Clicking Other matches every remaining non-null category. Missing attributes are excluded from plotted counts and reported separately. Plotted counts plus missing counts equal the current selection. Counts and keyboard selection are available in each chart's disclosure; focus a plot, use arrow keys, and press Enter to select a bin. Hovering a binned chart reads only its bounded aggregate counts and never queries individual map features.
 
@@ -83,7 +83,7 @@ Double-click a map point for metadata. Picking checks enabled layers from top to
 ## Data source compatibility
 
 1. On **Data sources**, use **Add data source** or **Configure** and enter the WFS URL. Vendor parameters and URL tokens are preserved.
-2. Choose a WFS version, **Discover layers**, and select a feature type.
+2. Choose a WFS version, **Discover layers**, and choose a dataset from the **Feature layer** dropdown. Titles and exact layer names are shown together. Select **Custom layer name…** to type a name yourself; existing custom names are preserved when discovering.
 3. Set the exact advertised output format. Prefer `application/json`; simple GML Point or single-point MultiPoint output also works.
 4. Request `urn:ogc:def:crs:OGC:1.3:CRS84` for longitude/latitude. EPSG:4326 GML may require reversing the configured axis order. GeoJSON always uses longitude/latitude.
 5. Choose a stable unique sort attribute if necessary. Keep the dataset unchanged throughout loading.
