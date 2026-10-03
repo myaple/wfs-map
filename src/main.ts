@@ -17,8 +17,8 @@ $('app').innerHTML = `
 <header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav><a href="#analysis" id="analysisLink">Analysis</a><a href="#configuration" id="configLink">Data sources</a></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="filterStatus" role="status"></div></div>
 <section id="configuration" hidden></section>
-<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><label for="timeStart">Start (UTC)</label><input id="timeStart" type="datetime-local" step="1"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="datetime-local" step="1"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="source-analysis"><label for="analysisSource">Analyze source</label><select id="analysisSource" aria-label="Analyze source"></select><label for="colorAttribute">Point colour</label><select id="colorAttribute" aria-label="Point colour attribute"></select><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select><input id="colorLow" type="color" aria-label="Low value colour" value="#2463d4"><input id="colorHigh" type="color" aria-label="High value colour" value="#ee5539"><span id="colorRamp" aria-hidden="true"></span><span id="colorLegend" class="hint"></span><span id="sourceSummary" class="hint"></span><button id="reloadSource">Reload this source</button></div><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Nested AND / OR groups. Chart selections go into the highlighted group. Numeric and time bins use inclusive lower bounds and exclusive upper bounds (last bin includes the maximum). Charts and filters apply only to the chosen source. The map shows all enabled sources.</p><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button></div></details>
-<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><button id="addChart" disabled>+ Add chart</button></div><div id="charts" aria-live="polite"><p class="empty">Load a dataset to create charts from its attributes.</p></div></section></div>
+<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><label for="timeStart">Start (UTC)</label><input id="timeStart" type="datetime-local" step="1"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="datetime-local" step="1"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="source-analysis"><label for="analysisSource">Analyze source</label><select id="analysisSource" aria-label="Analyze source"></select><label for="colorAttribute">Point colour</label><select id="colorAttribute" aria-label="Point colour attribute"></select><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select><input id="colorLow" type="color" aria-label="Low value colour" value="#2463d4"><input id="colorHigh" type="color" aria-label="High value colour" value="#ee5539"><span id="colorRamp" aria-hidden="true"></span><span id="colorLegend" class="hint"></span><span id="sourceSummary" class="hint"></span><button id="reloadSource">Reload this source</button></div><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Nested AND / OR groups. Chart selections go into the highlighted group. Numeric and time bins use inclusive lower bounds and exclusive upper bounds (last bin includes the maximum). Dataset filters apply to the chosen source. Each chart uses its own selected source and that source’s filters. The map shows all enabled sources.</p><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button></div></details>
+<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><button id="addChart" disabled>+ Add chart</button></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
 type Source = {
     id: string;
@@ -85,13 +85,13 @@ function createSource(input: {
         number
     ];
 }, existing = false): Source {
-    const id = input.id ?? crypto.randomUUID(), rules = existing ? $('rules') : document.createElement('div'), charts = existing ? $('charts') : document.createElement('div');
+    const id = input.id ?? crypto.randomUUID(), rules = existing ? $('rules') : document.createElement('div'), charts = $('charts');
     rules.id = 'rules';
     charts.id = 'charts';
     charts.setAttribute('aria-live', 'polite');
     const color = input.color ?? colors[sources.length % colors.length];
     const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
-    s.workspace = new Workspace(() => filter(undefined, s), rules, charts);
+    s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, available: source.enabled && source.done })));
     sources.push(s);
     return s;
 }
@@ -146,7 +146,9 @@ function applySettings(next: Settings) {
         const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = 'Add a data source to create charts from its attributes.'; $('charts').append(empty);
         popup?.remove(); showColors();
     }
-    renderSources(); state();
+    renderSources();
+    for (const s of sources) s.workspace.refreshSources();
+    state();
     for (const s of load) loadSource(s);
 }
 function switchAnalysis(id: string) {
@@ -156,7 +158,6 @@ function switchAnalysis(id: string) {
         return;
     activeId = id;
     $('rules').replaceWith(s.rules);
-    $('charts').replaceWith(s.charts);
     previous?.workspace.visibilityChanged();
     s.workspace.visibilityChanged();
     $<HTMLSelectElement>('analysisSource').value = id;
@@ -310,6 +311,7 @@ function clearSource(s: Source) {
     s.error = false;
     s.workspace.discardObservationSelections();
     s.workspace.suspend();
+    s.workspace.refreshSources();
     if (s.id === activeId)
         popup?.remove();
 }
@@ -408,9 +410,10 @@ async function performLoad(s: Source) {
                     s.loadedConfig = JSON.stringify(config);
                     s.loadedQuery = JSON.stringify(bounds);
                     if (JSON.stringify(s.workspace.fields) !== JSON.stringify(s.fields)) {
-                        s.workspace.reset();
-                        s.workspace.ready(s.fields);
+                        if (!s.workspace.fields.length) s.workspace.ready(s.fields);
+                        else s.workspace.reconfigure(s.fields);
                     }
+                    for (const source of sources) source.workspace.refreshSources();
                     s.metrics.readyMs = performance.now() - began;
                     s.metrics.gpuBytes = s.layer.gpuBytes;
                     s.status = `${s.loaded.toLocaleString()} points loaded in ${(m.elapsedMs / 1000).toFixed(1)} s.${m.truncated ? ' LIMIT REACHED: dataset is incomplete.' : ''}${m.warning ? '\n' + m.warning : ''}`;

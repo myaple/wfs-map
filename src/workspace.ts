@@ -9,7 +9,8 @@ const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) =
     return e;
 };
 const option = (value: string, label = value) => { const e = element('option', label); e.value = value; return e; };
-let nextChartControl = 0;
+let nextChartControl = 0, nextChart = 0;
+export type ChartSource = { id: string; name: string; workspace: Workspace; available: boolean };
 function chartField(select: HTMLSelectElement, name: string, help: string) {
     const root = element('div'), label = element('label', name), hint = element('div', help);
     root.className = 'chart-field';
@@ -27,9 +28,9 @@ export class Workspace {
     specs: ChartSpec[] = [];
     results: ChartResult[] = [];
     private views = new Map<string, ChartView>();
-    private next = 0;
+    private owners = new Map<string, { workspace: Workspace }>();
     private active?: HTMLDivElement;
-    constructor(private changed: () => void, private rules: HTMLElement = document.getElementById('rules')!, private charts: HTMLElement = document.getElementById('charts')!) { }
+    constructor(private changed: () => void, private rules: HTMLElement = document.getElementById('rules')!, private charts: HTMLElement = document.getElementById('charts')!, private sourceId = '', private chartSources: () => ChartSource[] = () => []) { }
     reset() {
         this.fields = [];
         this.specs = [];
@@ -37,14 +38,17 @@ export class Workspace {
         for (const view of this.views.values())
             view.destroy();
         this.views.clear();
-        this.charts.replaceChildren();
+        this.owners.clear();
         this.rules.replaceChildren();
         this.active = undefined;
-        this.next = 0;
     }
     ready(fields: Field[]) {
         this.fields = fields;
         this.makeGroup(this.rules, 'and');
+        if (this.specs.length) {
+            for (const view of this.views.values()) view.setFields(fields);
+            return;
+        }
         const categorical = fields.find(f => f.kind === 'string' || f.kind === 'boolean'), numeric = fields.filter(f => f.kind === 'number'), date = fields.find(f => f.kind === 'date');
         if (categorical)
             this.addChart('bar', categorical.name);
@@ -134,10 +138,54 @@ export class Workspace {
     addChart(type: ChartSpec['type'] = 'bar', x = this.fields[0]?.name, y?: string) {
         if (!x || this.specs.length >= 12)
             return;
-        const spec: ChartSpec = { id: `chart-${++this.next}`, type, x, y, bins: 24 };
+        const spec: ChartSpec = { id: `chart-${++nextChart}`, type, x, y, bins: 24 };
+        this.charts.querySelector('.empty')?.remove();
         this.specs.push(spec);
-        this.views.set(spec.id, new ChartView(this.charts, spec, this.fields, () => this.changed(), () => { this.specs = this.specs.filter(s => s !== spec); this.views.get(spec.id)?.destroy(); this.views.delete(spec.id); this.changed(); }, (expr, label) => this.select(expr, label)));
+        const owner = { workspace: this };
+        this.owners.set(spec.id, owner);
+        const view = new ChartView(this.charts, spec, this.fields,
+            () => owner.workspace.changed(),
+            () => owner.workspace.removeChart(spec.id),
+            (expr, label) => owner.workspace.select(expr, label),
+            id => {
+                const target = owner.workspace.chartSources().find(s => s.id === id)?.workspace;
+                if (target) owner.workspace.moveChart(spec.id, target);
+            });
+        this.views.set(spec.id, view);
+        this.refreshSources();
     }
+    private removeChart(id: string) {
+        this.specs = this.specs.filter(s => s.id !== id);
+        this.results = this.results.filter(r => r.id !== id);
+        this.views.get(id)?.destroy(); this.views.delete(id); this.owners.delete(id);
+        this.changed();
+    }
+    private moveChart(id: string, target: Workspace) {
+        if (target === this) return;
+        const spec = this.specs.find(s => s.id === id), view = this.views.get(id), owner = this.owners.get(id);
+        if (!spec || !view || !owner) return;
+        // Keep the live card (including its expanded dialog) in place, but
+        // route every change and selection to the selected source's worker.
+        this.specs = this.specs.filter(s => s !== spec);
+        this.results = this.results.filter(r => r.id !== id);
+        this.views.delete(id); this.owners.delete(id);
+        target.specs.push(spec); target.views.set(id, view); target.owners.set(id, owner);
+        owner.workspace = target;
+        view.setFields(target.fields);
+        target.refreshSources();
+        this.changed(); target.changed();
+    }
+    reconfigure(fields: Field[]) {
+        this.fields = fields;
+        this.rules.replaceChildren(); this.makeGroup(this.rules, 'and');
+        this.results = [];
+        for (const view of this.views.values()) view.setFields(fields);
+    }
+    refreshSources() {
+        const sources = this.chartSources();
+        for (const view of this.views.values()) view.setSources(this.sourceId, sources);
+    }
+
     update(results: ChartResult[]) {
         this.results = results;
         for (const result of results)
@@ -174,6 +222,8 @@ class ChartView {
     private list = element('div');
     private result?: ChartResult;
     private observer: ResizeObserver;
+    private source = element('select');
+    private sourceName = element('span');
     private x = element('select');
     private y = element('select');
     private type = element('select');
@@ -192,7 +242,7 @@ class ChartView {
     private placeholder?: Comment;
     private focus = 0;
     private hit = new Float32Array(0);
-    constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string) => void) {
+    constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string) => void, sourceChanged: (id: string) => void) {
         this.root.className = 'chart-card';
         this.root.dataset.chartId = spec.id;
         const header = element('div'), head = element('div');
@@ -224,8 +274,13 @@ class ChartView {
         const typeField = chartField(this.type, 'Chart type', '');
         typeField.hint.hidden = true;
         typeField.root.classList.add('chart-field-wide');
-        header.append(this.title, actions);
-        head.append(typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.binsField.root);
+        const sourceField = chartField(this.source, 'Data source', 'Axes and selections use this source’s attributes and filters.');
+        sourceField.root.classList.add('chart-field-wide');
+        this.source.onchange = () => sourceChanged(this.source.value);
+        this.sourceName.className = 'hint chart-source-name';
+        const heading = element('div'); heading.append(this.title, this.sourceName);
+        header.append(heading, actions);
+        head.append(sourceField.root, typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.binsField.root);
         this.canvas.tabIndex = 0;
         this.canvas.setAttribute('role', 'img');
         this.note.className = 'hint';
@@ -294,6 +349,15 @@ class ChartView {
         this.canvas.onblur = () => this.draw();
         this.observer = new ResizeObserver(() => this.draw());
         this.observer.observe(this.canvas);
+    }
+    setFields(fields: Field[]) { this.fields = fields; this.configure(); }
+    setSources(id: string, sources: ChartSource[]) {
+        this.source.replaceChildren(...sources.map(s => option(s.id, s.name + (s.available ? '' : ' (not loaded)'))));
+        this.source.value = id;
+        const source = sources.find(s => s.id === id);
+        this.sourceName.textContent = source?.name ?? '';
+        this.root.dataset.sourceId = id;
+        if (source && !source.available) this.suspend();
     }
     private configure() {
         this.interaction?.reset();
