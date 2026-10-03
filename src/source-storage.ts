@@ -1,14 +1,15 @@
 import { settingsKey, settingsMetadata, type Settings } from './source-settings.ts';
 
-let databaseName = 'wfs-source-files';
+export let fileUser: string | undefined;
 const storeName = 'csv';
 // Named analyses/copies may reuse immutable files within one user, but never
 // resolve another user's references or the unauthenticated legacy cache.
 export function setFileUser(user: string) {
-    databaseName = 'wfs-source-files:user:' + encodeURIComponent(user);
+    fileUser = user;
 }
-function openFiles(): Promise<IDBDatabase> {
+function openFiles(user = fileUser): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
+        const databaseName = user === undefined ? 'wfs-source-files' : 'wfs-source-files:user:' + encodeURIComponent(user);
         const request = indexedDB.open(databaseName, 1);
         let blocked = false;
         request.onupgradeneeded = () => request.result.createObjectStore(storeName);
@@ -28,8 +29,8 @@ function completed(transaction: IDBTransaction): Promise<void> {
         transaction.onerror = () => {}; // Abort reports the transaction error.
     });
 }
-export async function readCSVText(reference: string): Promise<string> {
-    const db = await openFiles();
+export async function readCSVText(reference: string, user = fileUser): Promise<string> {
+    const db = await openFiles(user);
     try {
         const transaction = db.transaction(storeName, 'readonly'), done = completed(transaction);
         const request = transaction.objectStore(storeName).get(reference);

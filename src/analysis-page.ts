@@ -1,5 +1,6 @@
 import { configurationState, type SourceAnalysis } from './analysis-state.ts';
 import { currentAnalysis, mountAnalysisControls, rememberBindings } from './saved-analysis.ts';
+import { fileUser } from './source-storage.ts';
 import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -531,7 +532,7 @@ async function performLoad(s: Source) {
                 fail((e as Error).message);
             }
         };
-        if (csv) s.worker!.postMessage({ type: 'loadCSV', config, bounds });
+        if (csv) s.worker!.postMessage({ type: 'loadCSV', config, bounds, fileUser });
         else s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), limit: Number(config.limit), sort: config.sort, fields: schema.fields, filter: serverFilter } });
     });
     if (session === s.request)
