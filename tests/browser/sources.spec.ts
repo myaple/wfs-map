@@ -24,7 +24,8 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     await expect(page.locator('#filterStatus')).toContainText('256 matches');
     const ids = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.id));
     await page.locator('#analysisSource').selectOption(ids[1]);
-    await expect(page.locator('.chart-card').first().getByLabel('Chart type')).toHaveValue('bar');
+    await expect(page.locator(`.chart-card[data-source-id="${ids[1]}"]`).first().getByLabel('Chart type')).toHaveValue('bar');
+    await expect(page.locator('.chart-card')).toHaveCount(6);
     await page.evaluate(() => { const h = (window as any).__WFS_MAP__; h.workspace.select({ field: 'category', op: 'eq', value: 'vehicle' }, 'Vehicles'); });
     await expect(page.locator('#filterStatus')).toContainText('512 matches');
     await page.locator('#analysisSource').selectOption(ids[0]);

@@ -211,16 +211,21 @@ export class DataSources {
     }
     private csvColumns(config?: Config) {
         const headers = this.csvText ? parseCSV(this.csvText, input('delimiter').value).headers : [];
+        const restoring = !this.csvText && !!this.csvRef;
         for (const id of ['longitudeField', 'latitudeField', 'csvGeometry', 'csvTime']) {
             const select = $<HTMLSelectElement>(id), previous = config ? config[id === 'csvGeometry' ? 'geometryField' : id === 'csvTime' ? 'timeField' : id as 'longitudeField' | 'latitudeField'] : select.value;
-            select.replaceChildren(new Option(id === 'csvTime' ? 'No time attribute' : 'Choose column…', ''), ...headers.map(h => new Option(h, h)));
-            select.value = headers.includes(previous) ? previous : '';
+            // Preserve saved mappings while IndexedDB loads the file, including
+            // when a replacement is chosen before that read finishes. The new
+            // file's headers validate each mapping once its contents are ready.
+            const columns = restoring && previous ? [previous] : headers;
+            select.replaceChildren(new Option(id === 'csvTime' ? 'No time attribute' : 'Choose column…', ''), ...columns.map(h => new Option(h, h)));
+            select.value = columns.includes(previous) ? previous : '';
             if (!select.value && id !== 'csvTime') {
                 const pattern = id === 'longitudeField' ? /^(lon|lng|longitude|x)$/i : id === 'latitudeField' ? /^(lat|latitude|y)$/i : /^(geometry|geom|wkt)$/i;
                 select.value = headers.find(h => pattern.test(h)) ?? '';
             }
         }
-        $('csvFileStatus').textContent = this.fileName ? `${this.fileName} · ${headers.length} columns` : 'Choose a file to populate its columns.';
+        $('csvFileStatus').textContent = this.fileName ? restoring ? `Reading ${this.fileName}…` : `${this.fileName} · ${headers.length} columns` : 'Choose a file to populate its columns.';
     }
     private showError(e: unknown) { $('sourceError').textContent = (e as Error).message; $('sourceError').hidden = false; }
     private async readCSV() {
