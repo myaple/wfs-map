@@ -63,41 +63,30 @@ export function csvDataset(config: Config, bounds: QueryBounds = {}) {
                 if (!match) throw Error('Expected WKT POINT (longitude latitude).');
                 coordinates = [Number(match[1]), Number(match[2])];
             } else {
-                const point = JSON.parse(…17987 tokens truncated…n the map to bound requests.';
-    $('clearArea').hidden = !bbox;
-    if (!mapReady) return;
-    const data: Parameters<maplibregl.GeoJSONSource['setData']>[0] = { type: 'FeatureCollection', features: bbox ? [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[bbox.west, bbox.south], [bbox.east, bbox.south], [bbox.east, bbox.north], [bbox.west, bbox.north], [bbox.west, bbox.south]]] } }] : [] };
-    const source = map.getSource('query-area') as maplibregl.GeoJSONSource | undefined;
-    if (source) source.setData(data);
-    else {
-        map.addSource('query-area', { type: 'geojson', data });
-        map.addLayer({ id: 'query-area-outline', type: 'line', source: 'query-area', paint: { 'line-color': '#3984cf', 'line-width': 2, 'line-dasharray': [3, 2] } });
+                const point = JSON.parse(row[geometry]);
+                if (point.type !== 'Point' || !Array.isArray(point.coordinates) || point.coordinates.length < 2 || point.coordinates.slice(0, 2).some((v: unknown) => typeof v !== 'number')) throw Error('Expected a GeoJSON Point geometry.');
+                coordinates = point.coordinates;
+            }
+            mercator(coordinates[0], coordinates[1]);
+            const properties = Object.fromEntries(fields.map((f, j) => {
+                const v = row[j];
+                if (!v.trim()) return [f.name, null];
+                if (f.kind === 'date') {
+                    if (!/^\d{4}-\d\d-\d\d(?:T.*)?$/.test(v) || !Number.isFinite(Date.parse(v))) throw Error(`Invalid ISO 8601 time in ${f.name}.`);
+                    return [f.name, new Date(v).toISOString()];
+                }
+                return [f.name, f.kind === 'number' ? Number(v) : f.kind === 'boolean' ? v.toLowerCase() === 'true' : v];
+            }));
+            if (bounds.time) {
+                const t = Date.parse(String(properties[config.timeField]));
+                if (!Number.isFinite(t) || t < Date.parse(bounds.time.start) || t > Date.parse(bounds.time.end)) continue;
+            }
+            if (bounds.bbox) {
+                const b = bounds.bbox, [x, y] = coordinates;
+                if (x < b.west || x > b.east || y < b.south || y > b.north) continue;
+            }
+            features.push({ id: `csv.${i + 2}`, geometry: { type: 'Point', coordinates }, properties });
+        } catch (e) { throw Error(`CSV row ${i + 2}: ${(e as Error).message}`); }
     }
+    return { fields, features };
 }
-function chooseTime() {
-    const custom = value('timeWindow') === 'custom';
-    $('customTime').hidden = !custom;
-    $('applyTime').textContent = custom ? 'Apply time range' : 'Refresh time window';
-    if (custom) {
-        const time = queryBounds.time ?? timeBounds(24);
-        $<HTMLInputElement>('timeStart').value = time.start.slice(0, 19);
-        $<HTMLInputElement>('timeEnd').value = time.end.slice(0, 19);
-    } else applyTime();
-}
-function applyTime() {
-    try {
-        const choice = value('timeWindow');
-        const time = choice === 'all' ? undefined : choice === 'custom'
-            ? { start: value('timeStart') + 'Z', end: value('timeEnd') + 'Z' } : timeBounds(Number(choice));
-        if (time) validateTime(time);
-        queryBounds = { ...queryBounds, time };
-        $('timeError').hidden = true;
-        showQueryBounds(); reloadBounds();
-    } catch (e) { $('timeError').textContent = (e as Error).message; $('timeError').hidden = false; }
-}
-$('timeWindow').onchange = chooseTime;
-$('timeForm').onsubmit = e => { e.preventDefault(); applyTime(); };
-$('clearArea').onclick = () => { queryBounds = { ...queryBounds, bbox: undefined }; showQueryBounds(); reloadBounds(); };
-$<HTMLSelectElement>('timeWindow').value = queryBounds.time ? '24' : 'all';
-showQueryBounds();
-map.on('load', showQueryBounds);
