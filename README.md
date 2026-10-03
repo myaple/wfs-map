@@ -22,7 +22,7 @@ Development: `npm run dev` starts Vite on port 5173 and the WFS fixture on 8787,
 
 ### Published container
 
-The **Publish container** GitHub Actions workflow builds and pushes the existing Dockerfile to `ghcr.io/myaple/wfs-map` on every push to `main`. Each build publishes `latest` and `sha-<full commit SHA>` tags. Pull requests targeting `main` build the same image without logging in or publishing. Actions authenticate with the automatic `GITHUB_TOKEN` and `packages: write`; no extra registry secret is needed.
+The **Publish container** GitHub Actions workflow builds and pushes the existing Dockerfile to `ghcr.io/myaple/wfs-map` on every push, including branches and tags. Each push publishes a `sha-<short SHA>` tag using the first seven commit-SHA characters; pushes to `main` also publish `latest`. Pull requests targeting `main` build the same image without logging in or publishing. Actions authenticate with the automatic `GITHUB_TOKEN` and `packages: write`; no extra registry secret is needed.
 
 ```sh
 docker pull ghcr.io/myaple/wfs-map:latest
