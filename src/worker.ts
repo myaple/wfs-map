@@ -1,3 +1,4 @@
+import { readCSVText } from './source-storage.ts';
 import { csvDataset } from './csv.ts';
 import type { Config as SourceConfig } from './source-settings.ts';
 import type { QueryBounds } from './wfs-query.ts';
@@ -114,6 +115,7 @@ async function load(c: Config) {
 }
 async function loadCSV(config: SourceConfig, bounds: QueryBounds) {
     const start = performance.now();
+    if (!config.csvText && config.csvRef) config.csvText = await readCSVText(config.csvRef);
     const dataset = csvDataset(config, bounds), total = dataset.features.length;
     store = new Store(dataset.fields);
     post({ type: 'init', capacity: total, total });
