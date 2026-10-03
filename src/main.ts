@@ -1,6 +1,7 @@
 import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+import { csvExportFilename } from './csv-export.ts';
 import { PointsLayer } from './points-layer.ts';
 import { metadataPopup } from './metadata-popup.ts';
 import { wfsURL, fieldKind, xmlDocument, type Field, type Rule } from './data.ts';
@@ -20,7 +21,9 @@ $('app').innerHTML = `
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="sourceSummary" class="hint"></div></div>
 <section id="configuration" hidden></section>
 <section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><label for="timeStart">Start (UTC)</label><input id="timeStart" type="datetime-local" step="1"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="datetime-local" step="1"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply only to this source. Chart selections use its highlighted AND / OR group.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
+
 <div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
+<details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
 type Source = {
     id: string;
@@ -47,6 +50,10 @@ type Source = {
     done: boolean;
     request: number;
     filterRequest: number;
+    filtering: boolean;
+    exportRequest: number;
+    exporting: boolean;
+    exportStatus: string;
     colorRequest: number;
     coloring: NonNullable<SavedSource['coloring']>;
     colorCategories?: string[];
@@ -88,7 +95,7 @@ function createSource(input: {
     charts.id = 'charts';
     charts.setAttribute('aria-live', 'polite');
     const color = input.color ?? colors[sources.length % colors.length];
-    const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
+    const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, filtering: false, exportRequest: 0, exporting: false, exportStatus: '', colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
     s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, available: source.enabled && source.done })));
     sources.push(s);
     return s;
@@ -110,7 +117,7 @@ function persist() {
     catch { status('Could not save analysis preferences in this browser.', true); }
 }
 function renderSources() {
-    for (const id of ['filterSource', 'chartSource']) {
+    for (const id of ['filterSource', 'chartSource', 'exportSource']) {
         const select = $<HTMLSelectElement>(id), previous = select.value;
         select.replaceChildren(...sources.map(s => new Option(s.name + (s.enabled ? '' : ' (disabled)'), s.id)));
         if (!sources.length) select.add(new Option('No data sources', ''));
@@ -190,6 +197,7 @@ function route() {
 window.addEventListener('hashchange', route);
 $('filterSource').onchange = () => switchFilters(value('filterSource'));
 $('chartSource').onchange = state;
+$('exportSource').onchange = state;
 const gridFeatures: any[] = [];
 for (let x = -180; x <= 180; x += 10)
     gridFeatures.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[x, -85], [x, 85]] } });
@@ -258,6 +266,11 @@ function state() {
     const progress = $<HTMLProgressElement>('progress');
     if (enabledSources.some(s => s.loading)) progress.removeAttribute('value');
     else progress.value = enabledSources.length && enabledSources.every(s => s.done) ? 1 : 0;
+    const exportSource = sources.find(s => s.id === value('exportSource'));
+    enabled('exportCSV', !!exportSource?.enabled && exportSource.done && !!exportSource.worker && !exportSource.filtering && !exportSource.exporting);
+    let csvStatus = !exportSource ? 'Add a data source to export.' : !exportSource.enabled ? 'Source disabled.' : !exportSource.done ? 'Load this source to export.' : exportSource.filtering ? 'Updating selection…' : exportSource.exportStatus || `${exportSource.selected.toLocaleString()} matching points`;
+    if (exportSource?.enabled && exportSource.done && exportSource.metrics.truncated) csvStatus += ' · load limit reached; exports loaded points only';
+    $('csvExportStatus').textContent = csvStatus;
     pointColors.update();
     hud();
 }
@@ -306,6 +319,7 @@ function clearSource(s: Source) {
     s.abort?.abort();
     s.worker?.terminate();
     s.worker = undefined;
+    s.exportRequest++; s.exporting = s.filtering = false; s.exportStatus = '';
     s.complete?.();
     s.complete = undefined;
     if (mapReady && map.getLayer(s.layer.id))
@@ -437,6 +451,7 @@ async function performLoad(s: Source) {
                     return;
                 }
                 if (m.type === 'filtered' && m.request === s.filterRequest) {
+                    s.filtering = false;
                     s.workspace.update(m.charts ?? []);
                     s.workspace.settled();
                     s.layer.filter(m.indices);
@@ -457,7 +472,17 @@ async function performLoad(s: Source) {
                 }
                 if (m.type === 'filterError' && m.request === s.filterRequest) {
                     s.workspace.settled();
+                    s.filtering = false;
                     s.filterStatus = 'Filter error: ' + m.message;
+                }
+                if (m.type === 'csvExported' && m.request === s.exportRequest && s.enabled && s.done) {
+                    s.exporting = false;
+                    download(m.blob, csvExportFilename(s.name));
+                    s.exportStatus = `${s.selected.toLocaleString()} points exported.`;
+                }
+                if (m.type === 'csvExportError' && m.request === s.exportRequest) {
+                    s.exporting = false;
+                    s.exportStatus = 'CSV export failed: ' + m.message;
                 }
                 if (m.type === 'metadata' && m.request === s.request && m.data)
                     showMetadata(m.data, s.name);
@@ -483,6 +508,8 @@ function filter(rules?: Rule[] | Expression, s = filterSource()) {
     if (!s?.enabled || !s.done)
         return;
     const expression = Array.isArray(rules) ? all(rules) : rules ?? s.workspace.expression();
+    s.filtering = true;
+    s.exportRequest++; s.exporting = false; s.exportStatus = '';
     s.workspace.pending();
     s.filterStatus = 'Updating selection and charts…';
     popup?.remove();
@@ -592,6 +619,19 @@ $('size').oninput = () => {
     map.triggerRepaint();
 };
 $<HTMLInputElement>('basemap').onchange = () => { background.enabled = $<HTMLInputElement>('basemap').checked; sourceSettings.syncBackgroundEnabled(background.enabled); applyBackground(); persist(); };
+function download(blob: Blob, filename: string) {
+    const a = document.createElement('a'), url = URL.createObjectURL(blob);
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('exportCSV').onclick = () => {
+    const s = sources.find(s => s.id === value('exportSource'));
+    if (!s?.enabled || !s.done || !s.worker || s.filtering || s.exporting) return;
+    s.exporting = true; s.exportStatus = `Preparing ${s.selected.toLocaleString()} points…`;
+    // Clone the exact applied map indices; never transfer/detach the map's buffer.
+    s.worker.postMessage({ type: 'exportCSV', request: ++s.exportRequest, indices: s.layer.indices });
+    state();
+};
 $('export').onclick = () => { const blob = new Blob([JSON.stringify({ sources: sources.map(s => ({ id: s.id, name: s.name, enabled: s.enabled, metrics: s.metrics })) }, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wfs-map-metrics.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
 (window as any).__WFS_MAP__ = { map, get layer() { return filterSource()?.layer; }, get metrics() { return filterSource()?.metrics; }, get done() { return filterSource()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get workspace() { return filterSource()?.workspace; }, get sources() { return sources; }, switchSource: switchFilters, filterSource: (id: string, rules: Rule[] | Expression) => {
         const s = sources.find(s => s.id === id);
@@ -703,4 +743,3 @@ $('clearArea').onclick = () => { queryBounds = { ...queryBounds, bbox: undefined
 $<HTMLSelectElement>('timeWindow').value = queryBounds.time ? '24' : 'all';
 showQueryBounds();
 map.on('load', showQueryBounds);
-
