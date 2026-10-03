@@ -228,6 +228,37 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
 .map-tools input[type=checkbox] {
   vertical-align: middle;
 }
+#enlargeMap {
+  margin-left: auto;
+}
+.map-dialog {
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  width: calc(100vw - 32px);
+  max-width: none;
+  height: calc(100dvh - 32px);
+  max-height: none;
+  color: #233f50;
+}
+.map-dialog::backdrop {
+  background: #132c46aa;
+}
+.map-dialog .map-panel {
+  position: static;
+  border: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.map-dialog .map-tools {
+  flex: none;
+}
+.map-dialog #map {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
 #map {
   height: max(420px,calc(100dvh - 360px));
   min-width: 0;
@@ -513,6 +544,7 @@ button.danger { color: #a23129; }
 .discovery-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; margin-bottom: 6px; }
 .discovery-head label { margin: 0; }
 .discovery-head button { font-size: 12px; }
+#customLayer input { width: 100%; }
 .source-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; align-items: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid #e3ebf0; }
 .source-dialog-footer .hint { margin-right: auto; }
 @media(max-width:600px) {

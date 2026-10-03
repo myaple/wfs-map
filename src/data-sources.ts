@@ -7,6 +7,7 @@ export class DataSources {
     private saved: Settings;
     private editing?: SavedSource;
     private discovery?: AbortController;
+    private capabilities?: Document;
     private removed?: { source: SavedSource; index: number };
     constructor(settings: Settings, private apply: (settings: Settings) => void) {
         this.draft = structuredClone(settings);
@@ -22,7 +23,7 @@ export class DataSources {
         <dialog id="sourceDialog" class="source-dialog" aria-labelledby="sourceDialogTitle"><form id="sourceForm"><div class="source-dialog-head"><div><h2 id="sourceDialogTitle">Add data source</h2><p class="hint">Connect a WFS server and select its dataset.</p></div><button id="closeSource" type="button" aria-label="Close source settings">×</button></div><div class="settings-fields">
           <label for="sourceName">Source name</label><input id="sourceName" required maxlength="120" placeholder="e.g. Weather stations">
           <label for="url">WFS endpoint</label><input id="url" required placeholder="https://example.org/geoserver/wfs" aria-describedby="endpointHelp"><p id="endpointHelp" class="hint">HTTP(S) or a relative URL. Server-specific query parameters are kept as entered.</p>
-          <div class="discovery-head"><label for="layer">Feature type</label><button id="discover" type="button">Discover layers</button></div><input id="layer" list="discoveredLayers" required placeholder="e.g. workspace:stations" aria-describedby="layerHelp"><datalist id="discoveredLayers"></datalist><p id="layerHelp" class="hint">Type a feature name, or discover and choose one from the server.</p><p id="discoveryStatus" class="hint" role="status"></p>
+          <div class="discovery-head"><label for="layerSelect">Feature layer</label><button id="discover" type="button">Discover layers</button></div><select id="layerSelect" aria-describedby="layerHelp"></select><div id="customLayer"><label for="layer">Custom layer name</label><input id="layer" required placeholder="e.g. workspace:stations" aria-describedby="layerHelp"></div><p id="layerHelp" class="hint">Discover layers to choose a dataset, or select Custom layer name to enter one yourself.</p><p id="discoveryStatus" class="hint" role="status"></p>
           <details id="wfsCompatibility"><summary>WFS compatibility and limits</summary><div class="settings-fields">
             <label for="version">WFS version</label><select id="version"><option>2.0.0</option><option>1.1.0</option><option>1.0.0</option></select>
             <label for="format">Output format</label><input id="format" required><p class="hint">Use the exact format advertised by the server. GeoJSON is recommended.</p>
@@ -48,7 +49,14 @@ export class DataSources {
         for (const id of ['closeSource', 'cancelSource']) $(id).onclick = () => this.close();
         $<HTMLDialogElement>('sourceDialog').addEventListener('cancel', () => this.stopDiscovery());
         $('sourceForm').onsubmit = e => { e.preventDefault(); this.updateSource(); };
-        for (const id of ['url', 'version']) $(id).addEventListener('input', () => { this.stopDiscovery(); $('discoveredLayers').replaceChildren(); $('discoveryStatus').textContent = ''; });
+        for (const id of ['url', 'version']) $(id).addEventListener('input', () => { this.stopDiscovery(); this.resetLayers(); $('discoveryStatus').textContent = ''; });
+        $('layerSelect').onchange = () => {
+            const name = $<HTMLSelectElement>('layerSelect').value;
+            if (name) input('layer').value = name;
+            this.showCustomLayer();
+            if (name) this.updateDiscoveredFormat();
+            else input('layer').focus();
+        };
         $('discover').onclick = () => void this.discover();
         $('saveSettings').onclick = () => this.save();
         $('discardSettings').onclick = () => { this.draft = structuredClone(this.saved); input('basemapURL').value = this.draft.background.url; input('basemapAttribution').value = this.draft.background.attribution; this.removed = undefined; this.render(); };
@@ -107,7 +115,8 @@ export class DataSources {
         input('sourceName').value = name;
         $('sourceDialogTitle').textContent = source ? 'Configure data source' : 'Add data source';
         $('updateSource').textContent = source ? 'Update source' : 'Add to list';
-        $('sourceError').hidden = true; $('discoveryStatus').textContent = ''; $('discoveredLayers').replaceChildren();
+        this.stopDiscovery(); this.resetLayers(true);
+        $('sourceError').hidden = true; $('discoveryStatus').textContent = '';
         $<HTMLDetailsElement>('wfsCompatibility').open = false;
         $<HTMLDialogElement>('sourceDialog').showModal();
         input('sourceName').focus();
@@ -117,6 +126,37 @@ export class DataSources {
         $<HTMLButtonElement>('discover').disabled = false;
     }
     private close() { this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
+    private resetLayers(selectCurrent = false) {
+        this.capabilities = undefined;
+        const name = input('layer').value;
+        $('layerSelect').replaceChildren(...(selectCurrent && name ? [new Option(name, name)] : []), new Option('Custom layer name…', ''));
+        this.showCustomLayer();
+    }
+    private showCustomLayer() {
+        const custom = !$<HTMLSelectElement>('layerSelect').value;
+        $('customLayer').hidden = !custom;
+        // The selected name is still read by config(); hidden custom input
+        // validation must not prevent submitting a discovered layer.
+        input('layer').required = custom;
+    }
+    private updateDiscoveredFormat() {
+        const doc = this.capabilities;
+        if (!doc) return;
+        // deegree advertises outputFormat globally; GeoServer usually puts
+        // it on GetFeature. Per-layer formats take precedence over both.
+        const featureType = [...doc.getElementsByTagNameNS('*', 'FeatureType')].find(el => el.getElementsByTagNameNS('*', 'Name')[0]?.textContent?.trim() === input('layer').value);
+        const layerFormats = [...(featureType?.getElementsByTagNameNS('*', 'OutputFormats') ?? [])].flatMap(el => [...el.getElementsByTagNameNS('*', 'Format')].map(v => v.textContent?.trim() ?? ''));
+        const parameters = [...doc.getElementsByTagNameNS('*', 'Parameter')].filter(el => el.getAttribute('name') === 'outputFormat' && (el.parentElement?.localName === 'OperationsMetadata' || el.parentElement?.getAttribute('name') === 'GetFeature'));
+        const formats = layerFormats.length ? layerFormats : parameters.flatMap(el => [...el.getElementsByTagNameNS('*', 'Value')].map(v => v.textContent?.trim() ?? ''));
+        const json = formats.find(f => /^application\/(?:geo\+)?json$/i.test(f)) ?? formats.find(f => /^json$/i.test(f));
+        let formatNotice = '';
+        if (formats.length && !formats.includes(input('format').value) && json) {
+            input('format').value = json;
+            formatNotice = ` Output format set to ${json}.`;
+        }
+        const count = $<HTMLSelectElement>('layerSelect').options.length - 1;
+        $('discoveryStatus').textContent = `${count} layer(s) found. Choose a feature layer above.${formatNotice}`;
+    }
     private config(): Config { return Object.fromEntries(configKeys.map(key => [key, input(key).value.trim()])) as Config; }
     private updateSource() {
         try {
@@ -157,24 +197,23 @@ export class DataSources {
             const text = await response.text(); xmlDocument(text);
             if (!response.ok) throw Error(`HTTP ${response.status}`);
             const doc = new DOMParser().parseFromString(text, 'text/xml');
-            const types = [...doc.getElementsByTagNameNS('*', 'FeatureType')].map(el => el.getElementsByTagNameNS('*', 'Name')[0]?.textContent ?? '').filter(Boolean);
-            if (!types.length) throw Error('No feature types found in GetCapabilities.');
-            if (controller.signal.aborted) return;
-            $('discoveredLayers').replaceChildren(...types.map(name => new Option(name, name)));
-            if (!types.includes(input('layer').value)) input('layer').value = types[0];
-            // deegree advertises outputFormat globally; GeoServer usually puts
-            // it on GetFeature. Per-layer formats take precedence over both.
-            const featureType = [...doc.getElementsByTagNameNS('*', 'FeatureType')].find(el => el.getElementsByTagNameNS('*', 'Name')[0]?.textContent === input('layer').value);
-            const layerFormats = [...(featureType?.getElementsByTagNameNS('*', 'OutputFormats') ?? [])].flatMap(el => [...el.getElementsByTagNameNS('*', 'Format')].map(v => v.textContent?.trim() ?? ''));
-            const parameters = [...doc.getElementsByTagNameNS('*', 'Parameter')].filter(el => el.getAttribute('name') === 'outputFormat' && (el.parentElement?.localName === 'OperationsMetadata' || el.parentElement?.getAttribute('name') === 'GetFeature'));
-            const formats = layerFormats.length ? layerFormats : parameters.flatMap(el => [...el.getElementsByTagNameNS('*', 'Value')].map(v => v.textContent?.trim() ?? ''));
-            const json = formats.find(f => /^application\/(?:geo\+)?json$/i.test(f)) ?? formats.find(f => /^json$/i.test(f));
-            let formatNotice = '';
-            if (formats.length && !formats.includes(input('format').value) && json) {
-                input('format').value = json;
-                formatNotice = ` Output format set to ${json}.`;
+            const layers = new Map<string, string>();
+            for (const el of doc.getElementsByTagNameNS('*', 'FeatureType')) {
+                const name = el.getElementsByTagNameNS('*', 'Name')[0]?.textContent?.trim();
+                const title = el.getElementsByTagNameNS('*', 'Title')[0]?.textContent?.trim();
+                if (name) layers.set(name, title && title !== name ? `${title} (${name})` : name);
             }
-            $('discoveryStatus').textContent = `${types.length} layer(s) found. Choose a feature type above.${formatNotice}`;
+            if (!layers.size) throw Error('No feature types found in GetCapabilities.');
+            if (controller.signal.aborted) return;
+            this.capabilities = doc;
+            const select = $<HTMLSelectElement>('layerSelect');
+            select.replaceChildren(...[...layers].map(([name, title]) => new Option(title, name)), new Option('Custom layer name…', ''));
+            // Keep an existing selection or manual override. A blank new
+            // source starts with the first advertised layer.
+            if (!input('layer').value) input('layer').value = layers.keys().next().value!;
+            select.value = layers.has(input('layer').value) ? input('layer').value : '';
+            this.showCustomLayer();
+            this.updateDiscoveredFormat();
         } catch (e) { if (this.discovery === controller && $<HTMLDialogElement>('sourceDialog').open) $('discoveryStatus').textContent = `Discovery failed: ${(e as Error).message}. You can enter a feature type manually.`; }
         finally { clearTimeout(timeout); if (this.discovery === controller) { $<HTMLButtonElement>('discover').disabled = false; this.discovery = undefined; } }
     }
