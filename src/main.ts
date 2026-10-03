@@ -2,6 +2,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { PointsLayer } from './points-layer.ts';
+import { metadataPopup } from './metadata-popup.ts';
 import { wfsURL, fieldKind, xmlDocument, type Field, type Rule } from './data.ts';
 import { Workspace } from './workspace.ts';
 import { all, type Expression } from './analysis.ts';
@@ -492,6 +493,9 @@ function showMetadata(data: any, sourceName: string) {
     popup?.remove();
     const div = document.createElement('div');
     div.className = 'metadata';
+    div.tabIndex = 0;
+    div.setAttribute('role', 'region');
+    div.setAttribute('aria-label', 'Point metadata');
     const table = document.createElement('table');
     for (const [k, v] of Object.entries({ wfsSource: sourceName, featureId: data.id, longitude: data.coordinates[0], latitude: data.coordinates[1], ...data.properties })) {
         const tr = document.createElement('tr'), th = document.createElement('th'), td = document.createElement('td');
@@ -501,7 +505,7 @@ function showMetadata(data: any, sourceName: string) {
         table.append(tr);
     }
     div.append(table);
-    popup = new maplibregl.Popup({ maxWidth: '380px' }).setLngLat(data.coordinates).setDOMContent(div).addTo(map);
+    popup = metadataPopup(map, data.coordinates, div);
 }
 map.on('dblclick', e => {
     e.preventDefault();
