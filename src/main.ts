@@ -223,7 +223,10 @@ const map = new maplibregl.Map({ container: 'map', style, center: mapSettings.ce
 function rememberMap() {
     const center = map.getCenter().wrap();
     mapSettings = { center: [center.lng, center.lat], zoom: map.getZoom(), pointSize: Number(value('size')) };
-    sourceSettings.syncMap(mapSettings); persist();
+    sourceSettings.syncMap(mapSettings);
+    // Layout/initial camera events also emit moveend. Keep a first visit and
+    // unsaved source drafts unpersisted until the user explicitly saves them.
+    if (localStorage.getItem(settingsKey) !== null) persist();
 }
 map.on('moveend', rememberMap);
 map.touchZoomRotate.disableRotation();
