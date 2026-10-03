@@ -1,3 +1,4 @@
+import { categoryColors, colorBytes } from './category-colors.ts';
 import { numericValue, type Rule } from './data.ts';
 import type { Store } from './store.ts';
 export type Expression = Rule | {
@@ -326,7 +327,30 @@ export class Analyzer {
         };
         return { column: j, axis: { field: name, labels, ranges, rules }, bin };
     }
-    async colors(name: string, bins: number, cancelled: () => boolean = () => false) {
+    async colors(name: string, bins: number, cancelled: () => boolean = () => false, overrides: Record<string, string> = {}) {
+        const j = this.store.fields.findIndex(f => f.name === name);
+        if (j < 0) throw Error(`Unknown colour attribute ${name}`);
+        const column = this.store.columns[j];
+        if (column.field.kind === 'string') {
+            // One RGB triplet per point supports every value, without a top-N/Other cap.
+            const categories = [...column.dictionary].sort();
+            const colors = categoryColors(categories, overrides);
+            const palette = column.dictionary.map(value => colorBytes(colors.get(value)!));
+            const codes = new Uint8Array(this.store.length * 3);
+            codes.fill(128);
+            for (const chunk of this.store.chunks)
+                for (let base = 0; base < chunk.length; base += BLOCK) {
+                    const end = Math.min(base + BLOCK, chunk.length);
+                    for (let i = base; i < end; i++) {
+                        const code = chunk.values[j][i];
+                        if (code >= 0) codes.set(palette[code], (chunk.offset + i) * 3);
+                    }
+                    await yieldEvents();
+                    if (cancelled()) throw Error('Superseded');
+                }
+            return { codes, categories, axis: { field: name, labels: [] } };
+        }
+        if (column.field.kind !== 'number') throw Error('Gradients require a numeric field');
         if (!Number.isInteger(bins) || bins < 2 || bins > 64)
             throw Error('Invalid colour bins');
         const a = await this.axis(name, bins, cancelled), codes = new Uint8Array(this.store.length);
@@ -447,3 +471,4 @@ export class Analyzer {
         return { indices: indices?.subarray(0, count) ?? null, count, charts: prepared.map(p => p.result) };
     }
 }
+

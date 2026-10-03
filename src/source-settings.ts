@@ -4,7 +4,7 @@ export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', for
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
-    coloring?: { field: string; bins: number; low: string; high: string };
+    coloring?: { field: string; bins: number; low: string; high: string; categories?: Record<string, Record<string, string>> };
 };
 export type Background = { url: string; attribution: string; enabled: boolean };
 export type Settings = { sources: SavedSource[]; background: Background };
@@ -70,3 +70,4 @@ export function configIdentity(config: Config) {
 export function settingsMetadata(settings: Settings): Settings {
     return { ...settings, sources: settings.sources.map(s => ({ ...s, config: { ...s.config, csvText: '' } })) };
 }
+

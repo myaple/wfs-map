@@ -4,8 +4,9 @@ const vertex = `#version 300 es
 precision highp float;
 precision highp int;
 layout(location=0) in vec4 a_position;
-layout(location=1) in uint a_bin;
+layout(location=1) in uvec3 a_bin;
 uniform bool u_colored;
+uniform bool u_categorical;
 uniform vec3 u_palette[64];
 uniform vec3 u_color;
 flat out vec3 v_color;
@@ -23,7 +24,7 @@ void main() {
   if(u_pick) clip=(clip-u_pickCenter)*u_pickScale;
   gl_Position=vec4(clip,0.0,1.0);
   gl_PointSize=u_size;
-  v_color=u_colored?(a_bin==255u?vec3(.5):u_palette[min(a_bin,63u)]):u_color;
+  v_color=u_colored?(u_categorical?vec3(a_bin)/255.0:(a_bin.x==255u?vec3(.5):u_palette[min(a_bin.x,63u)])):u_color;
   uint id=uint(gl_VertexID)+1u;
   v_id=vec4(float(id&255u),float((id>>8u)&255u),float((id>>16u)&255u),float((id>>24u)&255u))/255.0;
 }`;
@@ -63,6 +64,7 @@ export class PointsLayer implements CustomLayerInterface {
     colorCodes?: Uint8Array;
     palette = new Float32Array(64 * 3);
     private paletteBins = 24;
+    categorical = false;
     capacity = 0;
     count = 0;
     pointSize = 2;
@@ -99,7 +101,7 @@ export class PointsLayer implements CustomLayerInterface {
             gl.deleteShader(s);
         if (!gl.getProgramParameter(this.program, gl.LINK_STATUS))
             throw new Error(gl.getProgramInfoLog(this.program) ?? 'Shader link failed');
-        for (const name of ['center', 'scale', 'size', 'pick', 'pickCenter', 'pickScale', 'color', 'colored', 'palette'])
+        for (const name of ['center', 'scale', 'size', 'pick', 'pickCenter', 'pickScale', 'color', 'colored', 'categorical', 'palette'])
             this.uniform[name] = gl.getUniformLocation(this.program, 'u_' + name);
         this.vao = gl.createVertexArray()!;
         this.positionBuffer = gl.createBuffer()!;
@@ -122,7 +124,7 @@ export class PointsLayer implements CustomLayerInterface {
         this.colorBuffer = gl.createBuffer()!;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, this.colorCodes ?? new Uint8Array(1), gl.STATIC_DRAW);
-        gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, 1, 0);
+        gl.vertexAttribIPointer(1, this.categorical ? 3 : 1, gl.UNSIGNED_BYTE, this.categorical ? 3 : 1, 0);
         if (this.colorCodes)
             gl.enableVertexAttribArray(1);
         else {
@@ -177,7 +179,8 @@ export class PointsLayer implements CustomLayerInterface {
         gl.bindVertexArray(null);
         this.map.triggerRepaint();
     }
-    setColors(codes: Uint8Array | undefined, low = '#2463d4', high = '#ee5539', bins = 24) {
+    setColors(codes: Uint8Array | undefined, low = '#2463d4', high = '#ee5539', bins = 24, categorical = false) {
+        this.categorical = categorical;
         this.colorCodes = codes;
         this.paletteBins = bins;
         this.setPalette(low, high);
@@ -187,6 +190,7 @@ export class PointsLayer implements CustomLayerInterface {
         gl.bindVertexArray(this.vao);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, codes ?? new Uint8Array(1), gl.STATIC_DRAW);
+        gl.vertexAttribIPointer(1, categorical ? 3 : 1, gl.UNSIGNED_BYTE, categorical ? 3 : 1, 0);
         if (codes)
             gl.enableVertexAttribArray(1);
         else {
@@ -220,6 +224,7 @@ export class PointsLayer implements CustomLayerInterface {
         gl.useProgram(this.program);
         gl.uniform3f(this.uniform.color, ...this.color);
         gl.uniform1i(this.uniform.colored, this.colorCodes ? 1 : 0);
+        gl.uniform1i(this.uniform.categorical, this.categorical ? 1 : 0);
         gl.uniform3fv(this.uniform.palette, this.palette);
         gl.bindVertexArray(this.vao);
         gl.uniform4f(this.uniform.center, hx, hy, x - hx, y - hy);
@@ -364,3 +369,4 @@ export class PointsLayer implements CustomLayerInterface {
     }
     get gpuBytes() { return this.capacity * 20 + (this.colorCodes?.byteLength ?? 0) + (this.indices?.byteLength ?? 0); }
 }
+

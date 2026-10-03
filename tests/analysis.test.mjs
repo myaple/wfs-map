@@ -78,3 +78,29 @@ test('unbinned date coordinates retain millisecond separation across multi-year 
  const r=(await a.run(all([]),[{id:'s',type:'scatter',x:'time',y:'y',bins:8,binned:false}])).charts[0];assert.equal(r.raw.precise,true);assert.equal(r.raw.positions.length,16);
  const x=i=>r.raw.positions[i*4]+r.raw.positions[i*4+2];assert.ok(x(2)>x(1));assert.ok(Math.abs((x(2)-x(1))*63072000000/2-1)<.001);
 });
+
+
+test('discrete colours cover every unique string, preserve missing values, and remain stable through filtering/reordering', async () => {
+  const { categoryColors, colorBytes } = await import('../src/category-colors.ts');
+  const names = [...Array.from({length:300}, (_, i) => `category-${i}`), '', '__proto__', '<img src=x>'];
+  const rows = [...names, names[0], null].map((name, i) => ({...feature(i), properties:{name, value:i, date:'2026-10-01T00:00:00Z', flag:true}}));
+  const analyzer = build(rows), result = await analyzer.colors('name', 8);
+  assert.equal(result.categories.length, names.length);
+  assert.equal(result.codes.byteLength, rows.length * 3);
+  const palette = categoryColors(names); assert.equal(new Set(palette.values()).size, names.length);
+  for (let i = 0; i < names.length; i++) assert.deepEqual([...result.codes.slice(i*3,i*3+3)], colorBytes(palette.get(names[i])));
+  assert.deepEqual([...result.codes.slice(-3)], [128,128,128]);
+  assert.deepEqual([...result.codes.slice(names.length*3,names.length*3+3)], [...result.codes.slice(0,3)]);
+  await analyzer.run({field:'name',op:'eq',value:names[0]}, []);
+  assert.deepEqual((await analyzer.colors('name',64)).codes,result.codes);
+  const overrides = JSON.parse('{"__proto__":"#ff00ff","category-0":"#00ff00"}');
+  const changed = await analyzer.colors('name',8,() => false,overrides);
+  assert.deepEqual([...changed.codes.slice(0,3)],[0,255,0]);
+  assert.deepEqual([...changed.codes.slice(301*3,302*3)],[255,0,255]);
+  const reordered = await build([...rows].reverse()).colors('name',8);
+  for (let i = 0; i < rows.length; i++) assert.deepEqual([...reordered.codes.slice(i*3,i*3+3)], [...result.codes.slice((rows.length-i-1)*3,(rows.length-i)*3)]);
+  await assert.rejects(analyzer.colors('name',8,() => true),/Superseded/);
+  await assert.rejects(analyzer.colors('date',8),/numeric field/);
+  await assert.rejects(analyzer.colors('flag',8),/numeric field/);
+  await assert.rejects(analyzer.colors('absent',8),/Unknown colour attribute/);
+});
