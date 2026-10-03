@@ -74,6 +74,7 @@ test('real browser tabs restore independent WFS analyses, map views and filters 
     const alpha = await create(request, wfsState(7)), beta = await create(request, wfsState(11));
     try {
         await page.goto('/');
+        expect(await page.evaluate(() => isSecureContext)).toBe(true);
         await expect(page.getByRole('heading', { name: 'My analyses' })).toBeVisible();
         await expect(page.getByRole('heading', { name: alpha.name, exact: true })).toBeVisible();
         const other = await context.newPage();
@@ -81,6 +82,7 @@ test('real browser tabs restore independent WFS analyses, map views and filters 
         await other.goto('/?analysis=' + beta.id);
         await expect(page.locator('#hud')).toHaveText('Loaded 7 points');
         await expect(other.locator('#hud')).toHaveText('Loaded 11 points');
+        await expect(page.locator('#addRule')).toBeEnabled();
         await page.locator('#addRule').click();
         await page.getByLabel('Attribute', { exact: true }).selectOption('id');
         await page.getByLabel('Operator', { exact: true }).selectOption('gte');
