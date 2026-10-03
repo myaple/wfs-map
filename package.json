@@ -16,7 +16,10 @@
     "install:offline": "node scripts/install-offline.mjs",
     "benchmark:analysis": "node scripts/benchmark-analysis.mjs",
     "benchmark:sources": "node scripts/benchmark-sources.mjs",
-    "test:public-wfs": "npm run build && node scripts/test-public-wfs.mjs && node scripts/test-public-wfs-time.mjs"
+    "test:public-wfs": "npm run build && node scripts/test-public-wfs.mjs && node scripts/test-public-wfs-time.mjs",
+    "vendor:rust": "node scripts/vendor-rust.mjs",
+    "install:rust-offline": "node scripts/install-rust-offline.mjs",
+    "start:api": "cargo run --manifest-path backend/Cargo.toml --offline --locked"
   },
   "dependencies": {
     "fast-xml-parser": "5.11.2",

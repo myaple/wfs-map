@@ -9,7 +9,7 @@ const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) =
     return e;
 };
 const option = (value: string, label = value) => { const e = element('option', label); e.value = value; return e; };
-let nextChartControl = 0, nextChart = 0;
+let nextChartControl = 0;
 export type ChartSource = { id: string; name: string; workspace: Workspace; enabled: boolean; available: boolean };
 function chartField(select: HTMLSelectElement, name: string, help: string) {
     const root = element('div'), label = element('label', name), hint = element('div', help);
@@ -135,10 +135,10 @@ export class Workspace {
         this.active.querySelector(':scope > .group-children')!.append(row);
         this.changed();
     }
-    addChart(type: ChartSpec['type'] = 'bar', x = this.fields[0]?.name, y?: string) {
+    addChart(type: ChartSpec['type'] = 'bar', x = this.fields[0]?.name, y?: string, saved?: ChartSpec) {
         if (!x || this.specs.length >= 12)
             return;
-        const spec: ChartSpec = { id: `chart-${++nextChart}`, type, x, y, bins: 24 };
+        const spec: ChartSpec = saved ? structuredClone(saved) : { id: `chart-${crypto.randomUUID()}`, type, x, y, bins: 24 };
         this.charts.querySelector('.empty')?.remove();
         this.specs.push(spec);
         const owner = { workspace: this };
@@ -153,6 +153,35 @@ export class Workspace {
             });
         this.views.set(spec.id, view);
         this.refreshSources();
+    }
+    restore(expression: Expression, charts: ChartSpec[]) {
+        for (const view of this.views.values()) view.destroy();
+        this.views.clear(); this.owners.clear(); this.specs = []; this.results = [];
+        this.rules.replaceChildren();
+        const build = (parent: HTMLElement, expr: Expression): HTMLDivElement => {
+            const isGroup = 'children' in expr;
+            const group = this.makeGroup(parent, isGroup ? expr.op : 'and');
+            const children = group.querySelector<HTMLElement>(':scope > .group-children')!;
+            for (const child of isGroup ? expr.children : [expr]) {
+                if ('children' in child) { build(children, child); continue; }
+                if ('field' in child && !['in', 'notin'].includes(child.op)) {
+                    this.addRule(group);
+                    const row = children.lastElementChild!, inputs = row.querySelectorAll('select,input');
+                    (inputs[0] as HTMLSelectElement).value = child.field;
+                    (inputs[1] as HTMLSelectElement).value = child.op;
+                    (inputs[2] as HTMLInputElement).value = child.value ?? '';
+                    (inputs[2] as HTMLInputElement).disabled = ['null', 'notnull'].includes(child.op);
+                } else {
+                    const row = element('div'); row.className = 'selection';
+                    (row as any).expression = structuredClone(child);
+                    row.append(element('span', 'Saved chart selection'), button('×', () => { row.remove(); this.changed(); }));
+                    children.append(row);
+                }
+            }
+            return group;
+        };
+        this.active = build(this.rules, expression); this.markActive();
+        for (const chart of charts) this.addChart(chart.type, chart.x, chart.y, chart);
     }
     private removeChart(id: string) {
         this.specs = this.specs.filter(s => s.id !== id);

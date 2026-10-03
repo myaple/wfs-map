@@ -64,7 +64,10 @@ export async function saveSettings(settings: Settings): Promise<Settings> {
             const request = store.getKey(ref);
             request.onsuccess = () => {
                 if (request.result !== undefined) return;
-                if (!payload) { missing = true; transaction.abort(); return; }
+                if (!payload) {
+                    if (settingsKey !== 'wfs-settings') return; // Shared setup may await local attachment.
+                    missing = true; transaction.abort(); return;
+                }
                 // Never overwrite the file used by the currently saved settings.
                 store.add(payload, ref); added.push(ref);
             };
@@ -76,7 +79,16 @@ export async function saveSettings(settings: Settings): Promise<Settings> {
         localStorage.setItem(settingsKey, JSON.stringify(next));
         published = true;
         const keep = references(next);
-        await removeFiles(db, [...oldRefs].filter(ref => !keep.has(ref))).catch(() => {});
+        // Named analyses may share local blobs across tabs and copies. Retain them
+        // rather than deleting a file another analysis still needs.
+        if (settingsKey === 'wfs-settings') {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i)!;
+                if (!key.startsWith('wfs-analysis-settings:') || key.endsWith(':bindings')) continue;
+                try { for (const ref of references(JSON.parse(localStorage.getItem(key)!))) keep.add(ref); } catch {}
+            }
+            await removeFiles(db, [...oldRefs].filter(ref => !keep.has(ref))).catch(() => {});
+        }
         return next;
     } catch (e) {
         if (!published) await removeFiles(db, added).catch(() => {});

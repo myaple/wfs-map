@@ -52,6 +52,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: ${{ github.event_name == 'push' }}
+          load: true
           tags: ${{ steps.image.outputs.tags }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -59,3 +60,9 @@ jobs:
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Preload database image for disconnected runtime test
+        run: docker pull postgis/postgis:16-3.4
+
+      - name: Test runtime on an internal network without Internet access
+        run: bash scripts/test-container.sh "ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA:0:7}"

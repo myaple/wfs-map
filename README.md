@@ -2,43 +2,77 @@
 
 A TypeScript analysis page for million-point WFS datasets. MapLibre renders every loaded point through a custom WebGL 2 layer. A worker holds typed metadata columns and calculates exact chart counts and nested AND/OR selections. Binned charts use bounded canvas aggregates; unbinned scatter plots draw contiguous point buffers with WebGL without per-observation JavaScript objects. There is no sampling, clustering, DOM map markers, or map hover picking.
 
+## Named analyses and workstation-only data
+
+The landing page lists **My analyses** for the authenticated user. Create a named analysis, open its Analysis or Data sources page, or open several analyses in separate tabs. **Save analysis** stores the complete configuration remotely: source connections, CSV file name/reference and column mappings, column names/types, nested filters, chart specifications, colours, basemap, map view and time/area choices. Source **Save changes** first applies edits and persists CSV files locally; then use **Save analysis** to update the remote setup. Unsaved analysis edits remain in the current tab. An optional creation checkbox imports the browser's previous sources/map into a new named analysis.
+
+**Share** saves the configuration and creates a live read-only link. Recipients authenticate through the same gateway, connect directly to WFS services, and attach their own local CSVs through Data sources → Configure. Saved column mappings and filters survive attachment; required column names are checked and filter/chart restoration also checks their inferred types. A filename alone does not establish that two CSVs contain the same data. The local attachment survives reload without changing the owner's configuration. **Save a copy** creates the recipient's own editable analysis; **Stop sharing** revokes the link. Links can be opened by any authenticated holder, so this first version has no team directory or recipient ACL.
+
+Different analyses use separate browser settings and in-memory state. Two tabs editing the same analysis can work independently, but a stale **Save analysis** returns a conflict and offers reopening or saving a copy instead of overwriting another tab's changes. CSV blobs remain in IndexedDB and are retained for other analyses/copies. Clearing browser storage removes those local files; the remote setup then prompts for reattachment.
+
+Relative time choices (for example Last 24 hours) resolve against the current time when reopened, making daily reuse useful. Custom time ranges and the geographic request box restore exactly. Saved filter values and categorical colour overrides are configuration and can themselves contain sensitive literals; they are part of the remote metadata explicitly selected for saving. Row-index selections from individual scatter observations are local to a particular load and are excluded: an expression containing such a selection is saved as an empty AND filter. Attribute/range/chart-bin filters are portable.
+
+The browser uses an explicit configuration serializer; the API independently validates a bounded allowlist and rejects raw CSV text, rows, features, results and runtime metrics. Dataset retrieval, parsing, filtering, chart aggregation, metadata inspection and CSV export all execute on the workstation. The Rust API serves static assets and saves JSON configuration in PostgreSQL; it never fetches WFS/tile URLs or accepts file uploads. The existing `.tar.gz` backup feature remains a **local full-data export** containing CSV contents; downloading or importing that archive does not send it to the configuration API.
+
+## Trusted gateway identity
+
+mTLS terminates **before the API**, at your existing authentication gateway. Set **`USER_ID_HEADER`** to the HTTP header containing its stable user ID (default `x-user-id`). With the default `AUTH_MODE=proxy`, the API trusts that header alone and rejects a missing, empty or invalid ID with HTTP 401. It does not inspect certificates or require an additional certificate-verification header. IDs determine ownership; no separate password/login flow or user registration is needed. Renaming an upstream identity changes which analyses it owns.
+
+The gateway must overwrite the configured identity header with its authenticated identity on every forwarded request, removing client-supplied values. Keep the API reachable only from that gateway. `deploy/compose.yml` publishes no API/database port and creates the internal `wfs-workspaces-private` network; attach the existing gateway to it and forward to `api:8787`. `deploy/nginx.conf.example` illustrates overwriting the identity header if your terminator is nginx; adapt it to your own stable identity claim/header. The browser and API should share one origin. API responses are not cached, and mutations require the browser's `X-Workspace-Request: 1` header without allowing cross-origin requests. Avoid logging request bodies or share-link query strings in your gateway.
+
+| Variable | Default / purpose |
+| --- | --- |
+| `DATABASE_URL` | Required PostgreSQL/PostGIS connection URI |
+| `USER_ID_HEADER` | `x-user-id`; trusted upstream user identity header |
+| `AUTH_MODE` | `proxy`; explicit `development` bypass for local work only |
+| `DEV_USER` | `local-analyst` in development mode; request headers are ignored |
+| `BIND` | `127.0.0.1:8787` outside Docker; image uses `0.0.0.0:8787` |
+| `ASSET_DIR` | `dist`; image uses `/app/dist` |
+
+The backend uses Rust **Poem**, **poem-openapi**, **Diesel** and a connection pool. Startup applies embedded migrations and enables PostGIS; the initial table contains configuration JSONB, ownership, revisions and revocable share tokens. No feature geometry/data is stored in PostGIS. The migration role must be allowed to enable the PostGIS extension (or have it enabled in advance). `GET /api/openapi.json` exposes the generated API specification behind the identity header; `GET /health` is a public liveness endpoint.
+
 ## Build and run offline
 
-Requires **Node.js 22.18+ or 24+**, Linux x64 for the vendored build toolchain, and `tar`:
+Requires Node.js **22.18+ or 24+**, Rust **1.90**, Linux x64, a C compiler/Make/Perl for bundled libpq/OpenSSL, `tar`, and an available PostgreSQL/PostGIS database:
 
 ```sh
 npm run install:offline
+npm run install:rust-offline
 npm run build
-npm start
+cargo build --manifest-path backend/Cargo.toml --release --locked --offline
+DATABASE_URL=postgres://wfs:password@127.0.0.1:5432/wfs \
+  AUTH_MODE=development ./backend/target/release/wfs-workspaces
 ```
 
-Open **http://127.0.0.1:8787** and go to **Data sources** to add WFS endpoints or import CSV files. A new browser starts with an empty source list. To try generated data, expand **Optional test WFS server**, choose a point count/distribution, **Start test server**, then **Add as data source** and **Save changes**. The explicit fixture shortcut `/?time=all&points=3000000&autoload=1` remains available for tests and benchmarks.
+Open **http://127.0.0.1:8787** to select/create an analysis. Production uses `AUTH_MODE=proxy` and the trusted gateway described above. For local frontend development, run `npm run dev` (Vite 5173 and generated WFS fixture 8787), and separately run `BIND=127.0.0.1:8788 AUTH_MODE=development DATABASE_URL=… npm run start:api`. Vite proxies `/api` to the Rust service on 8788. The Node static/fixture host remains available with `npm start`; its local-analysis shortcut is `/?local=1&time=all`, and it does not implement persistent analysis endpoints.
 
-All npm dependencies, including native Linux x64 build packages, are committed in `vendor/npm-cache-parts/`, with licenses and exact versions in `vendor/licenses/`, `vendor/manifest.json`, and `package-lock.json`. The install script assembles the committed binary parts, checks their SHA-256, extracts the integrity-checked cache and invokes `npm ci --offline`; it does not contact an npm registry. Builds produce self-contained `dist/` assets, including both workers and MapLibre CSS. Once built, `node server/server.ts` uses only Node built-ins; no npm install, CDN, database, or API key is needed to run it.
+All npm dependencies are committed in `vendor/npm-cache-parts/`, with licenses/versions in `vendor/licenses/`, `vendor/manifest.json` and `package-lock.json`. All Rust crate sources and licenses, including libpq/OpenSSL, are committed in `backend/vendor-parts/` with a SHA-256 manifest tied to `backend/Cargo.lock`. Install scripts verify/unpack these bundles; npm installation and Cargo compilation use offline mode. Runtime assets include both workers and MapLibre CSS with no CDN or package-registry dependency. To update dependencies on a connected build machine, regenerate with `npm run vendor` and `npm run vendor:rust`. Toolchains, Docker base images and test Chromium are supplied separately.
 
-The default grid basemap works offline. On Data sources, configure an optional HTTP(S) XYZ raster tile URL containing `{z}`, `{x}` and `{y}`, plus attribution. Relative local tile URLs work offline when those tiles are hosted locally. The basemap URL and attribution use the page’s **Save changes** button; the Analysis basemap visibility switch saves immediately. An empty URL keeps the grid. OpenStreetMap is the initial optional tile provider. Connecting a remote WFS naturally requires access to that server.
+The default grid basemap works offline. Configure an optional local/intranet XYZ tile URL containing `{z}`, `{x}` and `{y}`, plus attribution, in Data sources. An empty URL keeps the grid. The browser needs access to its configured WFS and tile services; the API/database need no Internet access.
 
-Development: `npm run dev` starts Vite on port 5173 and the WFS fixture on 8787, with a same-origin proxy. On a different build platform, install once online and run `npm run vendor` to prepare that platform's npm cache bundle. Node itself and optional browser-test Chromium binaries are not vendored.
+### Disconnected Docker deployment
 
-### Published container
-
-The **Publish container** GitHub Actions workflow builds and pushes the existing Dockerfile to `ghcr.io/myaple/wfs-map` on every push, including branches and tags. Each push publishes a `sha-<short SHA>` tag using the first seven commit-SHA characters; pushes to `main` also publish `latest`. Pull requests targeting `main` build the same image without logging in or publishing. Actions authenticate with the automatic `GITHUB_TOKEN` and `packages: write`; no extra registry secret is needed.
+The **Publish container** workflow builds/pushes `ghcr.io/myaple/wfs-map:sha-<first seven SHA characters>` on every push; `main` also publishes `latest`. PRs build/test without publishing. Images target Linux amd64. Prepare images on a connected machine, then transfer the archive into the disconnected environment:
 
 ```sh
 docker pull ghcr.io/myaple/wfs-map:latest
-docker run --rm -p 8787:8787 ghcr.io/myaple/wfs-map:latest
+docker pull postgis/postgis:16-3.4
+docker save -o wfs-images.tar ghcr.io/myaple/wfs-map:latest postgis/postgis:16-3.4
+# On the disconnected host:
+docker load -i wfs-images.tar
+POSTGRES_PASSWORD=your-url-safe-password USER_ID_HEADER=x-analyst-id \
+  docker compose -f deploy/compose.yml up -d --pull never
 ```
 
-Use the commit-SHA tag for a fixed version. Images target **Linux amd64**, matching the committed offline dependency bundle. GHCR initially creates packages as private; to allow anonymous pulls, change the package visibility to public in its GitHub package settings after the first publish. Otherwise, authenticate to GHCR with a token that has `read:packages`.
+Use a commit-SHA application tag and pin the database image digest for controlled releases. Compose has `pull_policy: never`, a persistent database volume and an internal network. Connect your existing mTLS gateway to `wfs-workspaces-private`. The application image contains the Rust binary and built UI, runs as an unprivileged user, performs no startup downloads and needs only its database connection. PostGIS is a separate preloaded service. Back up the configuration database/volume according to your deployment procedures; no CSV file recovery is possible from it.
 
-### Container build
+For a fully disconnected **image build**, preload `node:24-bookworm-slim`, `rust:1.90-bookworm` and `debian:bookworm-slim`:
 
 ```sh
 docker build --pull=false --network=none -t wfs-map .
-docker run --rm -p 8787:8787 wfs-map
 ```
 
-Preload the `node:24-bookworm-slim` base image before an entirely disconnected Docker build. The Dockerfile also disables networking on the dependency-install and build steps. Its runtime stage contains only `dist/` and the development server. The vendored archive targets Linux amd64; select that platform if building on ARM. Docker was unavailable in the development environment, so the image build itself has not been executed; an independent clean-directory install, TypeScript/Vite build and unit/API tests passed using the same offline commands.
+Every Dockerfile install/compile step explicitly uses `--network=none`; dependencies come from the repository bundles. CI runs the real API ownership/revision/share tests against PostGIS, then starts the built application plus PostGIS on an internal Docker network to verify static assets, the custom identity header and migrations without Internet access.
 
 ## Analysis page
 
@@ -46,7 +80,7 @@ WFS configuration lives on the **Data sources** subpage (`#configuration`). The 
 
 Choose **CSV file** in **Source type** to upload a CSV or TSV with unique column headers. Select comma, semicolon, or tab as its delimiter, then choose longitude/latitude columns or a WKT/GeoJSON Point geometry column. Coordinates must use WGS84 longitude/latitude in the map’s Web Mercator latitude range. An optional time column accepts ISO 8601 dates/times and becomes a date attribute for filters and charts; use **All time** for files without time. Quoted fields, escaped quotes, embedded newlines, CRLF and a UTF-8 BOM are supported. Numeric and boolean columns are inferred across the whole file; blank cells become null. Malformed data fails with row context rather than silently dropping points.
 
-CSV files use the same worker, map layers, per-source filters, charts, colouring and metadata as WFS. Shared time/area bounds select CSV rows locally; refreshing or clearing those bounds reloads from the original imported file. The file contents persist in IndexedDB with **Save changes**; compact settings and column mappings remain in localStorage. Files larger than the localStorage quota can be saved and loaded again. Available capacity depends on your browser and device: a failed save retains the previous sources and files for retry. Existing inline CSV files migrate when settings are saved, and saved replacement/removal releases the old file. CSV import is intended for files that fit in browser storage and memory; it is not a streamed remote dataset.
+CSV files use the same worker, map layers, per-source filters, charts, colouring and metadata as WFS. Shared time/area bounds select CSV rows locally; refreshing or clearing those bounds reloads from the original imported file. The file contents persist in IndexedDB with **Save changes**; compact settings and column mappings remain in localStorage. Files larger than the localStorage quota can be saved and loaded again. Available capacity depends on your browser and device: a failed save retains the previous sources and files for retry. Existing inline CSV files migrate when settings are saved, and saved replacement/removal releases the old file in standalone local mode. Named analyses retain files for reuse by copies and other tabs. CSV import is intended for files that fit in browser storage and memory; it is not a streamed remote dataset.
 
 **Backup & share** on Data sources provides **Download backup** and **Import backup**. A `.tar.gz` includes the current source list (including staged edits and disabled sources), complete original CSV contents and column mappings, WFS connection settings, source colours/category palettes, and map background, centre, zoom and point size. WFS features are not copied: recipients connect to the configured server when loading. A recipient must be able to reach those endpoints; relative WFS/tile URLs resolve against their app host. Backups are unencrypted and include endpoint query parameters as configured.
 
@@ -57,9 +91,9 @@ The version-1 archive contains `manifest.json` (`format: "wfs-map-backup"`, `ver
 
 **Add to list** / **Update source** stages the editor changes. **Remove** stages removal and offers **Undo remove**, including for the last source. **Save changes** saves CSV files in IndexedDB, then publishes the source list and map background together as compact metadata in localStorage. It applies additions/removals/settings and loads new or changed enabled sources. Until then, existing analysis keeps using the saved settings. **Discard changes** restores the saved list and background; Cancel or Escape dismisses an editor without changing the list. Unsaved changes and save failures are shown explicitly. Existing saved sources migrate automatically, retaining their names, IDs, enabled state, colours and connection settings. Generated fixture counts/distributions become normal URL query parameters. Analysis colour preferences continue to save immediately.
 
-**Optional test WFS server** is separate from the source editor and collapsed by default. Starting it activates the built-in `/test-wfs` endpoint in the app’s Node server. **Add as data source** pre-fills the ordinary editor with its URL and feature type; it never adds a special source automatically. Point count and distribution are ordinary endpoint query parameters, so multiple test sources can use different datasets. The endpoint stays active until the Node server restarts; start it again from the panel after a restart. This requires the bundled Node host (or Vite’s same-origin proxy); static-only hosts report an actionable error. The legacy `/wfs` fixture remains available for API tests and benchmarks.
+**Optional test WFS server** is separate from the source editor and collapsed by default. Starting it activates the built-in `/test-wfs` endpoint in the app’s Node server. **Add as data source** pre-fills the ordinary editor with its URL and feature type; it never adds a special source automatically. Point count and distribution are ordinary endpoint query parameters, so multiple test sources can use different datasets. The endpoint stays active until the Node server restarts; start it again from the panel after a restart. This requires the development Node host (or Vite’s same-origin proxy); the production Rust host does not provide generated WFS data and reports an actionable error. The legacy `/wfs` fixture remains available for API tests and benchmarks.
 
-The prominent **Time & map area** panel above Dataset filters always remains available, including before loading or with Dataset filters collapsed. It defaults to **Last 24 hours**, shared by every enabled source. Choose Last hour, Last 6 hours, Last 7 days, **Custom range** (UTC), or **All time**. Presets apply immediately; custom ranges apply with **Apply time range** after validation. **Refresh time window** advances a relative window to now. The applied UTC range are displayed and remain fixed across sources and pages until changed/refreshed. A new page visit defaults to the last 24 hours; these query bounds are session controls rather than saved connection settings.
+The prominent **Time & map area** panel above Dataset filters always remains available, including before loading or with Dataset filters collapsed. It defaults to **Last 24 hours**, shared by every enabled source. Choose Last hour, Last 6 hours, Last 7 days, **Custom range** (UTC), or **All time**. Presets apply immediately; custom ranges apply with **Apply time range** after validation. **Refresh time window** advances a relative window to now. The applied UTC range are displayed and remain fixed across sources and pages until changed/refreshed. A standalone local page visit defaults to the last 24 hours; named analyses restore their saved time choice and area as described above.
 
 **Right-click and drag a box on the map** sets one shared geographic request bound for every enabled source, independently of the active Dataset filter group. A dashed outline and the bounds remain visible; another drag replaces the area, and **Clear map area** removes it while retaining the time window. Time and map-area changes cancel pending loads, clear old data, and reload enabled sources while retaining compatible chart settings and attribute selections. Individual raw-scatter observation selections are cleared on reload because their row indices belong to the previous load. Map-area reloads retain the viewport.
 
@@ -209,7 +243,7 @@ node scripts/preview-sources.mjs
 node scripts/benchmark.mjs 3000000
 ```
 
-Current validation: **26 unit/API tests and 43 browser tests pass**, with an offline vendored install and TypeScript/Vite build. Tests cover custom local basemap templates and persistence, time Y aggregation, scatter-only unbinned mode, exact-point picking and rectangle selection, geographic edge/antimeridian predicates, source-specific colour/box state, colour code memory and stable bins, and bounded non-scatter aggregation. Chart navigation tests cover canvas/WebGL zoom and reset without dataset changes, right-drag selection (including pie/time), date axes and millisecond precision across multi-year domains, modal enlargement/restoration, Escape, type switching, and removing an enlarged chart. Chart settings checks cover visible accessible labels, responsive control widths, category-specific controls, time Y visibility, and switching between raw scatter and bin counts in one dropdown.
+Current validation: **41 Node tests, 3 Rust unit tests and 68 browser tests pass**, with an offline vendored install and TypeScript/Vite build. Tests cover custom local basemap templates and persistence, time Y aggregation, scatter-only unbinned mode, exact-point picking and rectangle selection, geographic edge/antimeridian predicates, source-specific colour/box state, colour code memory and stable bins, and bounded non-scatter aggregation. Chart navigation tests cover canvas/WebGL zoom and reset without dataset changes, right-drag selection (including pie/time), date axes and millisecond precision across multi-year domains, modal enlargement/restoration, Escape, type switching, and removing an enlarged chart. Chart settings checks cover visible accessible labels, responsive control widths, category-specific controls, time Y visibility, and switching between raw scatter and bin counts in one dropdown.
 
 Data source tests cover draft isolation, atomic saves, reload persistence, generic empty defaults, cancellation/discard, undo removal and removal of the final loaded source, legacy migration, normal query parameter preservation, test-server startup/addition, storage failure, discovery failure/cancellation, the eight-source limit, keyboard focus, and mobile layouts.
 
@@ -223,7 +257,10 @@ The analysis benchmark writes worker and browser round-trip timings plus a scree
 | `src/workspace.ts` | Filter groups, chart configuration, canvas plots, click/brush/keyboard selection |
 | `src/data-sources.ts` | Draft source list, modal connection editor, explicit Save and optional test-server controls |
 | `src/source-settings.ts` | Generic WFS defaults, saved settings migration and validation |
-| `src/main.ts` | MapLibre, configuration subpage, worker coordination, metadata and metrics |
+| `src/main.ts` | Named-analysis landing selector and page routing |
+| `src/analysis-page.ts` | MapLibre, configuration subpage, worker coordination, metadata and metrics |
+| `src/analysis-state.ts`, `src/saved-analysis.ts` | Configuration-only serialization, local bindings and save/share controls |
+| `backend/` | Rust Poem/OpenAPI service, Diesel models and embedded PostGIS migrations |
 | `src/store.ts` | Typed metadata columns, dictionaries and duplicate detection |
 | `src/points-layer.ts` | GPU buffers, culling, rendering and double-click picking |
 | `src/chart-plot.ts` | Shared chart axes, local viewport, pointer gestures and bounded pie-sector intersection |

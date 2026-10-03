@@ -14,3 +14,28 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+  api:
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: workspaces_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d workspaces_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@1.90.0
+        with:
+          components: rustfmt
+      - run: npm run install:rust-offline
+      - run: cargo fmt --manifest-path backend/Cargo.toml --check
+      - run: cargo test --release --manifest-path backend/Cargo.toml --offline --locked --all-targets -- --include-ignored
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/workspaces_test
