@@ -76,7 +76,7 @@ services:
     init: true
     shm_size: 1gb
     environment:
-      WFS_E2E_URL: http://frontend:8080
+      WFS_E2E_UPSTREAM: http://frontend:8080
       CI: '1'
     volumes: ['../test-results/e2e:/app/test-results']
     depends_on:

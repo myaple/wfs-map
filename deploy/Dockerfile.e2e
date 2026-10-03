@@ -7,4 +7,5 @@ RUN --network=none node scripts/install-offline.mjs
 COPY src ./src
 COPY tests/e2e ./tests/e2e
 COPY playwright.e2e.config.ts ./
-CMD ["npm", "run", "test:e2e"]
+COPY scripts/run-e2e.mjs ./scripts/
+CMD ["node", "scripts/run-e2e.mjs"]

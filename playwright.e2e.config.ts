@@ -11,8 +11,6 @@ export default defineConfig({
         baseURL,
         viewport: { width: 1440, height: 900 },
         trace: 'retain-on-failure',
-        // Docker DNS names are not loopback origins. Keep the test browser's
-        // secure-context APIs equivalent to localhost / the real HTTPS gateway.
-        launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--unsafely-treat-insecure-origin-as-secure=${new URL(baseURL).origin}`] }
+        launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }
     }
 });
