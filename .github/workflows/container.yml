@@ -52,6 +52,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: ${{ github.event_name == 'push' }}
+          load: true
           tags: ${{ steps.image.outputs.tags }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -59,3 +60,17 @@ jobs:
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Preload database image for disconnected runtime test
+        run: docker pull postgis/postgis:16-3.4
+
+      - name: Test runtime on an internal network without Internet access
+        run: bash scripts/test-container.sh "ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA:0:7}"
+
+      - name: Preload local E2E frontend and browser runner images
+        run: |
+          docker pull nginx:1.28-alpine
+          docker pull mcr.microsoft.com/playwright:v1.56.1-noble
+
+      - name: Test real frontend, Rust API, identity gateway and PostGIS
+        run: WFS_TEST_IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA:0:7}" bash scripts/test-e2e.sh

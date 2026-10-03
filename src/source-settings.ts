@@ -9,7 +9,8 @@ export type SavedSource = {
 export type Background = { url: string; attribution: string; enabled: boolean };
 export type MapSettings = { center: [number, number]; zoom: number; pointSize: number };
 export type Settings = { sources: SavedSource[]; background: Background; map?: MapSettings };
-export const settingsKey = 'wfs-settings';
+export let settingsKey = 'wfs-settings';
+export function setSettingsScope(key: string) { settingsKey = key; }
 const defaultBackground: Background = { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap contributors', enabled: false };
 // Old fixture settings become ordinary endpoint query parameters. Other servers
 // keep their URLs verbatim, including vendor parameters and authentication tokens.
@@ -31,8 +32,8 @@ export function readSettings(): Settings {
     const empty = { sources: [], background: { ...defaultBackground } };
     try {
         const saved = JSON.parse(localStorage.getItem(settingsKey) ?? 'null');
-        const oldSources = saved ? saved.sources : JSON.parse(localStorage.getItem('wfs-sources') ?? 'null');
-        const oldBackground = saved ? saved.background : JSON.parse(localStorage.getItem('wfs-basemap') ?? 'null');
+        const oldSources = saved ? saved.sources : settingsKey !== 'wfs-settings' ? [] : JSON.parse(localStorage.getItem('wfs-sources') ?? 'null');
+        const oldBackground = saved ? saved.background : settingsKey !== 'wfs-settings' ? null : JSON.parse(localStorage.getItem('wfs-basemap') ?? 'null');
         let candidates = Array.isArray(oldSources) ? oldSources : [];
         if (!saved && oldSources === null) {
             const legacy = JSON.parse(localStorage.getItem('wfs-configuration') ?? 'null');

@@ -1,0 +1,35 @@
+services:
+  api:
+    image: ghcr.io/myaple/wfs-map:latest
+    pull_policy: never
+    environment:
+      DATABASE_URL: postgres://wfs:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@database:5432/wfs
+      AUTH_MODE: proxy
+      USER_ID_HEADER: ${USER_ID_HEADER:-x-user-id}
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [private]
+    # No published API port: only the trusted authentication gateway can reach it.
+  database:
+    image: postgis/postgis:16-3.4
+    pull_policy: never
+    environment:
+      POSTGRES_USER: wfs
+      POSTGRES_DB: wfs
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes: [workspaces:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U wfs -d wfs']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [private]
+networks:
+  private:
+    name: wfs-workspaces-private
+    internal: true
+volumes:
+  workspaces:

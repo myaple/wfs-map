@@ -636,3 +636,15 @@ button.danger { color: #a23129; }
 .category-color-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .category-color-row input { flex: 0 0 42px; width: 42px; height: 32px; padding: 2px; }
 #moreCategoryColors { margin-top: 8px; }
+
+.saved-analysis-bar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 20px; background:#edf4f7; border-bottom:1px solid #cad9e2; }
+.saved-analysis-bar input[aria-label="Analysis name"] { font-weight:600; min-width:220px; }
+.saved-analysis-bar input[aria-label="Shared analysis link"] { flex:1; min-width:300px; }
+.saved-analysis-bar .hint { flex-basis:100%; }
+.analyses-selector { max-width:1100px; margin:32px auto; padding:0 24px; }
+.analyses-selector form { margin:24px 0; flex-wrap:wrap; }
+.analysis-list { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); }
+.analysis-card { background:white; border:1px solid #d7dfe8; border-radius:12px; padding:20px; }
+.analysis-card h2 { margin:0 0 10px; }
+.analysis-card .row { flex-wrap:wrap; }
+.analysis-card a { padding:8px 0; }

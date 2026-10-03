@@ -1,0 +1,93 @@
+name: wfs-map-e2e
+services:
+  database:
+    image: postgis/postgis:16-3.4
+    pull_policy: never
+    environment:
+      POSTGRES_USER: wfs
+      POSTGRES_DB: wfs_e2e
+      POSTGRES_PASSWORD: local-e2e
+    volumes: [e2e-database:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U wfs -d wfs_e2e']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks: [private]
+
+  api:
+    image: ${WFS_TEST_IMAGE:-wfs-map-e2e:local}
+    pull_policy: never
+    build:
+      context: ..
+      target: runtime
+      network: none
+    environment:
+      DATABASE_URL: postgres://wfs:local-e2e@database:5432/wfs_e2e
+      AUTH_MODE: proxy
+      USER_ID_HEADER: x-e2e-user
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [private]
+
+  frontend:
+    image: wfs-map-e2e-frontend:local
+    pull_policy: never
+    build:
+      context: ..
+      target: test-frontend
+      network: none
+    ports: ['127.0.0.1:${WFS_E2E_PORT:-8787}:8080']
+    depends_on: [api, fixture]
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O - http://127.0.0.1:8080/api/me >/dev/null']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks: [private]
+
+  fixture:
+    image: wfs-map-e2e-fixture:local
+    pull_policy: never
+    build:
+      context: ..
+      target: build
+      network: none
+    command: [node, server/server.ts]
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:8787/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks: [private]
+
+  tests:
+    profiles: [tests]
+    image: wfs-map-e2e-tests:local
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.e2e
+      network: none
+    init: true
+    shm_size: 1gb
+    environment:
+      WFS_E2E_UPSTREAM: http://frontend:8080
+      CI: '1'
+    volumes: ['../test-results/e2e:/app/test-results']
+    depends_on:
+      frontend:
+        condition: service_healthy
+      fixture:
+        condition: service_healthy
+    networks: [private]
+
+networks:
+  private:
+    internal: true
+volumes:
+  e2e-database:

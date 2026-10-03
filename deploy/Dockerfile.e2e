@@ -1,0 +1,11 @@
+FROM mcr.microsoft.com/playwright:v1.56.1-noble
+WORKDIR /app
+COPY package*.json ./
+COPY vendor/npm-cache-parts ./vendor/npm-cache-parts/
+COPY scripts/install-offline.mjs ./scripts/
+RUN --network=none node scripts/install-offline.mjs
+COPY src ./src
+COPY tests/e2e ./tests/e2e
+COPY playwright.e2e.config.ts ./
+COPY scripts/run-e2e.mjs ./scripts/
+CMD ["node", "scripts/run-e2e.mjs"]

@@ -6,3 +6,10 @@ playwright-report/
 *.log
 vendor/npm-cache.tar.gz
 vendor/npm-cache.tar.gz.tmp
+
+backend/target/
+backend/vendor/
+backend/licenses/
+backend/rust-vendor.tar.gz*
+backend/.cargo/*.previous
+.cargo/*.previous
