@@ -20,6 +20,17 @@ The default grid basemap works offline. On Data sources, configure an optional H
 
 Development: `npm run dev` starts Vite on port 5173 and the WFS fixture on 8787, with a same-origin proxy. On a different build platform, install once online and run `npm run vendor` to prepare that platform's npm cache bundle. Node itself and optional browser-test Chromium binaries are not vendored.
 
+### Published container
+
+The **Publish container** GitHub Actions workflow builds and pushes the existing Dockerfile to `ghcr.io/myaple/wfs-map` on every push, including branches and tags. Each push publishes a `sha-<short SHA>` tag using the first seven commit-SHA characters; pushes to `main` also publish `latest`. Pull requests targeting `main` build the same image without logging in or publishing. Actions authenticate with the automatic `GITHUB_TOKEN` and `packages: write`; no extra registry secret is needed.
+
+```sh
+docker pull ghcr.io/myaple/wfs-map:latest
+docker run --rm -p 8787:8787 ghcr.io/myaple/wfs-map:latest
+```
+
+Use the commit-SHA tag for a fixed version. Images target **Linux amd64**, matching the committed offline dependency bundle. GHCR initially creates packages as private; to allow anonymous pulls, change the package visibility to public in its GitHub package settings after the first publish. Otherwise, authenticate to GHCR with a token that has `read:packages`.
+
 ### Container build
 
 ```sh
