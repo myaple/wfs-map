@@ -28,11 +28,11 @@ for attempt in {1..60}; do
 done
 if test "$ready" != true; then docker logs wfs-api-test; exit 1; fi
 test "$(docker network inspect -f '{{.Internal}}' "$network")" = true
-curl --noproxy '*' -fsS "$base/" | rg -q 'WFS'
+[[ "$(curl --noproxy '*' -fsS "$base/")" == *WFS* ]]
 test "$(curl --noproxy '*' -s -o /dev/null -w '%{http_code}' "$base/api/me")" = 401
 test "$(curl --noproxy '*' -s -o /dev/null -w '%{http_code}' -H 'x-user-id: wrong' "$base/api/me")" = 401
-curl --noproxy '*' -fsS -H 'x-analyst-id: offline-analyst' "$base/api/me" | rg -q 'offline-analyst'
-curl --noproxy '*' -fsS -H 'x-analyst-id: offline-analyst' "$base/api/analyses" | rg -q '^\[\]$'
-curl --noproxy '*' -fsS -H 'x-analyst-id: offline-analyst' "$base/api/openapi.json" | rg -q 'WFS analysis workspaces'
-docker exec wfs-db-test psql -U postgres -d workspaces_test -tAc "SELECT extname FROM pg_extension WHERE extname='postgis'" | rg -q '^postgis$'
+[[ "$(curl --noproxy '*' -fsS -H 'x-analyst-id: offline-analyst' "$base/api/me")" == *offline-analyst* ]]
+test "$(curl --noproxy '*' -fsS -H 'x-analyst-id: offline-analyst' "$base/api/analyses")" = '[]'
+[[ "$(curl --noproxy '*' -fsS -H 'x-analyst-id: offline-analyst' "$base/api/openapi.json")" == *'WFS analysis workspaces'* ]]
+test "$(docker exec wfs-db-test psql -U postgres -d workspaces_test -tAc "SELECT extname FROM pg_extension WHERE extname='postgis'")" = postgis
 echo 'Rust/static UI/PostGIS runtime passed on an internal Docker network.'
