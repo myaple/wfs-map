@@ -1,6 +1,7 @@
+import { readCSVText, saveSettings } from './source-storage.ts';
 import { parseCSV } from './csv.ts';
 import { wfsURL, xmlDocument } from './data.ts';
-import { configKeys, defaultConfig, settingsKey, validateConfig, validateBackground, type Config, type Settings, type SavedSource } from './source-settings.ts';
+import { configKeys, defaultConfig, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource } from './source-settings.ts';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const input = (id: string) => $<HTMLInputElement>(id);
 export class DataSources {
@@ -10,6 +11,8 @@ export class DataSources {
     private discovery?: AbortController;
     private capabilities?: Document;
     private csvText = '';
+    private csvRef = '';
+    private saving = false;
     private fileName = '';
     private fileRevision = 0;
     private removed?: { source: SavedSource; index: number };
@@ -48,7 +51,7 @@ export class DataSources {
             <div id="csvXY" class="settings-fields"><label for="longitudeField">Longitude column</label><select id="longitudeField" required></select><label for="latitudeField">Latitude column</label><select id="latitudeField" required></select></div>
             <div id="csvPoint" class="settings-fields" hidden><label for="csvGeometry">Geometry column</label><select id="csvGeometry"></select></div>
             <label for="csvTime">Time attribute (optional)</label><select id="csvTime"></select><p class="hint">ISO 8601 dates/times. Use All time when no time column is selected. Coordinates must be longitude/latitude in WGS84; only points are supported.</p>
-            <p class="hint">The imported file is saved in this browser with its settings. Large files may exceed browser storage; a save error leaves your existing saved sources intact.</p>
+            <p class="hint">The imported file is saved in this browser with its settings. Available storage depends on your browser and device; a save error leaves your existing saved sources intact.</p>
           </fieldset>
           <p id="sourceError" class="error" role="alert" hidden></p>
         </div><div class="source-dialog-footer"><span class="hint">Save changes on the page to apply.</span><button id="cancelSource" type="button">Cancel</button><button id="updateSource" class="primary" type="submit">Add to list</button></div></form></dialog>`;
@@ -65,7 +68,7 @@ export class DataSources {
         };
         $('addSource').onclick = () => this.open();
         for (const id of ['closeSource', 'cancelSource']) $(id).onclick = () => this.close();
-        $<HTMLDialogElement>('sourceDialog').addEventListener('cancel', () => { this.fileRevision++; this.stopDiscovery(); });
+        $<HTMLDialogElement>('sourceDialog').addEventListener('cancel', () => this.close());
         $('sourceForm').onsubmit = e => { e.preventDefault(); this.updateSource(); };
         for (const id of ['url', 'version']) $(id).addEventListener('input', () => { this.stopDiscovery(); this.resetLayers(); $('discoveryStatus').textContent = ''; });
         $('layerSelect').onchange = () => {
@@ -92,10 +95,10 @@ export class DataSources {
     }
     syncBackgroundEnabled(enabled: boolean) { this.saved.background.enabled = this.draft.background.enabled = enabled; }
     private updateState() {
-        const dirty = JSON.stringify(this.draft) !== JSON.stringify(this.saved);
+        const dirty = JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved));
         $('saveState').textContent = dirty ? 'Unsaved changes' : 'All changes saved';
-        $<HTMLButtonElement>('saveSettings').disabled = !dirty;
-        $<HTMLButtonElement>('discardSettings').disabled = !dirty;
+        $<HTMLButtonElement>('saveSettings').disabled = this.saving || !dirty;
+        $<HTMLButtonElement>('discardSettings').disabled = this.saving || !dirty;
         $('saveError').hidden = true;
         window.onbeforeunload = dirty ? e => { e.preventDefault(); e.returnValue = ''; } : null;
     }
@@ -130,8 +133,8 @@ export class DataSources {
     private open(config: Config = defaultConfig, name = '', source?: SavedSource) {
         this.editing = source;
         this.fileRevision++;
-        for (const key of configKeys) if (!['csvText', 'fileName', 'longitudeField', 'latitudeField'].includes(key)) input(key).value = config[key];
-        this.csvText = config.csvText; this.fileName = config.fileName;
+        for (const key of configKeys) if (!['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField'].includes(key)) input(key).value = config[key];
+        this.csvRef = config.csvRef; this.csvText = config.csvText; this.fileName = config.fileName;
         input('csvFile').value = '';
         this.csvColumns(config);
         this.showType();
@@ -144,12 +147,23 @@ export class DataSources {
         $<HTMLDetailsElement>('wfsCompatibility').open = false;
         $<HTMLDialogElement>('sourceDialog').showModal();
         input('sourceName').focus();
+        if (config.type === 'csv' && config.csvRef && !config.csvText) void this.restoreCSV(config, this.fileRevision);
+    }
+    private async restoreCSV(config: Config, revision: number) {
+        $<HTMLButtonElement>('updateSource').disabled = true;
+        $('csvFileStatus').textContent = `Reading ${config.fileName}…`;
+        try {
+            const text = await readCSVText(config.csvRef);
+            if (revision !== this.fileRevision) return;
+            this.csvText = text; this.csvColumns(config);
+        } catch (e) { if (revision === this.fileRevision) this.showError(e); }
+        finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
     }
     private stopDiscovery() {
         this.discovery?.abort(); this.discovery = undefined;
         $<HTMLButtonElement>('discover').disabled = false;
     }
-    private close() { this.fileRevision++; this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
+    private close() { this.fileRevision++; this.csvText = ''; this.editing = undefined; this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
     private resetLayers(selectCurrent = false) {
         this.capabilities = undefined;
         const name = input('layer').value;
@@ -217,14 +231,14 @@ export class DataSources {
             const text = await file.text();
             if (revision !== this.fileRevision) return;
             parseCSV(text, input('delimiter').value);
-            this.csvText = text; this.fileName = file.name;
+            this.csvText = text; this.csvRef = crypto.randomUUID(); this.fileName = file.name;
             this.csvColumns(); $('sourceError').hidden = true;
         } catch (e) { if (revision === this.fileRevision) this.showError(e); }
         finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
     }
     private config(): Config {
-        const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'fileName', 'longitudeField', 'latitudeField'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
-        if (config.type === 'csv') Object.assign(config, { csvText: this.csvText, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value });
+        const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
+        if (config.type === 'csv') Object.assign(config, { csvText: this.csvRef === this.editing?.config.csvRef ? this.editing.config.csvText : this.csvText, csvRef: this.csvRef, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value });
         return config;
     }
     private updateSource() {
@@ -237,21 +251,32 @@ export class DataSources {
             this.close(); this.render();
         } catch (e) { $('sourceError').textContent = (e as Error).message; $('sourceError').hidden = false; }
     }
-    private save() {
+    private async save() {
+        if (this.saving) return;
+        this.saving = true;
+        // Prevent edits/discard while the file transaction is pending.
+        document.querySelector<HTMLElement>('.sources-page')!.inert = true;
+        this.updateState(); $('saveState').textContent = 'Saving changes…';
         try {
             for (const s of this.draft.sources) validateConfig(s.config);
             validateBackground(this.draft.background);
-            // One atomic localStorage write covers sources and background together.
-            localStorage.setItem(settingsKey, JSON.stringify(this.draft));
+            this.draft = await saveSettings(this.draft);
+            input('basemapURL').removeAttribute('aria-invalid');
+            this.saved = structuredClone(this.draft); this.removed = undefined;
+            this.csvText = '';
+            this.apply(structuredClone(this.saved)); this.render();
+            $('saveState').textContent = 'Saved in this browser';
         } catch (e) {
+            this.updateState();
             $('saveError').textContent = `Could not save changes: ${(e as Error).message}`; $('saveError').hidden = false;
             input('basemapURL').setAttribute('aria-invalid', String(!this.validBackground()));
-            return;
+        } finally {
+            this.saving = false;
+            document.querySelector<HTMLElement>('.sources-page')!.inert = false;
+            const dirty = JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved));
+            $<HTMLButtonElement>('saveSettings').disabled = !dirty;
+            $<HTMLButtonElement>('discardSettings').disabled = !dirty;
         }
-        input('basemapURL').removeAttribute('aria-invalid');
-        this.saved = structuredClone(this.draft); this.removed = undefined;
-        this.apply(structuredClone(this.saved)); this.render();
-        $('saveState').textContent = 'Saved in this browser';
     }
     private validBackground() { try { validateBackground(this.draft.background); return true; } catch { return false; } }
     private async discover() {

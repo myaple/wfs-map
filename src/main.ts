@@ -6,7 +6,7 @@ import { wfsURL, fieldKind, xmlDocument, type Field, type Rule } from './data.ts
 import { Workspace } from './workspace.ts';
 import { all, type Expression } from './analysis.ts';
 import { DataSources } from './data-sources.ts';
-import { defaultConfig, readSettings, settingsKey, type Config, type Settings } from './source-settings.ts';
+import { configIdentity, defaultConfig, readSettings, settingsKey, type Config, type Settings } from './source-settings.ts';
 import { queryFilter, timeBounds, validateTime, type QueryBounds, type QueryFields } from './wfs-query.ts';
 import './style.css';
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
@@ -129,7 +129,7 @@ function applySettings(next: Settings) {
         let s = sources.find(s => s.id === input.id);
         if (!s) { s = createSource(input); if (s.enabled) load.push(s); }
         else {
-            const changed = JSON.stringify(s.config) !== JSON.stringify(input.config), wasEnabled = s.enabled;
+            const changed = configIdentity(s.config) !== configIdentity(input.config), wasEnabled = s.enabled;
             s.name = input.name; s.config = { ...input.config }; s.enabled = input.enabled;
             if (changed || !s.enabled) clearSource(s);
             if (s.enabled && (changed || !wasEnabled)) load.push(s);
@@ -323,7 +323,7 @@ function clear() {
 function loadSource(s: Source) {
     if (!s.enabled || s.loading || !mapReady)
         return;
-    if (s.done && s.loadedConfig === JSON.stringify(s.config) && s.loadedQuery === JSON.stringify(queryBounds))
+    if (s.done && s.loadedConfig === configIdentity(s.config) && s.loadedQuery === JSON.stringify(queryBounds))
         return;
     clearSource(s);
     s.loading = true;
@@ -407,7 +407,7 @@ async function performLoad(s: Source) {
                 if (m.type === 'done') {
                     s.loading = false;
                     s.done = true;
-                    s.loadedConfig = JSON.stringify(config);
+                    s.loadedConfig = configIdentity(config);
                     s.loadedQuery = JSON.stringify(bounds);
                     if (JSON.stringify(s.workspace.fields) !== JSON.stringify(s.fields)) {
                         if (!s.workspace.fields.length) s.workspace.ready(s.fields);
