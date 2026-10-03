@@ -5,6 +5,7 @@ import type { QueryBounds } from './wfs-query.ts';
 import { Analyzer, all } from './analysis.ts';
 import { decodePage, countFrom, inferFields, packPositions, spatialPage, wfsURL, type Field, type Rule } from './data.ts';
 import { Store } from './store.ts';
+import { exportCSV } from './csv-export.ts';
 type Config = {
     url: string;
     version: string;
@@ -134,6 +135,16 @@ async function loadCSV(config: SourceConfig, bounds: QueryBounds) {
 }
 ctx.onmessage = (event: MessageEvent) => {
     const m = event.data;
+    if (m.type === 'exportCSV') {
+        const r = revision;
+        if (!store) {
+            post({ type: 'csvExportError', request: m.request, message: 'No loaded dataset' });
+            return;
+        }
+        void exportCSV(store, m.indices, () => r !== revision).then(blob => {
+            if (r === revision) post({ type: 'csvExported', request: m.request, blob });
+        }).catch(e => post({ type: 'csvExportError', request: m.request, message: (e as Error).message }));
+    }
     if (m.type === 'loadCSV')
         void loadCSV(m.config, m.bounds).catch(e => post({ type: 'error', message: (e as Error).message }));
     if (m.type === 'load')
@@ -182,4 +193,3 @@ ctx.onmessage = (event: MessageEvent) => {
         });
     }
 };
-
