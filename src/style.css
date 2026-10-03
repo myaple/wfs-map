@@ -409,8 +409,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
   max-width: 450px;
 }
 .metadata {
-  max-height: 50vh;
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   font-size: 12px;
 }
 .metadata table {
@@ -426,9 +427,20 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
 .metadata th {
   font-weight: 600;
 }
-.maplibregl-popup-content {
-  min-width: 240px;
-  max-width: 380px;
+.metadata-popup {
+  z-index: 3;
+}
+.metadata-popup .maplibregl-popup-content {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  max-height: calc(var(--metadata-height, 460px) - 10px);
+  display: flex;
+  flex-direction: column;
+  padding: 28px 12px 12px;
+}
+.metadata-popup.is-clamped .maplibregl-popup-tip {
+  visibility: hidden;
 }
 @media(max-width:1400px) {
   #charts {
