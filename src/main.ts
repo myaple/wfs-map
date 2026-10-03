@@ -7,7 +7,7 @@ import { Workspace } from './workspace.ts';
 import { all, type Expression } from './analysis.ts';
 import { PointColors } from './point-colors.ts';
 import { DataSources } from './data-sources.ts';
-import { configIdentity, defaultConfig, readSettings, settingsKey, type Config, type Settings } from './source-settings.ts';
+import { configIdentity, defaultConfig, readSettings, settingsKey, type Config, type Settings, type SavedSource } from './source-settings.ts';
 import { queryFilter, timeBounds, validateTime, type QueryBounds, type QueryFields } from './wfs-query.ts';
 import './style.css';
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
@@ -18,7 +18,7 @@ $('app').innerHTML = `
 <header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav><a href="#analysis" id="analysisLink">Analysis</a><a href="#configuration" id="configLink">Data sources</a></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="sourceSummary" class="hint"></div></div>
 <section id="configuration" hidden></section>
-<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><label for="timeStart">Start (UTC)</label><input id="timeStart" type="datetime-local" step="1"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="datetime-local" step="1"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Each source keeps its own colour attribute, bins and palette.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply only to this source. Chart selections use its highlighted AND / OR group.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
+<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><label for="timeStart">Start (UTC)</label><input id="timeStart" type="datetime-local" step="1"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="datetime-local" step="1"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply only to this source. Chart selections use its highlighted AND / OR group.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
 <div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
 type Source = {
@@ -47,12 +47,8 @@ type Source = {
     request: number;
     filterRequest: number;
     colorRequest: number;
-    coloring: {
-        field: string;
-        bins: number;
-        low: string;
-        high: string;
-    };
+    coloring: NonNullable<SavedSource['coloring']>;
+    colorCategories?: string[];
     colorLegend: string;
     metrics: Record<string, any>;
     status: string;
@@ -128,7 +124,7 @@ const pointColors = new PointColors(() => sources, (source, previous) => {
     const s = sources.find(s => s.id === source.id)!;
     s.layer.color = s.color;
     sourceSettings.syncColoring(s); persist();
-    if (s.layer.colorCodes && previous.field === s.coloring.field && previous.bins === s.coloring.bins) s.layer.setPalette(s.coloring.low, s.coloring.high);
+    if (s.fields.find(f => f.name === s.coloring.field)?.kind === 'number' && s.layer.colorCodes && previous.field === s.coloring.field && previous.bins === s.coloring.bins) s.layer.setPalette(s.coloring.low, s.coloring.high);
     else applyColors(s);
     map.triggerRepaint();
 });
@@ -451,8 +447,9 @@ async function performLoad(s: Source) {
                     s.filterStatus = `${s.selected.toLocaleString()} matches · ${m.elapsedMs.toFixed(0)} ms`;
                 }
                 if (m.type === 'colored' && m.request === s.colorRequest) {
-                    s.layer.setColors(m.codes, s.coloring.low, s.coloring.high, m.axis.labels.length);
-                    s.colorLegend = m.axis.labels.length ? `${m.axis.labels[0]} … ${m.axis.labels.at(-1)} · grey = missing` : 'No values';
+                    s.colorCategories = m.categories;
+                    s.layer.setColors(m.codes, s.coloring.low, s.coloring.high, m.axis.labels.length, !!m.categories);
+                    s.colorLegend = m.categories ? `${m.categories.length.toLocaleString()} unique values · grey = missing` : m.axis.labels.length ? `${m.axis.labels[0]} … ${m.axis.labels.at(-1)} · grey = missing` : 'No values';
                 }
                 if (m.type === 'colorError' && m.request === s.colorRequest) {
                     s.colorLegend = m.message;
@@ -619,10 +616,14 @@ function ensureSourcesLoaded() {
 }
 function applyColors(s: Source) {
     const request = ++s.colorRequest;
+    s.colorCategories = undefined;
+    if (s.done && s.coloring.field && !s.fields.some(f => f.name === s.coloring.field && ['number', 'string'].includes(f.kind))) {
+        s.coloring = { ...s.coloring, field: '' }; sourceSettings.syncColoring(s); persist();
+    }
     if (!s.coloring.field) { s.layer.setColors(undefined); s.colorLegend = ''; }
     else if (s.done) {
         s.colorLegend = 'Updating colours…';
-        s.worker?.postMessage({ type: 'colors', request, field: s.coloring.field, bins: s.coloring.bins });
+        s.worker?.postMessage({ type: 'colors', request, field: s.coloring.field, bins: s.coloring.bins, categories: s.coloring.categories?.[s.coloring.field] });
     }
 }
 const mapCanvas = map.getCanvas(), geoBox = document.createElement('div');
@@ -698,3 +699,4 @@ $('clearArea').onclick = () => { queryBounds = { ...queryBounds, bbox: undefined
 $<HTMLSelectElement>('timeWindow').value = queryBounds.time ? '24' : 'all';
 showQueryBounds();
 map.on('load', showQueryBounds);
+

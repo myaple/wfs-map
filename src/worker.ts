@@ -149,7 +149,7 @@ ctx.onmessage = (event: MessageEvent) => {
     if (m.type === 'colors' && store) {
         const r = ++colorRevision;
         analyzer ??= new Analyzer(store);
-        void analyzer.colors(m.field, m.bins, () => r !== colorRevision).then(result => { if (r === colorRevision)
+        void analyzer.colors(m.field, m.bins, () => r !== colorRevision, m.categories).then(result => { if (r === colorRevision)
             post({ type: 'colored', request: m.request, ...result }, [result.codes.buffer]); }).catch(e => { if (r === colorRevision)
             post({ type: 'colorError', request: m.request, message: (e as Error).message }); });
     }
@@ -182,3 +182,4 @@ ctx.onmessage = (event: MessageEvent) => {
         });
     }
 };
+
