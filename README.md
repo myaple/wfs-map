@@ -28,6 +28,17 @@ The gateway must overwrite the configured identity header with its authenticated
 | `DEV_USER` | `local-analyst` in development mode; request headers are ignored |
 | `BIND` | `127.0.0.1:8787` outside Docker; image uses `0.0.0.0:8787` |
 | `ASSET_DIR` | `dist`; image uses `/app/dist` |
+| `PAGE_BANNER_TEXT` | Empty by default (banners hidden); the same plain, single-line text in the header and footer on every base page |
+| `PAGE_BANNER_BACKGROUND` | `#eaf0f4`; the same CSS background colour for both banners |
+
+Set these runtime variables on the application process, or in the Compose `.env` file, then restart/recreate the application container. No image rebuild is needed. For example:
+
+```dotenv
+PAGE_BANNER_TEXT="Internal use only"
+PAGE_BANNER_BACKGROUND="#ffdf80"
+```
+
+The banners use the normal page font and stay at the top and bottom of the base viewport, including the analysis picker, data sources, saved/shared/local analyses and analysis-opening errors. Text is rendered literally, and line breaks become spaces. Long text stays on one line and can scroll horizontally; choose a short label and a background that contrasts with the dark text. Modals and enlarged maps/charts can cover the banners. Empty text hides both. `GET /api/site-config` returns only these public display settings with caching disabled; it requires no identity header so banners also appear on authentication errors. The Node host supports the same variables for `npm start` and `npm run dev`.
 
 The backend uses Rust **Poem**, **poem-openapi**, **Diesel** and a connection pool. Startup applies embedded migrations and enables PostGIS; the initial table contains configuration JSONB, ownership, revisions and revocable share tokens. No feature geometry/data is stored in PostGIS. The migration role must be allowed to enable the PostGIS extension (or have it enabled in advance). `GET /api/openapi.json` exposes the generated API specification behind the identity header; `GET /health` is a public liveness endpoint.
 

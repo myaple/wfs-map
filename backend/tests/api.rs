@@ -17,6 +17,13 @@ async fn ownership_revisions_sharing_and_configuration_only_storage() {
     ));
     let alice = format!("test-alice-{}", uuid::Uuid::new_v4());
     let bob = format!("test-bob-{}", uuid::Uuid::new_v4());
+    // Display settings also reach base-page error states without authentication.
+    let config = client.get("/api/site-config").send().await;
+    config.assert_status_is_ok();
+    config.assert_header("cache-control", "no-store");
+    let config: Value = config.0.into_body().into_json().await.unwrap();
+    assert!(config["bannerText"].is_string());
+    assert!(config["bannerBackground"].is_string());
     client
         .get("/api/me")
         .header("x-analyst-id", &alice)

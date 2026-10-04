@@ -13,6 +13,26 @@ h1 {
   margin: 0 0 3px;
   letter-spacing: -.5px;
 }
+.has-page-banners {
+  padding-block: 32px;
+}
+.page-banner {
+  position: fixed;
+  inset-inline: 0;
+  height: 32px;
+  padding: 6px 22px;
+  z-index: 5;
+  font: inherit;
+  color: #111;
+  line-height: 20px;
+  text-align: center;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+#page-header { top: 0; }
+#page-footer { bottom: 0; }
+.has-page-banners .settings-save { bottom: 32px; }
 h2 {
   font-size: 16px;
   margin: 0 0 5px;
