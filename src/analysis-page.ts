@@ -230,6 +230,7 @@ function route() {
     $('configLink').classList.toggle('current', config);
     $('analysisLink').classList.toggle('current', !config && !records);
     $('recordsLink').classList.toggle('current', records);
+    if (!config && !records) comparisons.visibilityChanged();
     for (const [id, active] of [['analysisLink', !config && !records], ['configLink', config], ['recordsLink', records]] as const) $(id).setAttribute('aria-current', active ? 'page' : 'false');
     if (mapReady) {
         requestAnimationFrame(() => map.resize());

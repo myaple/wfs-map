@@ -17,6 +17,7 @@ export class ComparisonPanel {
     private epoch = 0; private token = 0; private timer?: ReturnType<typeof setTimeout>;
     private pending = new Map<string, { kind: 'compare' | 'relate'; spec: ComparisonSpec | RelationshipSpec; data: Map<string, Projection>; needed: number }>();
     private cards = new Map<string, Card>(); private comparisonList = el('div'); private relationshipList = el('div');
+    private comparisonEditor = el('details'); private relationshipEditor = el('details');
     private comparisonForm = el('form'); private relationshipForm = el('form');
     private selected?: RecordRef;
     private related = el('div');
@@ -25,14 +26,17 @@ export class ComparisonPanel {
     constructor(private sources: () => RecordsSource[], private send: (id: string, message: unknown) => void, private choose: (refs: RecordRef[]) => void, saved: { comparisons?: ComparisonSpec[]; relationships?: RelationshipSpec[] }, private changed: () => void) {
         this.comparisons = structuredClone(saved.comparisons ?? []); this.relationships = structuredClone(saved.relationships ?? []);
         const comparisons = el('section'); comparisons.className = 'comparison-panel'; comparisons.id = 'comparisonPanel';
-        comparisons.append(el('h2', 'Source comparisons'), el('p', 'Compare applied results on shared axes. Map/time bounds and applied dataset filters remain in force; each series can add its own filter. Declare units and conversions explicitly.'), this.comparisonForm, this.comparisonList);
+        this.comparisonEditor.open = !this.comparisons.length; this.comparisonEditor.append(el('summary', 'New comparison'), this.comparisonForm);
+        this.relationshipEditor.open = !this.relationships.length; this.relationshipEditor.append(el('summary', 'New relationship'), this.relationshipForm);
+        comparisons.append(el('h2', 'Source comparisons'), el('p', 'Compare applied results on shared axes. Map/time bounds and applied dataset filters remain in force; each series can add its own filter. Declare units and conversions explicitly.'), this.comparisonEditor, this.comparisonList);
         document.getElementById('analysis')!.append(comparisons);
         const relationships = el('section'); relationships.className = 'comparison-panel'; relationships.id = 'relationshipPanel';
-        relationships.append(el('h2', 'Record relationships'), el('p', 'Match two applied source results. Enabled rules use AND. Null identifiers and times never match. Saved rules contain configuration only; previews and links remain local.'), this.relationshipForm, this.related, this.relationshipList);
+        relationships.append(el('h2', 'Record relationships'), el('p', 'Match two applied source results. Enabled rules use AND. Null identifiers and times never match. Saved rules contain configuration only; previews and links remain local.'), this.relationshipEditor, this.related, this.relationshipList);
         document.getElementById('records')!.append(relationships);
         this.buildComparison(); this.buildRelationship(); this.mountCards();
         this.worker.onmessage = event => this.result(event.data);
         window.addEventListener('recordinspection', e => { this.selected = (e as CustomEvent).detail ?? undefined; this.showRelated(); });
+        window.addEventListener('resize', () => this.visibilityChanged());
         window.addEventListener('themechange', () => { for (const draw of this.rendered.values()) draw(); });
     }
     private sourceOptions() { return this.sources().filter(s => s.enabled).map(s => [s.id, s.name] as [string, string]); }
@@ -41,7 +45,9 @@ export class ComparisonPanel {
         node.replaceChildren(...(includeId ? [new Option('Feature ID', '@id')] : []), ...(this.source(id)?.fields.filter(f => !kinds || kinds.includes(f.kind)) ?? []).map(f => new Option(`${f.name} (${f.kind})`, f.name)));
         if ([...node.options].some(o => o.value === previous)) node.value = previous;
     }
+    visibilityChanged() { requestAnimationFrame(() => { for (const draw of this.rendered.values()) draw(); }); }
     private buildComparison(saved?: ComparisonSpec) {
+        if (saved) this.comparisonEditor.open = true;
         this.comparisonForm.replaceChildren(); this.comparisonForm.className = 'comparison-editor';
         const name = input(saved?.name ?? 'Source comparison'), kind = select([['histogram', 'Shared histogram'], ['time', 'UTC time series']]), unit = input(saved?.unit ?? '', 'text'), bins = input(String(saved?.bins ?? 24), 'number'), bucket = input(String((saved?.bucketMs ?? 3600000) / 1000), 'number'), aggregate = select([['count', 'Record count'], ['mean', 'Mean'], ['sum', 'Sum'], ['min', 'Minimum'], ['max', 'Maximum']]);
         kind.value = saved?.kind ?? 'histogram'; aggregate.value = saved?.aggregate ?? 'mean'; bins.min = '2'; bins.max = '128'; bucket.min = '.001'; bucket.step = 'any'; unit.placeholder = 'e.g. °C, metres, or dimensionless'; unit.required = true; name.required = true;
@@ -71,11 +77,12 @@ export class ComparisonPanel {
                 if (spec.series.length < 2 || spec.series.some(s => !s.x || !s.unit)) throw Error('Choose mapped fields and declare units for at least two series.');
                 if (spec.series.some(s => s.unit !== spec.unit && !s.converted || !s.converted && (s.scale !== 1 || s.offset !== 0))) throw Error('Different units require an explicit conversion.');
                 if (!saved && this.comparisons.length >= 12) throw Error('An analysis supports up to 12 comparisons.');
-                this.comparisons = [...this.comparisons.filter(s => s.id !== spec.id), spec]; this.commit(); this.buildComparison();
+                this.comparisons = [...this.comparisons.filter(s => s.id !== spec.id), spec]; this.commit(); this.buildComparison(); this.comparisonEditor.open = false;
             } catch (e) { status.textContent = (e as Error).message; }
         };
     }
     private buildRelationship(saved?: RelationshipSpec) {
+        if (saved) this.relationshipEditor.open = true;
         this.relationshipForm.replaceChildren(); this.relationshipForm.className = 'comparison-editor';
         const name = input(saved?.name ?? 'Record relationship'), left = select(this.sourceOptions()), right = select(this.sourceOptions()); if (saved) { left.value = saved.leftSource; right.value = saved.rightSource; } else right.selectedIndex = Math.min(1, right.options.length - 1);
         const useId = input('', 'checkbox'), useTime = input('', 'checkbox'), useSpace = input('', 'checkbox'), leftId = el('select'), rightId = el('select'), leftTime = el('select'), rightTime = el('select'), tolerance = input(String((saved?.time?.toleranceMs ?? 60000) / 1000), 'number'), radius = input(String(saved?.spatial?.radiusMetres ?? 100), 'number'), match = select([['all', 'All matches (many-to-many)'], ['unique', 'Unique only (ambiguous excluded)'], ['nearest', 'Nearest (distance, then time; ties use lowest row)']]);
@@ -94,7 +101,7 @@ export class ComparisonPanel {
                 if (!useId.checked && !useTime.checked && !useSpace.checked) throw Error('Enable at least one matching rule.');
                 const spec: RelationshipSpec = { id: saved?.id ?? createUUID(), name: name.value.trim(), leftSource: left.value, rightSource: right.value, match: match.value as RelationshipSpec['match'], ...(useId.checked ? { identifier: { left: leftId.value, right: rightId.value } } : {}), ...(useTime.checked ? { time: { left: leftTime.value, right: rightTime.value, toleranceMs: Number(tolerance.value) * 1000 } } : {}), ...(useSpace.checked ? { spatial: { radiusMetres: Number(radius.value) } } : {}) };
                 if (!saved && this.relationships.length >= 12) throw Error('An analysis supports up to 12 relationships.');
-                this.relationships = [...this.relationships.filter(s => s.id !== spec.id), spec]; this.commit(); this.buildRelationship();
+                this.relationships = [...this.relationships.filter(s => s.id !== spec.id), spec]; this.commit(); this.buildRelationship(); this.relationshipEditor.open = false;
             } catch (e) { status.textContent = (e as Error).message; }
         };
     }
