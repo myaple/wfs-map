@@ -1,3 +1,4 @@
+import { parseUTC, utcISO } from './time.ts';
 import { mercator, type Feature, type Field } from './data.ts';
 import type { Config } from './source-settings.ts';
 import type { QueryBounds } from './wfs-query.ts';
@@ -72,14 +73,14 @@ export function csvDataset(config: Config, bounds: QueryBounds = {}) {
                 const v = row[j];
                 if (!v.trim()) return [f.name, null];
                 if (f.kind === 'date') {
-                    if (!/^\d{4}-\d\d-\d\d(?:T.*)?$/.test(v) || !Number.isFinite(Date.parse(v))) throw Error(`Invalid ISO 8601 time in ${f.name}.`);
-                    return [f.name, new Date(v).toISOString()];
+                    if (!Number.isFinite(parseUTC(v))) throw Error(`Invalid ISO 8601 time in ${f.name}.`);
+                    return [f.name, utcISO(v)];
                 }
                 return [f.name, f.kind === 'number' ? Number(v) : f.kind === 'boolean' ? v.toLowerCase() === 'true' : v];
             }));
             if (bounds.time) {
-                const t = Date.parse(String(properties[config.timeField]));
-                if (!Number.isFinite(t) || t < Date.parse(bounds.time.start) || t > Date.parse(bounds.time.end)) continue;
+                const t = parseUTC(String(properties[config.timeField]));
+                if (!Number.isFinite(t) || t < parseUTC(bounds.time.start) || t > parseUTC(bounds.time.end)) continue;
             }
             if (bounds.bbox) {
                 const b = bounds.bbox, [x, y] = coordinates;

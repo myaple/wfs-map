@@ -1,3 +1,4 @@
+import { parseUTC, utcISO } from './time.ts';
 export type TimeBounds = { start: string; end: string };
 export type MapBounds = { west: number; south: number; east: number; north: number };
 export type QueryBounds = { time?: TimeBounds; bbox?: MapBounds };
@@ -7,7 +8,7 @@ export function timeBounds(hours: number, now = Date.now()): TimeBounds {
     return { start: new Date(now - hours * 3600000).toISOString(), end: new Date(now).toISOString() };
 }
 export function validateTime(time: TimeBounds) {
-    const start = Date.parse(time.start), end = Date.parse(time.end);
+    const start = parseUTC(time.start), end = parseUTC(time.end);
     if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) throw Error('Enter a valid UTC start and end, with the start before the end.');
 }
 // Use standard XML Filter Encoding, including BBOX in the same AND expression:
@@ -21,7 +22,7 @@ export function queryFilter(version: string, bounds: QueryBounds, fields: QueryF
     if (bounds.time) {
         validateTime(bounds.time);
         if (!fields.time) throw Error('Choose a time attribute in this source’s WFS settings, or select All time. No unbounded request was sent.');
-        conditions.push(tag('PropertyIsGreaterThanOrEqualTo', ref(fields.time) + tag('Literal', new Date(bounds.time.start).toISOString())), tag('PropertyIsLessThanOrEqualTo', ref(fields.time) + tag('Literal', new Date(bounds.time.end).toISOString())));
+        conditions.push(tag('PropertyIsGreaterThanOrEqualTo', ref(fields.time) + tag('Literal', utcISO(bounds.time.start))), tag('PropertyIsLessThanOrEqualTo', ref(fields.time) + tag('Literal', utcISO(bounds.time.end))));
     }
     if (bounds.bbox) {
         const { west, south, east, north } = bounds.bbox;

@@ -338,3 +338,15 @@ The analysis benchmark writes worker and browser round-trip timings plus a scree
 | `scripts/install-offline.mjs` | Restore and install the committed integrity cache |
 
 Application source is MIT-licensed. Dependencies retain their own licenses and exact lockfile versions.
+
+### Time handling
+
+All time windows, date filters, charts, metadata, saved timestamps and CSV exports use a 24-hour clock in UTC. CSV time columns and WFS date attributes without a timezone are interpreted as UTC. ISO 8601 timestamps with `Z` or numeric offsets (such as `+02:00`) are converted to UTC before filtering or analysis. Date-only values mean midnight UTC; invalid dates are rejected. Custom ranges accept `YYYY-MM-DD HH:mm:ss` (or ISO 8601), independently of your workstation timezone.
+
+### Appearance
+
+Use **Dark mode** in the page header to switch themes. The first visit follows your system preference; an explicit choice is saved in this browser and applies to the analysis picker, data sources, charts, map grid, legends and dialogs. Basemap tiles and analyst-configured point/banner colours retain their configured colours.
+
+### Map legend
+
+The map legend lists point colours for every enabled source below the normal map. Enlarging the map moves the same legend into a scrollable overlay; returning or pressing Escape puts it below the map again. It shows solid source colours, each numeric bin with its actual GPU palette colour, every category (including overrides), and grey missing values. Category domains remain fixed when filtering. Only visible legend rows are rendered, keeping large domains usable.

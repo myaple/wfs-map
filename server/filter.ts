@@ -1,3 +1,4 @@
+import { parseUTC } from '../src/time.ts';
 // The dependency-free demo host accepts only the Filter Encoding subset emitted
 // by the app. This is deliberately not a general-purpose XML/WFS interpreter.
 export function fixtureFilter(raw?: string): (f: { geometry: { coordinates: number[] }; properties: { timestamp: string } }) => boolean {
@@ -13,10 +14,10 @@ export function fixtureFilter(raw?: string): (f: { geometry: { coordinates: numb
         body = body.trim();
         const comparison = /^<(PropertyIsGreaterThanOrEqualTo|PropertyIsLessThanOrEqualTo)><ValueReference>(?:demo:)?timestamp<\/ValueReference><Literal>([^<]+)<\/Literal><\/\1>/.exec(body);
         if (comparison) {
-            const time = Date.parse(comparison[2]);
+            const time = parseUTC(comparison[2]);
             if (!Number.isFinite(time)) throw Error('Invalid fixture filter time');
             const lower = comparison[1] === 'PropertyIsGreaterThanOrEqualTo';
-            tests.push(f => lower ? Date.parse(f.properties.timestamp) >= time : Date.parse(f.properties.timestamp) <= time);
+            tests.push(f => lower ? parseUTC(f.properties.timestamp) >= time : parseUTC(f.properties.timestamp) <= time);
             body = body.slice(comparison[0].length); continue;
         }
         const bbox = /^<BBOX><ValueReference>(?:demo:)?geometry<\/ValueReference><Envelope srsName="urn:ogc:def:crs:OGC:1.3:CRS84"><lowerCorner>([^<]+)<\/lowerCorner><upperCorner>([^<]+)<\/upperCorner><\/Envelope><\/BBOX>/.exec(body);

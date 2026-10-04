@@ -1,3 +1,5 @@
+import { themeColor } from './theme.ts';
+import { parseUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
 import { ChartInteraction, plotRect, drawAxes, pieSegments, type Point, type View } from './chart-plot.ts';
 import { RawScatter } from './raw-scatter.ts';
@@ -69,11 +71,9 @@ export class Workspace {
         logic.setAttribute('aria-label', 'Group logic');
         logic.append(option('and', 'AND · match all'), option('or', 'OR · match any'));
         logic.value = op;
-        const target = button('Add chart selections here', () => { this.active = group; this.markActive(); });
-        target.className = 'target-group';
         const children = element('div');
         children.className = 'group-children';
-        head.append(logic, target, button('+ Rule', () => this.addRule(group)), button('+ Group', () => { this.makeGroup(children, 'or'); this.markActive(); }));
+        head.append(logic, button('+ Rule', () => this.addRule(group)), button('+ Group', () => { this.makeGroup(children, 'or'); this.markActive(); }));
         if (parent !== this.rules)
             head.append(button('×', () => {
                 if (group.contains(this.active ?? null)) {
@@ -83,13 +83,21 @@ export class Workspace {
                 this.markActive();
                 this.changed();
             }));
+        // Editing a group chooses the destination for subsequent chart selections.
+        // Ignore bubbled events from nested groups so they keep their own target.
+        const activate = (event: Event) => {
+            if ((event.target as Element).closest('.filter-group') === group) { this.active = group; this.markActive(); }
+        };
+        group.addEventListener('focusin', activate);
+        group.addEventListener('change', activate);
+        group.addEventListener('pointerdown', activate);
         group.append(head, children);
         parent.append(group);
         this.active = group;
         this.markActive();
         return group;
     }
-    private markActive() { this.rules.querySelectorAll('.filter-group').forEach(g => { g.classList.toggle('active-group', g === this.active); const b = g.querySelector<HTMLButtonElement>(':scope > .group-head > .target-group'); b?.setAttribute('aria-pressed', String(g === this.active)); }); }
+    private markActive() { this.rules.querySelectorAll('.filter-group').forEach(g => g.classList.toggle('active-group', g === this.active)); }
     addRule(group = this.active) {
         if (!group)
             return;
@@ -103,7 +111,7 @@ export class Workspace {
         for (const [v, t] of [['eq', '='], ['ne', '≠'], ['gte', '≥'], ['lte', '≤'], ['gt', '>'], ['lt', '<'], ['contains', 'contains'], ['null', 'is null'], ['notnull', 'not null']])
             op.append(option(v, t));
         const input = element('input');
-        input.placeholder = 'Value · ISO 8601 for dates';
+        input.placeholder = 'Value · YYYY-MM-DD HH:mm:ss UTC for dates';
         input.setAttribute('aria-label', 'Filter value');
         op.onchange = () => input.disabled = ['null', 'notnull'].includes(op.value);
         row.append(field, op, input, button('×', () => { row.remove(); this.changed(); }));
@@ -115,7 +123,11 @@ export class Workspace {
         if (node.classList.contains('selection'))
             return (node as any).expression;
         const inputs = node.querySelectorAll('select,input');
-        return { field: (inputs[0] as HTMLSelectElement).value, op: (inputs[1] as HTMLSelectElement).value as Rule['op'], value: (inputs[2] as HTMLInputElement).value };
+        const field = (inputs[0] as HTMLSelectElement).value, op = (inputs[1] as HTMLSelectElement).value as Rule['op'], input = inputs[2] as HTMLInputElement;
+        const date = this.fields.find(f => f.name === field)?.kind === 'date' && !['null', 'notnull'].includes(op) && Number.isFinite(parseUTC(input.value));
+        const value = date ? utcISO(input.value) : input.value;
+        if (date) input.value = utcInput(value);
+        return { field, op, value };
     }
     expression(): Expression { const root = this.rules.querySelector(':scope > .filter-group'); return root ? this.read(root) : all([]); }
     clearFilters() { this.rules.replaceChildren(); this.makeGroup(this.rules, 'and'); this.changed(); }
@@ -170,7 +182,7 @@ export class Workspace {
                     const row = children.lastElementChild!, inputs = row.querySelectorAll('select,input');
                     (inputs[0] as HTMLSelectElement).value = child.field;
                     (inputs[1] as HTMLSelectElement).value = child.op;
-                    (inputs[2] as HTMLInputElement).value = child.value ?? '';
+                    (inputs[2] as HTMLInputElement).value = this.fields.find(f => f.name === child.field)?.kind === 'date' && child.value && Number.isFinite(parseUTC(child.value)) ? utcInput(child.value) : child.value ?? '';
                     (inputs[2] as HTMLInputElement).disabled = ['null', 'notnull'].includes(child.op);
                 } else {
                     const row = element('div'); row.className = 'selection';
@@ -271,6 +283,7 @@ class ChartView {
     private dialog?: HTMLDialogElement;
     private placeholder?: Comment;
     private focus = 0;
+    private onThemeChange = () => this.draw();
     private hit = new Float32Array(0);
     constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string) => void, sourceChanged: (id: string) => void) {
         this.root.className = 'chart-card';
@@ -377,6 +390,7 @@ class ChartView {
         };
         this.canvas.onfocus = () => this.draw();
         this.canvas.onblur = () => this.draw();
+        window.addEventListener('themechange', this.onThemeChange);
         this.observer = new ResizeObserver(() => this.draw());
         this.observer.observe(this.canvas);
     }
@@ -563,15 +577,15 @@ class ChartView {
         const plotted = r.values ?? r.counts, finite = Array.from(plotted).filter(Number.isFinite), low = r.values ? Math.min(0, ...finite) : 0;
         const nx = r.x.labels.length, ny = r.y?.labels.length ?? 1, max = finite.reduce((a, b) => Math.max(a, b), 0), total = r.counts.reduce((a, b) => a + b, 0);
         if (!r.counts.some(v => v > 0)) {
-            ctx.fillStyle = '#607588';
+            ctx.fillStyle = themeColor('muted');
             ctx.font = '14px system-ui';
             ctx.fillText('No matching values', 24, 110);
             return;
         }
-        const colors = ['#0d9188', '#3984cf', '#8b69c7', '#d29032', '#c86579', '#4d9c50'];
+        const colors = [themeColor('chart-point'), '#3984cf', '#8b69c7', '#d29032', '#c86579', '#4d9c50'];
         this.hit = new Float32Array(r.counts.length * 4);
         ctx.font = '11px system-ui';
-        ctx.fillStyle = '#546b7a';
+        ctx.fillStyle = themeColor('muted');
         if (r.type === 'pie') {
             const v = this.interaction.view, radius = Math.min(w, h) * .36;
             ctx.save();
@@ -590,9 +604,9 @@ class ChartView {
             }
             ctx.beginPath();
             ctx.arc(w / 2, h / 2, radius * .51, 0, Math.PI * 2);
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = themeColor('surface');
             ctx.fill();
-            ctx.fillStyle = '#254557';
+            ctx.fillStyle = themeColor('text');
             ctx.textAlign = 'center';
             ctx.fillText(total.toLocaleString(), w / 2, h / 2 + 4);
             ctx.restore();
@@ -613,7 +627,7 @@ class ChartView {
             const xb = i % nx, yb = Math.floor(i / nx), x = pointX(xb), y = this.interaction.screen([0, r.y ? (yb + .5) / ny : (plotted[i] - low) / (max - low || 1)])[1];
             const lo = this.interaction.screen([xb / nx, r.y ? (yb + 1) / ny : view[3]]), hi = this.interaction.screen([(xb + 1) / nx, r.y ? yb / ny : view[1]]);
             this.hit.set([lo[0], lo[1], hi[0], hi[1]], i * 4);
-            ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : '#0d9188';
+            ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : themeColor('chart-point');
             if (r.type === 'bar')
                 ctx.fillRect(this.hit[i * 4] + 1, y, Math.max(1, dx - 2), this.interaction.screen([0, 0])[1] - y);
             else if (r.type === 'time') {
@@ -645,7 +659,7 @@ class ChartView {
         }
         ctx.restore();
         if (!r.x.ranges && !r.y) {
-            ctx.fillStyle = '#546b7a';
+            ctx.fillStyle = themeColor('muted');
             ctx.font = '11px system-ui';
             ctx.textAlign = 'center';
             for (let i = 0; i < nx; i++) {
@@ -679,5 +693,5 @@ class ChartView {
         this.draw();
     }
     suspend() { this.raw?.destroy(); this.raw = undefined; this.canvas.hidden = false; this.result = undefined; this.list.replaceChildren(); this.note.textContent = 'Load this source to calculate charts.'; this.draw(); }
-    destroy() { this.restoreSize(); this.interaction.destroy(); this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
+    destroy() { window.removeEventListener('themechange', this.onThemeChange); this.restoreSize(); this.interaction.destroy(); this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
 }

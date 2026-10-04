@@ -1,3 +1,4 @@
+import { formatUTC } from './time.ts';
 import { categoryColors, colorBytes } from './category-colors.ts';
 import { numericValue, type Rule } from './data.ts';
 import type { Store } from './store.ts';
@@ -291,7 +292,7 @@ export class Analyzer {
         const n = p.min === p.max ? 1 : bins, width = (p.max - p.min) / n;
         const ranges = new Float64Array(n + 1), labels: string[] = [], rules: Expression[] = [];
         const str = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString() : String(v);
-        const label = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC') : Number(v.toPrecision(4)).toString();
+        const label = (v: number) => c.field.kind === 'date' ? formatUTC(v) : Number(v.toPrecision(4)).toString();
         const regular = Number.isFinite(width) && width > 0;
         for (let i = 0; i <= n; i++) {
             const edge = regular ? p.min + width * i : p.min * (1 - i / n) + p.max * (i / n);

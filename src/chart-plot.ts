@@ -1,3 +1,4 @@
+import { themeColor } from './theme.ts';
 export type Point = [
     number,
     number
@@ -33,35 +34,36 @@ export function tickText(value: number, kind: string | undefined, span: number):
 }
 export const interpolate = (lo: number, hi: number, t: number) => lo * (1 - t) + hi * t;
 export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View, bounds: View, xKind: string | undefined, yKind: string | undefined, xName: string, yName: string) {
+    const grid = themeColor('chart-grid'), muted = themeColor('muted'), text = themeColor('text'), axis = themeColor('chart-axis');
     ctx.font = '11px system-ui';
     ctx.lineWidth = 1;
     const nx = Math.max(2, Math.min(6, Math.floor((p.right - p.left) / (xKind === 'date' ? 95 : 75)))), ny = Math.max(2, Math.min(6, Math.floor((p.bottom - p.top) / (yKind === 'date' ? 48 : 45))));
     const xspan = (bounds[2] - bounds[0]) * (view[2] - view[0]), yspan = (bounds[3] - bounds[1]) * (view[3] - view[1]);
     for (let i = 0; i <= nx; i++) {
         const t = i / nx, x = p.left + t * (p.right - p.left), v = interpolate(bounds[0], bounds[2], interpolate(view[0], view[2], t));
-        ctx.strokeStyle = '#e0e8ed';
+        ctx.strokeStyle = grid;
         ctx.beginPath();
         ctx.moveTo(x, p.top);
         ctx.lineTo(x, p.bottom);
         ctx.stroke();
-        ctx.fillStyle = '#546b7a';
+        ctx.fillStyle = muted;
         ctx.textAlign = i === 0 ? 'left' : i === nx ? 'right' : 'center';
         (xKind === 'category' ? [] : tickText(v, xKind, xspan)).forEach((line, j) => ctx.fillText(line, x, p.bottom + 18 + j * 14));
     }
     for (let i = 0; i <= ny; i++) {
         const t = i / ny, y = p.bottom - t * (p.bottom - p.top), v = interpolate(bounds[1], bounds[3], interpolate(view[1], view[3], t));
-        ctx.strokeStyle = '#e0e8ed';
+        ctx.strokeStyle = grid;
         ctx.beginPath();
         ctx.moveTo(p.left, y);
         ctx.lineTo(p.right, y);
         ctx.stroke();
-        ctx.fillStyle = '#546b7a';
+        ctx.fillStyle = muted;
         ctx.textAlign = 'right';
         tickText(v, yKind, yspan).forEach((line, j) => ctx.fillText(line, p.left - 7, y + 4 + j * 13));
     }
-    ctx.strokeStyle = '#8298a5';
+    ctx.strokeStyle = axis;
     ctx.strokeRect(p.left, p.top, p.right - p.left, p.bottom - p.top);
-    ctx.fillStyle = '#254557';
+    ctx.fillStyle = text;
     ctx.textAlign = 'center';
     ctx.fillText(xName, (p.left + p.right) / 2, p.height - 8);
     ctx.save();
