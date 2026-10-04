@@ -30,6 +30,15 @@ test('existing bar and pie combine labels, show source legends, reject mixed typ
     expect(data.series).toHaveLength(2);
     await chart.locator('details summary').click();
     await expect(chart.getByRole('button',{name:/category: sensor/})).toContainText('%');
+    await chart.getByLabel('Chart selection action').selectOption('inspect');
+    await chart.getByRole('button',{name:/category: sensor/}).click();
+    const chooser=page.getByRole('dialog',{name:'Choose overlapping record'});
+    await expect(chooser.getByRole('heading')).toContainText('6 matches');
+    await expect(chooser.locator('.record-choices > button')).toHaveCount(6);
+    await expect(chooser).toContainText('WFS source');await expect(chooser).toContainText('Other observations');
+    expect(await page.evaluate(()=> (window as any).__WFS_MAP__.sources.map((s:any)=>s.selected))).toEqual([16,3]);
+    await chooser.getByRole('button',{name:'Close',exact:true}).click();
+    await chart.getByLabel('Chart selection action').selectOption('filter');
     await chart.getByRole('button',{name:/category: sensor/}).click();
     await page.waitForFunction(()=> (window as any).__WFS_MAP__.sources[1].selected===2);
     await expect(chart.locator('.hint').last()).toContainText('6 plotted');
