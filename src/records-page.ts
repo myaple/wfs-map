@@ -8,6 +8,8 @@ export class RecordsPage {
     private source = el('select'); private search = el('input'); private status = el('p');
     private columns = el('details'); private scroll = el('div'); private table = el('table'); private body = el('tbody');
     private visible: string[] = []; private schema = ''; private sort = ''; private descending = false;
+    private navigationRequest = 0; private focusPosition = 0;
+    private scrollScale() { return Math.max(1, this.total * 34 / 8000000); }
     private request = 0; private total = 0; private offset = 0; private rows: RecordRow[] = [];
     private version = ''; private selected?: RecordRef; private selectedData?: RecordData;
     private exportButton = el('button', 'Download table CSV'); private copy = el('button', 'Copy record');
@@ -26,21 +28,22 @@ export class RecordsPage {
         this.source.onchange = () => { this.version = ''; this.reset(); this.refresh(); };
         let timer: ReturnType<typeof setTimeout>;
         this.search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => this.reset(), 180); };
-        this.scroll.onscroll = () => { const offset = Math.max(0, Math.floor(this.scroll.scrollTop / 34) - 4); if (offset !== this.offset) { this.offset = offset; this.fetch(); } };
+        this.scroll.onscroll = () => { const offset = Math.max(0, Math.min(Math.max(0, this.total - 40), Math.floor(this.scroll.scrollTop * this.scrollScale() / 34) - 4)); if (offset !== this.offset) { this.offset = offset; this.fetch(); } };
         this.scroll.onkeydown = e => {
             if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter'].includes(e.key) || !this.total) return;
             e.preventDefault();
-            const current = this.rows.findIndex(r => r.index === this.selected?.index);
-            const position = e.key === 'Home' ? 0 : e.key === 'End' ? this.total - 1 : Math.max(0, Math.min(this.total - 1, this.offset + Math.max(0, current) + (e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0)));
-            this.send(this.source.value, { type: 'recordAt', request: ++this.request, query: this.query(), position });
-            this.scroll.scrollTop = Math.max(0, position * 34 - 68);
+            const current = this.focusPosition;
+            const position = e.key === 'Home' ? 0 : e.key === 'End' ? this.total - 1 : Math.max(0, Math.min(this.total - 1, current + (e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0)));
+            this.focusPosition = position;
+            this.send(this.source.value, { type: 'recordAt', request: ++this.navigationRequest, query: this.query(), position });
+            this.scroll.scrollTop = Math.max(0, position * 34 / this.scrollScale() - 68);
         };
         this.exportButton.onclick = () => { this.exportButton.disabled = true; this.status.textContent = 'Preparing table export…'; this.send(this.source.value, { type: 'recordsExport', request: ++this.request, query: this.query(), columns: this.visible, sourceName: this.current()?.name }); };
         this.showInspector();
     }
     private current() { return this.sources().find(s => s.id === this.source.value && s.enabled); }
     private query() { return { search: this.search.value, sort: this.sort, descending: this.descending }; }
-    private reset() { this.offset = 0; this.scroll.scrollTop = 0; this.fetch(); }
+    private reset() { this.navigationRequest++; this.focusPosition = 0; this.offset = 0; this.scroll.scrollTop = 0; this.fetch(); }
     refresh() {
         const old = this.source.value, sources = this.sources().filter(s => s.enabled);
         this.source.replaceChildren(...sources.map(s => new Option(s.name, s.id))); if (sources.some(s => s.id === old)) this.source.value = old;
@@ -67,9 +70,10 @@ export class RecordsPage {
     private label(key: string) { return key === '@source' ? 'Source' : key === '@id' ? 'Record ID' : key === '@longitude' ? 'Longitude' : key === '@latitude' ? 'Latitude' : `${key} (${this.current()?.fields.find(f => f.name === key)?.kind ?? 'unknown'})`; }
     private fetch() { const s = this.current(); if (!s?.done || s.filtering) return; this.send(s.id, { type: 'records', request: ++this.request, query: this.query(), offset: this.offset, limit: 40 }); }
     handle(id: string, m: any) {
-        if (id !== this.source.value || m.request !== this.request) return;
+        if (id !== this.source.value) return;
+        if (m.type === 'recordAt') { if (m.request === this.navigationRequest && m.row) this.inspect({ sourceId: id, index: m.row.index }); return; }
+        if (m.request !== this.request) return;
         if (m.type === 'records') { this.total = m.total; this.rows = m.rows; this.offset = m.offset; this.exportButton.disabled = false; this.status.textContent = `${m.total.toLocaleString()} table rows · ${this.current()?.selected.toLocaleString()} applied matches${this.current()?.metrics.truncated ? ' · load limit reached; loaded records only' : ''}`; this.draw(); }
-        if (m.type === 'recordAt' && m.row) this.inspect({ sourceId: id, index: m.row.index });
         if (m.type === 'recordsExported') { const a = el('a'); a.href = URL.createObjectURL(m.blob); a.download = 'records.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); this.exportButton.disabled = false; this.status.textContent = `${m.total.toLocaleString()} table rows exported.`; }
         if (m.type === 'recordsError') { this.exportButton.disabled = false; this.status.textContent = m.message; }
     }
@@ -78,13 +82,13 @@ export class RecordsPage {
         for (const key of this.visible) { const th = el('th'); th.setAttribute('aria-sort', this.sort === key ? this.descending ? 'descending' : 'ascending' : 'none'); const b = el('button', this.label(key)); b.onclick = () => { this.descending = this.sort === key && !this.descending; this.sort = key; this.reset(); }; th.append(b); head.append(th); }
         this.table.tHead!.replaceChildren(head); this.body.replaceChildren(); this.table.setAttribute('aria-rowcount', String(this.total + 1));
         const spacer = (height: number) => { const tr = el('tr'), td = el('td'); tr.setAttribute('aria-hidden', 'true'); td.colSpan = Math.max(1, this.visible.length); td.style.height = `${height}px`; td.style.padding = '0'; tr.append(td); this.body.append(tr); };
-        spacer(this.offset * 34);
+        spacer(this.offset * 34 / this.scrollScale());
         for (const [k, row] of this.rows.entries()) {
             const tr = el('tr'); tr.className = 'record-row'; tr.dataset.recordIndex = String(row.index); tr.setAttribute('aria-rowindex', String(this.offset + k + 2)); tr.setAttribute('aria-selected', String(row.index === this.selected?.index && this.source.value === this.selected?.sourceId));
             for (const key of this.visible) { const v = recordValue(row.data, key, this.current()?.name), td = el('td', recordText(v, this.current()?.fields.find(f => f.name === key)?.kind)); td.title = td.textContent!; if (v == null) td.className = 'null-value'; tr.append(td); }
-            tr.onclick = () => this.inspect({ sourceId: this.source.value, index: row.index }); this.body.append(tr);
+            tr.onclick = () => { this.focusPosition = this.offset + k; this.inspect({ sourceId: this.source.value, index: row.index }); }; this.body.append(tr);
         }
-        spacer(Math.max(0, this.total - this.offset - this.rows.length) * 34);
+        spacer(Math.max(0, this.total - this.offset - this.rows.length) * 34 / this.scrollScale());
     }
     selection(ref: RecordRef, data: RecordData) { this.selected = ref; this.selectedData = data; this.showInspector(); this.draw(); }
     clearSelection() { this.selected = undefined; this.selectedData = undefined; this.showInspector(); this.draw(); }
