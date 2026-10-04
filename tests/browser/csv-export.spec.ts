@@ -37,10 +37,11 @@ test('CSV downloads isolate sources and export the applied AND/OR and chart sele
     expect(filtered.rows.map(r => r[0])).toEqual(expected.map(f => f.id));
     await page.locator('#filterSource').selectOption('b');
     await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'eq', value: 'sensor' }, 'Sensors'));
+    await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('Second · 4 matches');
     await page.locator('#exportSource').selectOption('b');
     expect((await download(page)).rows).toHaveLength(4);
-    await page.locator('#reset').click(); await expect(page.locator('#filterStatus')).toContainText('Second · 16 matches');
+    await page.locator('#reset').click(); await page.locator('#apply').click(); await expect(page.locator('#filterStatus')).toContainText('Second · 16 matches');
     expect((await download(page)).rows).toHaveLength(16);
     await page.evaluate(() => (window as any).__WFS_MAP__.filterSource('b', [{ field: 'category', op: 'eq', value: 'absent' }]));
     await expect(page.locator('#filterStatus')).toContainText('0 matches');
@@ -63,6 +64,7 @@ test('CSV source export combines time, map-area bounds and local filters, retain
     await page.mouse.move(b.x + b.width * .6, b.y + b.height * .6, { steps: 4 }); await page.mouse.up({ button: 'right' });
     await expect(page.locator('#csvExportStatus')).toHaveText('1 matching points');
     await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'temp', op: 'gte', value: '8' }, 'Warm stations'));
+    await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('1 matches');
     const csv = await download(page);
     expect(csv.filename).toBe('CSV-stations-filtered.csv'); expect(csv.rows).toHaveLength(1);

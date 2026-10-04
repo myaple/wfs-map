@@ -1,3 +1,4 @@
+import { QueryHistory } from './query-history.ts';
 import { seriesColors } from './multi-charts.ts';
 import { themeColor } from './theme.ts';
 import { parseUTC, utcISO, utcInput } from './time.ts';
@@ -29,14 +30,19 @@ function chartField(select: HTMLSelectElement, name: string, help: string) {
 }
 function button(text: string, click: () => void) { const b = element('button', text); b.type = 'button'; b.onclick = click; return b; }
 export class Workspace {
+    readonly query = new QueryHistory();
     fields: Field[] = [];
     specs: ChartSpec[] = [];
     results: ChartResult[] = [];
     private views = new Map<string, ChartView>();
     private owners = new Map<string, { workspace: Workspace }>();
     private active?: HTMLDivElement;
-    constructor(private changed: () => void, private rules: HTMLElement = document.getElementById('rules')!, private charts: HTMLElement = document.getElementById('charts')!, private sourceId = '', private chartSources: () => ChartSource[] = () => [], private inspect?: (expression: Expression) => void) { }
+    constructor(private changed: (kind: 'draft' | 'charts') => void, private rules: HTMLElement = document.getElementById('rules')!, private charts: HTMLElement = document.getElementById('charts')!, private sourceId = '', private chartSources: () => ChartSource[] = () => [], private inspect?: (expression: Expression) => void) {
+        rules.addEventListener('input', () => this.changed('draft'));
+        rules.addEventListener('change', () => this.changed('draft'));
+    }
     reset() {
+        this.query.reset();
         this.fields = [];
         this.specs = [];
         this.results = [];
@@ -88,8 +94,8 @@ export class Workspace {
         toggle.setAttribute('aria-label', 'Collapse filter group');
         const count = element('span');
         count.className = 'group-count hint';
-        const addRule = button('+ Rule', () => this.addRule(group));
-        const addGroup = button('+ Group', () => { this.makeGroup(children, 'or'); this.markActive(); });
+        const addRule = button('+ Rule', () => { this.addRule(group); this.changed('draft'); });
+        const addGroup = button('+ Group', () => { this.makeGroup(children, 'or'); this.markActive(); this.changed('draft'); });
         addRule.className = addGroup.className = 'group-add';
         head.append(toggle, logic, count, addRule, addGroup);
         if (parent !== this.rules)
@@ -99,7 +105,7 @@ export class Workspace {
                 }
                 group.remove();
                 this.markActive();
-                this.changed();
+                this.changed('draft');
             }));
         // Editing a group chooses the destination for subsequent chart selections.
         // Ignore bubbled events from nested groups so they keep their own target.
@@ -161,14 +167,14 @@ export class Workspace {
         };
         input.oninput = () => input.setCustomValidity('');
         updateInput();
-        row.append(field, op, input, button('×', () => { row.remove(); this.updateGroupCounts(); this.changed(); }));
+        row.append(field, op, input, button('×', () => { row.remove(); this.updateGroupCounts(); this.changed('draft'); }));
         group.querySelector(':scope > .group-children')!.append(row);
         this.updateGroupCounts();
         return row;
     }
-    private read(node: Element): Expression {
+    private read(node: Element, report: boolean): Expression {
         if (node.classList.contains('filter-group'))
-            return { op: (node.querySelector(':scope > .group-head > select') as HTMLSelectElement).value as 'and' | 'or', children: [...node.querySelector(':scope > .group-children')!.children].map(c => this.read(c)) };
+            return { op: (node.querySelector(':scope > .group-head > select') as HTMLSelectElement).value as 'and' | 'or', children: [...node.querySelector(':scope > .group-children')!.children].map(c => this.read(c, report)) };
         if ((node as any).expression)
             return (node as any).expression;
         const inputs = node.querySelectorAll('select,input');
@@ -178,28 +184,32 @@ export class Workspace {
             try { values = JSON.parse(input.value); } catch { /* Report invalid lists below. */ }
             if (!Array.isArray(values) || !values.every(value => typeof value === 'string')) {
                 const message = 'Category values must be a JSON list of strings, such as ["station", "sensor"].';
-                input.setCustomValidity(message); input.reportValidity(); throw Error(message);
+                input.setCustomValidity(message); if (report) input.reportValidity(); throw Error(message);
             }
             return { field, op, values };
         }
         const date = this.fields.find(f => f.name === field)?.kind === 'date' && !['null', 'notnull'].includes(op) && Number.isFinite(parseUTC(input.value));
         const value = date ? utcISO(input.value) : input.value;
-        if (date) input.value = utcInput(value);
+        if (date && report) input.value = utcInput(value);
         return { field, op, value };
     }
-    expression(): Expression { const root = this.rules.querySelector(':scope > .filter-group'); return root ? this.read(root) : all([]); }
-    clearFilters() { this.rules.replaceChildren(); this.makeGroup(this.rules, 'and'); this.changed(); }
+    expression(report = true): Expression { const root = this.rules.querySelector(':scope > .filter-group'); return root ? this.read(root, report) : all([]); }
+    get unapplied() { try { return this.query.differs(this.expression(false)); } catch { return true; } }
+    discardDraft() { this.restoreFilters(this.query.applied); this.changed('draft'); }
+    clearFilters() { this.rules.replaceChildren(); this.makeGroup(this.rules, 'and'); this.changed('draft'); }
     discardObservationSelections() {
-        // Raw scatter observation indices belong to the previous loaded rows;
-        // attribute predicates remain meaningful when server bounds change.
-        for (const selection of this.rules.querySelectorAll('.selection, .observation-selection')) {
-            // Read only the immutable observation markers; unfinished attribute
-            // edits must not prevent discarding indices from the previous load.
-            if ([selection, ...selection.querySelectorAll('.rule')].some(row => (row as any).expression?.op === 'row')) {
-                if (selection.contains(this.active ?? null)) this.active = selection.parentElement?.closest<HTMLDivElement>('.filter-group') ?? undefined;
-                selection.remove();
+        // Remove stale row indices without dropping sibling attribute predicates
+        // or parsing unfinished edits. Empty observation groups disappear too.
+        for (const row of this.rules.querySelectorAll('.observation-selection')) {
+            let parent = row.parentElement?.closest<HTMLDivElement>('.filter-group');
+            row.remove();
+            while (parent && parent.parentElement !== this.rules && !parent.querySelector(':scope > .group-children')!.children.length) {
+                const next = parent.parentElement?.closest<HTMLDivElement>('.filter-group');
+                parent.remove(); parent = next;
             }
         }
+        if (!this.active?.isConnected && !this.rules.contains(this.active ?? null)) this.active = this.rules.querySelector<HTMLDivElement>(':scope > .filter-group') ?? undefined;
+        this.query.discardObservations();
         this.markActive();
     }
     private appendExpression(group: HTMLDivElement, expression: Expression): HTMLElement {
@@ -219,7 +229,7 @@ export class Workspace {
         op.append(option(expression.op, expression.op === 'row' ? '=' : 'within'));
         field.disabled = op.disabled = true; value.readOnly = true;
         value.value = expression.op === 'row' ? String(expression.index) : `W ${expression.west}, S ${expression.south}, E ${expression.east}, N ${expression.north}`;
-        row.append(field, op, value, button('×', () => { row.remove(); this.updateGroupCounts(); this.changed(); }));
+        row.append(field, op, value, button('×', () => { row.remove(); this.updateGroupCounts(); this.changed('draft'); }));
         group.querySelector(':scope > .group-children')!.append(row);
         this.updateGroupCounts();
         return row;
@@ -230,7 +240,7 @@ export class Workspace {
         const target = this.active;
         this.appendExpression(target, expression).classList.add('selection');
         this.active = target; this.markActive();
-        this.changed();
+        this.changed('draft');
     }
     addChart(type: ChartSpec['type'] = 'bar', x = this.fields[0]?.name, y?: string, saved?: ChartSpec) {
         if (!x || this.specs.length >= 12)
@@ -241,7 +251,7 @@ export class Workspace {
         const owner = { workspace: this };
         this.owners.set(spec.id, owner);
         const view = new ChartView(this.charts, spec, this.fields,
-            () => owner.workspace.changed(),
+            () => owner.workspace.changed('charts'),
             () => owner.workspace.removeChart(spec.id),
             (expr, label, inspection, sourceId) => { const workspace = sourceId ? owner.workspace.chartSources().find(s => s.id === sourceId)?.workspace : owner.workspace; if (inspection) workspace?.inspect?.(expr); else workspace?.select(expr, label); },
             id => {
@@ -254,17 +264,22 @@ export class Workspace {
     restore(expression: Expression, charts: ChartSpec[]) {
         for (const view of this.views.values()) view.destroy();
         this.views.clear(); this.owners.clear(); this.specs = []; this.results = [];
+        expression = 'children' in expression ? expression : { op: 'and', children: [expression] };
+        this.query.reset(expression);
+        this.restoreFilters(expression);
+        for (const chart of charts) this.addChart(chart.type, chart.x, chart.y, chart);
+    }
+    restoreFilters(expression: Expression) {
         this.rules.replaceChildren();
         const root = this.makeGroup(this.rules, 'children' in expression ? expression.op : 'and');
         for (const child of 'children' in expression ? expression.children : [expression]) this.appendExpression(root, child);
         this.active = root; this.markActive();
-        for (const chart of charts) this.addChart(chart.type, chart.x, chart.y, chart);
     }
     private removeChart(id: string) {
         this.specs = this.specs.filter(s => s.id !== id);
         this.results = this.results.filter(r => r.id !== id);
         this.views.get(id)?.destroy(); this.views.delete(id); this.owners.delete(id);
-        this.changed();
+        this.changed('charts');
     }
     private moveChart(id: string, target: Workspace) {
         if (target === this) return;
@@ -279,9 +294,10 @@ export class Workspace {
         owner.workspace = target;
         view.setFields(target.fields);
         target.refreshSources();
-        this.changed(); target.changed();
+        this.changed('charts'); target.changed('charts');
     }
     reconfigure(fields: Field[]) {
+        this.query.reset();
         this.fields = fields;
         this.rules.replaceChildren(); this.makeGroup(this.rules, 'and');
         this.results = [];
@@ -387,7 +403,7 @@ class ChartView {
         this.expand.setAttribute('aria-haspopup', 'dialog');
         this.expand.setAttribute('aria-expanded', 'false');
         this.expand.onclick = () => this.enlarge();
-        this.action.setAttribute('aria-label', 'Chart selection action'); this.action.append(option('filter', 'Filter on selection'), option('inspect', 'Inspect without filtering'));
+        this.action.setAttribute('aria-label', 'Chart selection action'); this.action.append(option('filter', 'Add draft filters'), option('inspect', 'Inspect without filtering'));
         actions.append(settings, this.expand, removeButton);
         const typeField = chartField(this.type, 'Chart type', '');
         typeField.hint.hidden = true;
@@ -585,8 +601,8 @@ class ChartView {
             this.draw();
         }
         const total = result.raw?.rows.length ?? result.counts.reduce((a, b) => a + b, 0);
-        this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing · ${result.raw ? 'Individual observations. Left-drag to zoom; right-drag to select; double-click to reset.' : result.y ? 'Counted scatter bins. Left-drag to zoom; right-drag to select; double-click to reset.' : 'Click a segment to filter. Left-drag to zoom; right-drag to select; double-click to reset.'}`;
-        this.canvas.setAttribute('aria-label', `${result.type} chart of ${result.x.field}${result.y ? ' against ' + result.y.field : ''}. Arrow keys choose a bin; Enter filters it.`);
+        this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing · ${result.raw ? 'Individual observations. Left-drag to zoom; right-drag to select; double-click to reset.' : result.y ? 'Counted scatter bins. Left-drag to zoom; right-drag to select; double-click to reset.' : 'Click a segment to add draft filters. Left-drag to zoom; right-drag to select; double-click to reset.'}`;
+        this.canvas.setAttribute('aria-label', `${result.type} chart of ${result.x.field}${result.y ? ' against ' + result.y.field : ''}. Arrow keys choose a bin; Enter adds a draft filter.`);
         this.list.replaceChildren();
         if (!result.y)
             for (let i = 0; i < result.counts.length; i++)

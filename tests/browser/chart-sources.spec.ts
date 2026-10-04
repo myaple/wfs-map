@@ -34,6 +34,7 @@ test('all charts stay visible and each source selector repopulates axes, aggrega
     await expect(chart.locator('.hint').last()).toContainText('2 plotted');
     await chart.locator('details').last().locator('summary').click();
     await chart.getByRole('button', { name: /station: north/ }).click();
+    await page.locator('#filterSource').selectOption(ids[1]); await page.locator('#apply').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].selected === 1);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(16);
     await page.locator('#filterSource').selectOption(ids[1]);
@@ -74,6 +75,7 @@ test('raw observations follow the chosen source and a new schema refreshes the s
     await chart.getByLabel('Binning', { exact: true }).selectOption('exact');
     await page.waitForFunction(id => (window as any).__WFS_MAP__.sources[1].workspace.results.some((r: any) => r.id === id && r.raw?.rows.length === 2), chartId);
     await chart.locator('.raw-scatter canvas:not(.raw-scatter-axes)').press('Enter');
+    await page.locator('#filterSource').selectOption(ids[1]); await page.locator('#apply').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].selected === 1);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(16);
     // Hold the persisted-file read so replacement always races the editor restore,

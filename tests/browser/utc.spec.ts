@@ -21,7 +21,7 @@ test('CSV uploads, filter entry, metadata, and custom ranges stay UTC in a 12-ho
     await page.getByLabel('Filter value').fill('2026-03-08 02:30:00');
     await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('2 matches');
-    await page.locator('#reset').click();
+    await page.locator('#reset').click(); await page.locator('#apply').click();
     await page.locator('#timeWindow').selectOption('custom');
     await expect(page.locator('#timeStart')).toHaveAttribute('type', 'text');
     await expect(page.locator('#utcTimeHelp')).toContainText('24-hour clock');

@@ -40,6 +40,8 @@ test('existing bar and pie combine labels, show source legends, reject mixed typ
     await chooser.getByRole('button',{name:'Close',exact:true}).click();
     await chart.getByLabel('Chart selection action').selectOption('filter');
     await chart.getByRole('button',{name:/category: sensor/}).click();
+    await page.locator('#apply').click();
+    await page.locator('#filterSource').selectOption({label:'Other observations'}); await page.locator('#apply').click();
     await page.waitForFunction(()=> (window as any).__WFS_MAP__.sources[1].selected===2);
     await expect(chart.locator('.hint').last()).toContainText('6 plotted');
     expect(await page.evaluate(()=> (window as any).__WFS_MAP__.sources[0].selected)).toBe(4);
@@ -69,6 +71,7 @@ test('time aggregation and raw scatter share axes; raw inspection selects the co
     await chart.getByLabel('Chart selection action').selectOption('filter');
     for(let i=0;i<16;i++) await canvas.press('ArrowRight');
     await canvas.press('Enter');
+    await page.locator('#filterSource').selectOption({label:'Other observations'}); await page.locator('#apply').click();
     await page.waitForFunction(()=> (window as any).__WFS_MAP__.sources[1].selected===1);
     expect(await page.evaluate(()=> (window as any).__WFS_MAP__.sources[0].selected)).toBe(16);
     await expect(chart.locator('.hint').last()).toContainText('17 plotted');

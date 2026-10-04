@@ -27,6 +27,7 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     await expect(page.locator(`.chart-card[data-source-id="${ids[1]}"]`).first().getByLabel('Chart type')).toHaveValue('bar');
     await expect(page.locator('.chart-card')).toHaveCount(6);
     await page.evaluate(() => { const h = (window as any).__WFS_MAP__; h.workspace.select({ field: 'category', op: 'eq', value: 'vehicle' }, 'Vehicles'); });
+    await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('512 matches');
     await page.locator('#filterSource').selectOption(ids[0]);
     await expect(page.locator('.chart-card').first().getByLabel('Chart type')).toHaveValue('pie');
@@ -62,6 +63,7 @@ test('overlapping IDs across sources pick the top rendered source with its own m
     const f = feature(48, 'dense');
     await page.evaluate(c => (window as any).__WFS_MAP__.map.jumpTo({ center: c, zoom: 18 }), f.geometry.coordinates);
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].layer.drawnLastFrame === 1);
+    await page.locator('#map canvas').scrollIntoViewIfNeeded();
     const p = await page.evaluate(c => { const m = (window as any).__WFS_MAP__.map, p = m.project(c), r = m.getCanvas().getBoundingClientRect(); return { x: p.x + r.x, y: p.y + r.y }; }, f.geometry.coordinates);
     await page.mouse.dblclick(p.x, p.y);
     await expect(page.locator('.metadata')).toContainText('Second WFS');

@@ -8,6 +8,7 @@ test('loads genuine WFS pages, filters and double-clicks the correct GPU ID',asy
   await page.evaluate(()=> (window as any).__WFS_MAP__.filter([{field:'id',op:'eq',value:'48'}]));
   await expect(page.locator('#filterStatus')).toContainText('1 matches');
   const f=feature(48);
+  await page.locator('#map canvas').scrollIntoViewIfNeeded();
   const point=await page.evaluate(coords=>{const m=(window as any).__WFS_MAP__.map;const p=m.project(coords);const r=m.getCanvas().getBoundingClientRect();return{x:p.x+r.x,y:p.y+r.y};},f.geometry.coordinates);
   await page.mouse.dblclick(point.x,point.y);
   await expect(page.locator('.metadata')).toContainText('points.48');
@@ -41,6 +42,7 @@ test('high zoom culling retains original IDs and coordinates',async({page})=>{
   const f=feature(42);
   await page.evaluate(coords=>(window as any).__WFS_MAP__.map.jumpTo({center:coords,zoom:20}),f.geometry.coordinates);
   await page.waitForFunction(()=>{const n=(window as any).__WFS_MAP__.layer.drawnLastFrame;return n>0&&n<2048;});
+  await page.locator('#map canvas').scrollIntoViewIfNeeded();
   const point=await page.evaluate(coords=>{const m=(window as any).__WFS_MAP__.map,p=m.project(coords),r=m.getCanvas().getBoundingClientRect();return {x:p.x+r.x,y:p.y+r.y};},f.geometry.coordinates);
   await page.mouse.dblclick(point.x,point.y);await expect(page.locator('.metadata')).toContainText('points.42');
 });

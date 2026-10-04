@@ -44,7 +44,7 @@ test('analysis automatically loads enabled sources and scopes filters, colours a
     await expect(page.locator('.chart-card[data-source-id="a"]')).toHaveCount(3);
     await page.locator('#filterSource').selectOption('b');
     await expect(page.getByLabel('Filter value', { exact: true })).toHaveValue('sensor');
-    await page.locator('#reset').click(); await expect(page.locator('#filterStatus')).toContainText('Second · 32 matches');
+    await page.locator('#reset').click(); await page.locator('#apply').click(); await expect(page.locator('#filterStatus')).toContainText('Second · 32 matches');
     await expect(page.locator('#filterSource option[value="c"]')).toHaveCount(0);
     await page.locator('#colorSource').selectOption('a');
     await expect(page.locator('#colorAttribute')).toHaveValue('quality');
