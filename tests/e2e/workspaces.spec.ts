@@ -82,8 +82,8 @@ test('real browser tabs restore independent WFS analyses, map views and filters 
         await other.goto('/?analysis=' + beta.id);
         await expect(page.locator('#hud')).toHaveText('Loaded 7 points');
         await expect(other.locator('#hud')).toHaveText('Loaded 11 points');
-        await expect(page.locator('#addRule')).toBeEnabled();
-        await page.locator('#addRule').click();
+        await expect(page.locator('#apply')).toBeEnabled();
+        await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
         await page.getByLabel('Attribute', { exact: true }).selectOption('id');
         await page.getByLabel('Operator', { exact: true }).selectOption('gte');
         await page.getByLabel('Filter value', { exact: true }).fill('3');

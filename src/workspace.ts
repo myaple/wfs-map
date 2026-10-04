@@ -13,6 +13,7 @@ const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) =
 };
 const option = (value: string, label = value) => { const e = element('option', label); e.value = value; return e; };
 let nextChartControl = 0;
+let nextFilterGroup = 0;
 export type ChartSource = { id: string; name: string; workspace: Workspace; enabled: boolean; available: boolean };
 function chartField(select: HTMLSelectElement, name: string, help: string) {
     const root = element('div'), label = element('label', name), hint = element('div', help);
@@ -73,7 +74,23 @@ export class Workspace {
         logic.value = op;
         const children = element('div');
         children.className = 'group-children';
-        head.append(logic, button('+ Rule', () => this.addRule(group)), button('+ Group', () => { this.makeGroup(children, 'or'); this.markActive(); }));
+        children.id = `filter-group-${++nextFilterGroup}`;
+        const toggle = button('▾', () => {
+            children.hidden = !children.hidden;
+            group.classList.toggle('collapsed', children.hidden);
+            toggle.textContent = children.hidden ? '▸' : '▾';
+            toggle.setAttribute('aria-expanded', String(!children.hidden));
+            toggle.setAttribute('aria-label', children.hidden ? 'Expand filter group' : 'Collapse filter group');
+        });
+        toggle.setAttribute('aria-controls', children.id);
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.setAttribute('aria-label', 'Collapse filter group');
+        const count = element('span');
+        count.className = 'group-count hint';
+        const addRule = button('+ Rule', () => this.addRule(group));
+        const addGroup = button('+ Group', () => { this.makeGroup(children, 'or'); this.markActive(); });
+        addRule.className = addGroup.className = 'group-add';
+        head.append(toggle, logic, count, addRule, addGroup);
         if (parent !== this.rules)
             head.append(button('×', () => {
                 if (group.contains(this.active ?? null)) {
@@ -97,7 +114,16 @@ export class Workspace {
         this.markActive();
         return group;
     }
-    private markActive() { this.rules.querySelectorAll('.filter-group').forEach(g => g.classList.toggle('active-group', g === this.active)); }
+    private updateGroupCounts() {
+        this.rules.querySelectorAll('.filter-group').forEach(group => {
+            const count = group.querySelectorAll('.rule').length;
+            group.querySelector(':scope > .group-head > .group-count')!.textContent = `${count} ${count === 1 ? 'rule' : 'rules'}`;
+        });
+    }
+    private markActive() {
+        this.rules.querySelectorAll('.filter-group').forEach(g => g.classList.toggle('active-group', g === this.active));
+        this.updateGroupCounts();
+    }
     addRule(group = this.active, rule?: Rule) {
         if (!group)
             return;
@@ -134,8 +160,9 @@ export class Workspace {
         };
         input.oninput = () => input.setCustomValidity('');
         updateInput();
-        row.append(field, op, input, button('×', () => { row.remove(); this.changed(); }));
+        row.append(field, op, input, button('×', () => { row.remove(); this.updateGroupCounts(); this.changed(); }));
         group.querySelector(':scope > .group-children')!.append(row);
+        this.updateGroupCounts();
         return row;
     }
     private read(node: Element): Expression {
@@ -191,8 +218,9 @@ export class Workspace {
         op.append(option(expression.op, expression.op === 'row' ? '=' : 'within'));
         field.disabled = op.disabled = true; value.readOnly = true;
         value.value = expression.op === 'row' ? String(expression.index) : `W ${expression.west}, S ${expression.south}, E ${expression.east}, N ${expression.north}`;
-        row.append(field, op, value, button('×', () => { row.remove(); this.changed(); }));
+        row.append(field, op, value, button('×', () => { row.remove(); this.updateGroupCounts(); this.changed(); }));
         group.querySelector(':scope > .group-children')!.append(row);
+        this.updateGroupCounts();
         return row;
     }
     select(expression: Expression, _label: string) {

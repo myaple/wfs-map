@@ -223,6 +223,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
 .group-head button {
   font-size: 12px;
 }
+.filter-group.collapsed > .group-head > .group-add {
+  display: none;
+}
 .group-children .filter-group {
   margin-left: 12px;
 }

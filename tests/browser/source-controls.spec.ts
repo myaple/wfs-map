@@ -22,7 +22,7 @@ test('analysis automatically loads enabled sources and scopes filters, colours a
     await expect(page.locator('#rules')).toHaveAttribute('aria-label', 'Filters for Second');
     await expect(page.locator('#colorSource')).toHaveValue('a');
     await expect(page.locator('#chartSource')).toHaveValue('a');
-    await page.locator('#addRule').click();
+    await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await page.getByLabel('Attribute', { exact: true }).selectOption('category');
     await page.getByLabel('Filter value', { exact: true }).fill('sensor');
     await page.locator('#apply').click();
@@ -71,15 +71,15 @@ test('pickers fall back when selected sources are disabled and recover from no e
         { id: 'b', name: 'Second', enabled: true, config: { ...config, url: '/wfs?points=8', layer: 'demo:points' } },
     ] })), defaultConfig);
     await page.goto('/?time=all');
-    await expect(page.locator('#addRule')).toBeEnabled();
+    await expect(page.locator('#apply')).toBeEnabled();
     const pickers = ['filterSource', 'colorSource', 'chartSource', 'exportSource'];
     for (const id of pickers) {
         await expect(page.locator(`#${id} option`)).toHaveText(['First', 'Second']);
         await expect(page.locator(`#${id}`)).toHaveValue('a');
         await page.locator(`#${id}`).selectOption('b');
     }
-    await expect(page.locator('#addRule')).toBeEnabled();
-    await page.locator('#addRule').click();
+    await expect(page.locator('#apply')).toBeEnabled();
+    await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await page.getByLabel('Attribute', { exact: true }).selectOption('category');
     await page.getByLabel('Filter value', { exact: true }).fill('sensor');
     await page.locator('#apply').click();
@@ -101,7 +101,7 @@ test('pickers fall back when selected sources are disabled and recover from no e
         await expect(page.locator(`#${id}`)).toBeDisabled();
         await expect(page.locator(`#${id} option`)).toHaveText(['No enabled data sources']);
     }
-    for (const id of ['addRule', 'apply', 'reset', 'sourceColor', 'colorAttribute', 'addChart', 'exportCSV']) await expect(page.locator(`#${id}`)).toBeDisabled();
+    for (const id of ['apply', 'reset', 'sourceColor', 'colorAttribute', 'addChart', 'exportCSV']) await expect(page.locator(`#${id}`)).toBeDisabled();
     await expect(page.locator('#rules')).toBeEmpty();
     await expect(page.locator('.chart-card')).toHaveCount(6);
     const chartId = await page.locator('.chart-card[data-source-id="a"]').first().getAttribute('data-chart-id');
