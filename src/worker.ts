@@ -143,14 +143,15 @@ ctx.onmessage = (event: MessageEvent) => {
         void project(store, m.sourceId ?? '', applied, m.fields, m.filter, () => r !== revision).then(data => { if (r === revision) post({ type: 'projected', token: m.token, task: m.task, part: m.part, data }); }).catch(e => { if (r === revision) post({ type: 'projectionError', token: m.token, task: m.task, message: (e as Error).message }); });
     }
     if (['records', 'recordAt', 'recordsExport'].includes(m.type) && store) {
-        const r = ++recordsRevision, localStore = store;
+        const r = m.type === 'recordAt' ? recordsRevision : ++recordsRevision, dataRevision = revision, localStore = store;
+        const cancelled = () => m.type === 'recordAt' ? dataRevision !== revision : r !== recordsRevision;
         records ??= new RecordsIndex(store);
-        void records.query(applied, m.query, () => r !== recordsRevision).then(async rows => {
-            if (r !== recordsRevision) return;
+        void records.query(applied, m.query, cancelled).then(async rows => {
+            if (cancelled()) return;
             if (m.type === 'records') post({ type: 'records', request: m.request, total: rows.length, offset: Math.min(m.offset, Math.max(0, rows.length - 1)), rows: Array.from(rows.subarray(Math.min(m.offset, Math.max(0, rows.length - 1)), Math.min(m.offset, Math.max(0, rows.length - 1)) + Math.min(100, m.limit)), index => ({ index, data: localStore.get(index) })) });
             if (m.type === 'recordAt') { const index = rows[m.position]; post({ type: 'recordAt', request: m.request, row: index === undefined ? null : { index, data: localStore.get(index) } }); }
             if (m.type === 'recordsExport') { const blob = await recordsCSV(localStore, rows, m.columns, m.sourceName, () => r !== recordsRevision); if (r === recordsRevision) post({ type: 'recordsExported', request: m.request, blob, total: rows.length }); }
-        }).catch(e => { if (r === recordsRevision) post({ type: 'recordsError', request: m.request, message: (e as Error).message }); });
+        }).catch(e => { if (!cancelled()) post({ type: 'recordsError', request: m.request, message: (e as Error).message }); });
     }
     if (m.type === 'inspectExpression' && store) {
         const r = revision;
