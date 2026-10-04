@@ -1,3 +1,4 @@
+import { createUUID } from './uuid.ts';
 import { settingsKey, settingsMetadata, type Settings } from './source-settings.ts';
 
 export let fileUser: string | undefined;
@@ -53,7 +54,7 @@ export async function saveSettings(settings: Settings): Promise<Settings> {
     try { previous = JSON.parse(localStorage.getItem(settingsKey) ?? 'null') ?? undefined; } catch { }
     const oldRefs = previous?.sources ? references(previous) : new Set<string>();
     for (const [index, source] of settings.sources.entries()) {
-        if (source.config.type === 'csv' && !next.sources[index].config.csvRef) next.sources[index].config.csvRef = crypto.randomUUID();
+        if (source.config.type === 'csv' && !next.sources[index].config.csvRef) next.sources[index].config.csvRef = createUUID();
     }
     // WFS-only settings keep working even when IndexedDB is unavailable.
     if (!files.length && !oldRefs.size) {

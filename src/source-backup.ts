@@ -1,3 +1,4 @@
+import { createUUID } from './uuid.ts';
 import { packArchive, unpackArchive } from './backup-archive.ts';
 import { configKeys, settingsMetadata, validateBackground, validateConfig, validateMapSettings, type Config, type Settings, type SavedSource } from './source-settings.ts';
 
@@ -70,7 +71,7 @@ export async function readBackup(archive: Blob): Promise<Settings> {
         if (!source.config.csvText.trim()) throw Error('Backup contains an empty CSV file.');
         // References are immutable and local to a browser. Fresh references also
         // prevent a same-ID backup from silently reusing a different saved file.
-        source.config.csvRef = crypto.randomUUID();
+        source.config.csvRef = createUUID();
     }
     if (used.size !== files.size || csvCount !== Object.keys(manifest.csvFiles).length) throw Error('Backup contains unexpected files or CSV references.');
     validateSettings(manifest.settings);

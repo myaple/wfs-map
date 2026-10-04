@@ -1,3 +1,4 @@
+import { createUUID } from './uuid.ts';
 export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField'] as const;
 export type Config = Record<typeof configKeys[number], string>;
 export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '' };
@@ -18,7 +19,7 @@ export function migrateSource(input: any): SavedSource | undefined {
     if (!input || typeof input.name !== 'string' || !input.config || typeof input.config.url !== 'string') return;
     const config = { ...defaultConfig };
     for (const key of configKeys) if (typeof input.config[key] === 'string') config[key] = input.config[key];
-    if (config.type === 'csv' && config.csvText && !config.csvRef) config.csvRef = crypto.randomUUID();
+    if (config.type === 'csv' && config.csvText && !config.csvRef) config.csvRef = createUUID();
     try {
         const url = new URL(config.url, location.href);
         if (url.origin === location.origin && url.pathname === '/wfs' && ['points', 'distribution'].some(key => typeof input.config[key] === 'string')) {
@@ -26,7 +27,7 @@ export function migrateSource(input: any): SavedSource | undefined {
             config.url = config.url.startsWith('/') ? url.pathname + url.search : url.href;
         }
     } catch { }
-    return { id: typeof input.id === 'string' ? input.id : crypto.randomUUID(), name: input.name, enabled: input.enabled === true, config, color: input.color, coloring: input.coloring };
+    return { id: typeof input.id === 'string' ? input.id : createUUID(), name: input.name, enabled: input.enabled === true, config, color: input.color, coloring: input.coloring };
 }
 export function readSettings(): Settings {
     const empty = { sources: [], background: { ...defaultBackground } };

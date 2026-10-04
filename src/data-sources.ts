@@ -1,3 +1,4 @@
+import { createUUID } from './uuid.ts';
 import { currentAnalysis } from './saved-analysis.ts';
 import { readCSVText, saveSettings } from './source-storage.ts';
 import { parseCSV } from './csv.ts';
@@ -307,7 +308,7 @@ export class DataSources {
                 const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields])].filter(k => k && !parsed.headers.includes(k));
                 if (missing.length) throw Error('The chosen CSV is missing configured columns: ' + missing.join(', '));
             }
-            this.csvText = text; this.csvRef = crypto.randomUUID(); this.fileName = file.name;
+            this.csvText = text; this.csvRef = createUUID(); this.fileName = file.name;
             this.csvColumns(this.editing?.config); $('sourceError').hidden = true;
         } catch (e) { if (revision === this.fileRevision) this.showError(e); }
         finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
@@ -323,7 +324,7 @@ export class DataSources {
             const name = input('sourceName').value.trim();
             if (!name) throw Error('Enter a source name.');
             if (this.editing) { this.editing.name = name; this.editing.config = config; }
-            else if (this.draft.sources.length < 8) this.draft.sources.push({ id: crypto.randomUUID(), name, config, enabled: true });
+            else if (this.draft.sources.length < 8) this.draft.sources.push({ id: createUUID(), name, config, enabled: true });
             this.close(); this.render();
         } catch (e) { $('sourceError').textContent = (e as Error).message; $('sourceError').hidden = false; }
     }
