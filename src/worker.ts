@@ -114,9 +114,9 @@ async function load(c: Config) {
     post({ type: 'done', loaded, total, bounds: store?.bounds, pages, bytes, parseMs, elapsedMs: performance.now() - start,
         truncated: total !== undefined ? loaded < total : loaded === c.limit, warning: warning + (loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '') });
 }
-async function loadCSV(config: SourceConfig, bounds: QueryBounds) {
+async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: string) {
     const start = performance.now();
-    if (!config.csvText && config.csvRef) config.csvText = await readCSVText(config.csvRef);
+    if (!config.csvText && config.csvRef) config.csvText = await readCSVText(config.csvRef, fileUser);
     const dataset = csvDataset(config, bounds), total = dataset.features.length;
     store = new Store(dataset.fields);
     post({ type: 'init', capacity: total, total });
@@ -146,7 +146,7 @@ ctx.onmessage = (event: MessageEvent) => {
         }).catch(e => post({ type: 'csvExportError', request: m.request, message: (e as Error).message }));
     }
     if (m.type === 'loadCSV')
-        void loadCSV(m.config, m.bounds).catch(e => post({ type: 'error', message: (e as Error).message }));
+        void loadCSV(m.config, m.bounds, m.fileUser).catch(e => post({ type: 'error', message: (e as Error).message }));
     if (m.type === 'load')
         void load(m.config).catch(e => post({ type: 'error', message: (e as Error).message }));
     if (m.type === 'get') {

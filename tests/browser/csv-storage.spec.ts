@@ -47,10 +47,10 @@ test('million-row CSV saves beyond localStorage quota and reloads from IndexedDB
         expect(settings.sources[0].config.csvText).toBe(''); expect(ref).toBeTruthy();
         expect(await page.evaluate(() => localStorage.getItem('wfs-settings')!.length)).toBeLessThan(10_000);
         expect(await keys(page)).toEqual([ref]);
-        await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done, undefined, { timeout: 120_000 });
+        await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done, undefined, { timeout: 120_000 });
         expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(1_000_000);
         await page.reload();
-        await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done, undefined, { timeout: 120_000 });
+        await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done, undefined, { timeout: 120_000 });
         expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(1_000_000);
         await page.locator('#configLink').click();
         await page.getByRole('button', { name: 'Configure Million points', exact: true }).click();
@@ -68,7 +68,7 @@ test('failed CSV replacement preserves the old file, supports retry, and cleans 
     await page.locator('#configLink').click();
     await importFile(page, smallCSV(1)); await page.locator('#saveSettings').click();
     await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     const before = await saved(page), ref = before.sources[0].config.csvRef;
     await page.getByRole('button', { name: 'Configure CSV', exact: true }).click();
     await expect(page.locator('#csvFileStatus')).toContainText('3 columns');
@@ -91,7 +91,7 @@ test('failed CSV replacement preserves the old file, supports retry, and cleans 
     await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
     const replacement = (await saved(page)).sources[0].config.csvRef;
     expect(replacement).not.toBe(ref); expect(await keys(page)).toEqual([replacement]);
-    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
+    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     await page.evaluate(async () => { (window as any).__WFS_MAP__.getPoint(0); });
     await expect(page.locator('.metadata')).toContainText('2');
     await page.locator('#configLink').click();
@@ -110,7 +110,7 @@ test('inline CSV settings migrate on save and IndexedDB failures leave drafts in
     await page.goto('/?time=all&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.map.loaded());
     await page.locator('#configLink').click();
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     await page.getByRole('button', { name: 'Configure Legacy CSV', exact: true }).click();
     await page.locator('#sourceName').fill('Migrated CSV'); await page.locator('#updateSource').click();
     await page.evaluate(() => { (window as any).__open = indexedDB.open; indexedDB.open = () => { throw new DOMException('File storage full', 'QuotaExceededError'); }; });
@@ -119,6 +119,6 @@ test('inline CSV settings migrate on save and IndexedDB failures leave drafts in
     await page.evaluate(() => indexedDB.open = (window as any).__open);
     await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
     expect((await saved(page)).sources[0].config.csvText).toBe('');
-    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
+    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(1);
 });

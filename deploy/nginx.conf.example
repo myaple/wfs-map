@@ -1,0 +1,17 @@
+# Adapt this example in your existing mTLS terminator. The API trusts only
+# USER_ID_HEADER (default X-User-Id). Overwrite any caller-supplied value.
+server {
+    listen 443 ssl;
+    ssl_certificate /etc/tls/server.crt;
+    ssl_certificate_key /etc/tls/server.key;
+    ssl_client_certificate /etc/tls/client-ca.crt;
+    ssl_verify_client on;
+    # No request/query/body logging for analyst workspaces.
+    access_log off;
+    client_max_body_size 1040k;
+    location / {
+        proxy_pass http://api:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-User-Id $ssl_client_s_dn;
+    }
+}

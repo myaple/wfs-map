@@ -5,3 +5,8 @@ test-results
 playwright-report
 *.png
 audit.json
+
+backend/target
+backend/vendor
+backend/licenses
+backend/rust-vendor.tar.gz*

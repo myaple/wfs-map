@@ -45,7 +45,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
     await page.locator('#basemapURL').fill('https://tiles.example/{z}/{x}/{y}.png');
     await page.locator('#basemapAttribution').fill('Shared basemap ©');
     await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1]?.done);
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.done);
     await page.locator('#analysisLink').click();
     const activeID = (await saved(page)).sources[1].id;
     await page.locator('#colorSource').selectOption(activeID);
@@ -56,7 +56,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
         app.filterSource(app.sources[1].id, [{ field: 'value', op: 'eq', value: '2' }]);
         app.map.jumpTo({ center: [-1.54, 53.99], zoom: 12.5 });
     });
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].selected === 1);
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1].selected === 1);
     const before = await saved(page), beforeFiles = await csvFiles(page);
     await page.locator('#configLink').click(); const archive = await downloadedBackup(page);
     expect(archive.buffer.length).toBeLessThan(100_000);
@@ -70,7 +70,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
         await expect(receiver.locator('#backupSummary')).toContainText('3 sources: 2 CSV files and 1 WFS connections');
         await receiver.locator('#restoreBackup').click();
         await expect(receiver.locator('#backupStatus')).toHaveText('Backup restored and saved in this browser.');
-        await receiver.waitForFunction(() => (window as any).__WFS_MAP__.sources.filter((s: any) => s.enabled).every((s: any) => s.done));
+        await receiver.waitForFunction(() => (window as any).__WFS_MAP__?.sources.filter((s: any) => s.enabled).every((s: any) => s.done));
         expect(normalized(await saved(receiver))).toEqual(normalized(before));
         expect(await csvFiles(receiver)).toEqual(beforeFiles);
         const after = await saved(receiver);
@@ -80,7 +80,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
         await receiver.locator('#analysisLink').click(); await expect(receiver.locator('#size')).toHaveValue('4.5');
         const view = await receiver.evaluate(() => { const m = (window as any).__WFS_MAP__.map; return { center: m.getCenter().toArray(), zoom: m.getZoom() }; });
         expect(view.center[0]).toBeCloseTo(-1.54, 7); expect(view.center[1]).toBeCloseTo(53.99, 7); expect(view.zoom).toBeCloseTo(12.5);
-        await receiver.reload(); await receiver.waitForFunction(() => (window as any).__WFS_MAP__.sources[1]?.done);
+        await receiver.reload(); await receiver.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.done);
         expect(await csvFiles(receiver)).toEqual(beforeFiles); expect(normalized(await saved(receiver))).toEqual(normalized(before));
         expect(errors).toEqual([]);
     } finally { await context.close(); }
@@ -121,7 +121,7 @@ test('draft export, cancelled restore, invalid archive and failed storage preser
     const changed = await createBackup(replacement, async () => { throw Error('Use inline file'); });
     await page.locator('#backupFile').setInputFiles({ name: 'replacement.tar.gz', mimeType: 'application/gzip', buffer: Buffer.from(await changed.arrayBuffer()) });
     await page.locator('#restoreBackup').click(); await expect(page.locator('#backupDialog')).toBeHidden();
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     expect((await csvFiles(page))[0].text).toBe(replacement.sources[0].config.csvText);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].layer.color)).toEqual([1, 0, 0]);
     await page.locator('#analysisLink').click();

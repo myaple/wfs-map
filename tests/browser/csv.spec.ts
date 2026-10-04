@@ -11,7 +11,7 @@ test('CSV imports alongside WFS, configures fields, filters, colours, and persis
     await expect(page.locator('#csvFileStatus')).toContainText('5 columns');
     await page.locator('#csvTime').selectOption('observed');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1]?.metrics.analysisCharts?.length);
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.metrics.analysisCharts?.length);
     await page.locator('#analysisLink').click();
     await expect(page.locator('#hud')).toHaveText('Loaded 18 points');
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
@@ -23,13 +23,13 @@ test('CSV imports alongside WFS, configures fields, filters, colours, and persis
     await page.locator('#colorSource').selectOption(id); await page.locator('#colorAttribute').selectOption('temp'); await expect(page.locator('#colorLegend')).toContainText('7');
     await page.evaluate(() => (window as any).__WFS_MAP__.getPoint(0));
     await expect(page.locator('.metadata')).toContainText('CSV stations'); await expect(page.locator('.metadata')).toContainText('north');
-    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.every((s: any) => s.done));
+    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done));
     await expect(page.locator('#hud')).toHaveText('Loaded 18 points');
     await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure CSV stations', exact: true }).click();
     await expect(page.locator('#type')).toHaveValue('csv'); await expect(page.locator('#csvTime')).toHaveValue('observed'); await expect(page.locator('#csvFileStatus')).toContainText('stations.csv');
     await page.locator('#cancelSource').click(); await page.locator('#analysisLink').click();
     await page.locator('#timeWindow').selectOption('custom'); await page.locator('#timeStart').fill('2026-10-02T00:00'); await page.locator('#timeEnd').fill('2026-10-03T00:00'); await page.locator('#applyTime').click();
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1]?.done && (window as any).__WFS_MAP__.sources[1].loaded === 1);
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.done && (window as any).__WFS_MAP__?.sources[1].loaded === 1);
     expect(errors).toEqual([]);
 });
 test('CSV validates files and supports a configured WKT geometry column', async ({ page }) => {
@@ -39,6 +39,6 @@ test('CSV validates files and supports a configured WKT geometry column', async 
     await page.locator('#csvFile').setInputFiles({ name: 'points.csv', mimeType: 'text/csv', buffer: Buffer.from('geom,value\nPOINT (-1 54),2') });
     await expect(page.locator('#csvFileStatus')).toContainText('2 columns'); await page.locator('#geometryMode').selectOption('wkt');
     await expect(page.locator('#csvXY')).toBeHidden(); await page.locator('#csvGeometry').selectOption('geom');
-    await page.locator('#updateSource').click(); await page.locator('#saveSettings').click(); await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
+    await page.locator('#updateSource').click(); await page.locator('#saveSettings').click(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     await page.locator('#analysisLink').click(); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
 });

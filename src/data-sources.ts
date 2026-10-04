@@ -1,3 +1,4 @@
+import { currentAnalysis } from './saved-analysis.ts';
 import { readCSVText, saveSettings } from './source-storage.ts';
 import { parseCSV } from './csv.ts';
 import { createBackup, readBackup } from './source-backup.ts';
@@ -29,7 +30,7 @@ export class DataSources {
           <details class="settings-card" id="backgroundSettings"><summary>Map background</summary><div class="settings-fields"><label for="basemapURL">Raster basemap tile URL</label><input id="basemapURL" placeholder="https://…/{z}/{x}/{y}.png"><label for="basemapAttribution">Basemap attribution</label><input id="basemapAttribution"><p class="hint">XYZ raster tiles. Leave the URL empty to use the offline grid.</p></div></details>
           <section class="settings-card" aria-labelledby="backupTitle"><h3 id="backupTitle">Backup &amp; share</h3><p class="hint">Download the current list, including unsaved changes and disabled sources, as a .tar.gz. Includes complete CSV files, WFS connection settings, source colours, and map background, view and point size. WFS features are fetched again when loaded.</p><div class="row"><button id="exportBackup">Download backup</button><button id="importBackup">Import backup</button><input id="backupFile" type="file" accept=".tar.gz,.tgz,application/gzip" hidden aria-label="Choose backup archive"></div><p id="backupStatus" class="hint" role="status"></p><p id="backupError" class="error" role="alert" hidden></p></section>
           <details class="settings-card" id="testServer"><summary>Optional test WFS server</summary><p class="hint">Start a local server with generated points to try the app. Add its endpoint using the same connection settings as any WFS source.</p><div class="test-fields"><div><label for="points">Generated point count</label><input id="points" type="number" min="1" max="50000000" value="1000000" required></div><div><label for="distribution">Point distribution</label><select id="distribution"><option value="uk">UK spread</option><option value="world">Worldwide</option><option value="dense">Dense 2 km square</option></select></div></div><div class="row"><button id="startTestServer">Start test server</button><button id="addTestSource" disabled>Add as data source</button></div><p id="testServerStatus" class="hint" role="status">Requires the app’s Node server. The test endpoint stays running until that server restarts.</p><label for="testEndpoint" hidden id="testEndpointLabel">Test WFS endpoint</label><input id="testEndpoint" readonly hidden></details>
-          <div class="settings-save"><div><strong id="saveState" role="status">All changes saved</strong><p class="hint">Save applies changes and keeps them in this browser for your next visit.</p><p id="saveError" class="error" role="alert" hidden></p></div><div class="row"><button id="discardSettings" disabled>Discard changes</button><button id="saveSettings" class="primary" disabled>Save changes</button></div></div>
+          <div class="settings-save"><div><strong id="saveState" role="status">All changes saved</strong><p class="hint">${currentAnalysis ? 'Save applies source changes locally. Use Save analysis above to save the complete setup remotely.' : 'Save applies changes and keeps them in this browser for your next visit.'}</p><p id="saveError" class="error" role="alert" hidden></p></div><div class="row"><button id="discardSettings" disabled>Discard changes</button><button id="saveSettings" class="primary" disabled>Save changes</button></div></div>
         </div>
         <dialog id="backupDialog" class="source-dialog backup-dialog" aria-labelledby="backupDialogTitle"><h2 id="backupDialogTitle">Restore backup</h2><p>This replaces your current source list and map settings, including unsaved changes. Dataset filters and charts are reset. CSV files will be saved in this browser.</p><p id="backupSummary"></p><ul id="backupSources"></ul><p id="restoreError" class="error" role="alert" hidden></p><div class="row"><button id="cancelBackup">Cancel</button><button id="restoreBackup" class="primary">Replace sources &amp; restore</button></div></dialog>
         <dialog id="sourceDialog" class="source-dialog" aria-labelledby="sourceDialogTitle"><form id="sourceForm"><div class="source-dialog-head"><div><h2 id="sourceDialogTitle">Add data source</h2><p class="hint">Choose a source type and configure its dataset.</p></div><button id="closeSource" type="button" aria-label="Close source settings">×</button></div><div class="settings-fields">
@@ -299,9 +300,15 @@ export class DataSources {
         try {
             const text = await file.text();
             if (revision !== this.fileRevision) return;
-            parseCSV(text, input('delimiter').value);
+            const parsed = parseCSV(text, input('delimiter').value);
+            if (this.editing?.config.type === 'csv') {
+                const mapped = ['longitudeField', 'latitudeField', 'geometryField', 'timeField'] as const;
+                const savedFields = currentAnalysis?.state.analyses.find(s => s.id === this.editing!.id)?.fields.map(f => f.name) ?? [];
+                const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields])].filter(k => k && !parsed.headers.includes(k));
+                if (missing.length) throw Error('The chosen CSV is missing configured columns: ' + missing.join(', '));
+            }
             this.csvText = text; this.csvRef = crypto.randomUUID(); this.fileName = file.name;
-            this.csvColumns(); $('sourceError').hidden = true;
+            this.csvColumns(this.editing?.config); $('sourceError').hidden = true;
         } catch (e) { if (revision === this.fileRevision) this.showError(e); }
         finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
     }

@@ -1,8 +1,15 @@
 import { settingsKey, settingsMetadata, type Settings } from './source-settings.ts';
 
-const databaseName = 'wfs-source-files', storeName = 'csv';
-function openFiles(): Promise<IDBDatabase> {
+export let fileUser: string | undefined;
+const storeName = 'csv';
+// Named analyses/copies may reuse immutable files within one user, but never
+// resolve another user's references or the unauthenticated legacy cache.
+export function setFileUser(user: string) {
+    fileUser = user;
+}
+function openFiles(user = fileUser): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
+        const databaseName = user === undefined ? 'wfs-source-files' : 'wfs-source-files:user:' + encodeURIComponent(user);
         const request = indexedDB.open(databaseName, 1);
         let blocked = false;
         request.onupgradeneeded = () => request.result.createObjectStore(storeName);
@@ -22,8 +29,8 @@ function completed(transaction: IDBTransaction): Promise<void> {
         transaction.onerror = () => {}; // Abort reports the transaction error.
     });
 }
-export async function readCSVText(reference: string): Promise<string> {
-    const db = await openFiles();
+export async function readCSVText(reference: string, user = fileUser): Promise<string> {
+    const db = await openFiles(user);
     try {
         const transaction = db.transaction(storeName, 'readonly'), done = completed(transaction);
         const request = transaction.objectStore(storeName).get(reference);
@@ -64,7 +71,10 @@ export async function saveSettings(settings: Settings): Promise<Settings> {
             const request = store.getKey(ref);
             request.onsuccess = () => {
                 if (request.result !== undefined) return;
-                if (!payload) { missing = true; transaction.abort(); return; }
+                if (!payload) {
+                    if (settingsKey !== 'wfs-settings') return; // Shared setup may await local attachment.
+                    missing = true; transaction.abort(); return;
+                }
                 // Never overwrite the file used by the currently saved settings.
                 store.add(payload, ref); added.push(ref);
             };
@@ -76,7 +86,16 @@ export async function saveSettings(settings: Settings): Promise<Settings> {
         localStorage.setItem(settingsKey, JSON.stringify(next));
         published = true;
         const keep = references(next);
-        await removeFiles(db, [...oldRefs].filter(ref => !keep.has(ref))).catch(() => {});
+        // Named analyses may share local blobs across tabs and copies. Retain them
+        // rather than deleting a file another analysis still needs.
+        if (settingsKey === 'wfs-settings') {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i)!;
+                if (!key.startsWith('wfs-analysis-settings:') || key.endsWith(':bindings')) continue;
+                try { for (const ref of references(JSON.parse(localStorage.getItem(key)!))) keep.add(ref); } catch {}
+            }
+            await removeFiles(db, [...oldRefs].filter(ref => !keep.has(ref))).catch(() => {});
+        }
         return next;
     } catch (e) {
         if (!published) await removeFiles(db, added).catch(() => {});
