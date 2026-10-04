@@ -174,10 +174,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
 .group-head button {
   font-size: 12px;
 }
-.target-group[aria-pressed=true] {
-  color: #087c74;
-  border-color: #0d9188;
-}
 .group-children .filter-group {
   margin-left: 12px;
 }

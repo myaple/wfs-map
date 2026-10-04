@@ -70,11 +70,9 @@ export class Workspace {
         logic.setAttribute('aria-label', 'Group logic');
         logic.append(option('and', 'AND · match all'), option('or', 'OR · match any'));
         logic.value = op;
-        const target = button('Add chart selections here', () => { this.active = group; this.markActive(); });
-        target.className = 'target-group';
         const children = element('div');
         children.className = 'group-children';
-        head.append(logic, target, button('+ Rule', () => this.addRule(group)), button('+ Group', () => { this.makeGroup(children, 'or'); this.markActive(); }));
+        head.append(logic, button('+ Rule', () => this.addRule(group)), button('+ Group', () => { this.makeGroup(children, 'or'); this.markActive(); }));
         if (parent !== this.rules)
             head.append(button('×', () => {
                 if (group.contains(this.active ?? null)) {
@@ -84,13 +82,21 @@ export class Workspace {
                 this.markActive();
                 this.changed();
             }));
+        // Editing a group chooses the destination for subsequent chart selections.
+        // Ignore bubbled events from nested groups so they keep their own target.
+        const activate = (event: Event) => {
+            if ((event.target as Element).closest('.filter-group') === group) { this.active = group; this.markActive(); }
+        };
+        group.addEventListener('focusin', activate);
+        group.addEventListener('change', activate);
+        group.addEventListener('pointerdown', activate);
         group.append(head, children);
         parent.append(group);
         this.active = group;
         this.markActive();
         return group;
     }
-    private markActive() { this.rules.querySelectorAll('.filter-group').forEach(g => { g.classList.toggle('active-group', g === this.active); const b = g.querySelector<HTMLButtonElement>(':scope > .group-head > .target-group'); b?.setAttribute('aria-pressed', String(g === this.active)); }); }
+    private markActive() { this.rules.querySelectorAll('.filter-group').forEach(g => g.classList.toggle('active-group', g === this.active)); }
     addRule(group = this.active) {
         if (!group)
             return;

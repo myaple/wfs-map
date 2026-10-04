@@ -76,3 +76,20 @@ test('nested manual filters, latest request wins, empty result and keyboard sele
     await page.keyboard.press('Enter');
     await expect(page.locator('#filterStatus')).toContainText('1,024 matches');
 });
+
+
+test('chart selections follow the last edited group without a target button', async ({ page }) => {
+    await ready(page);
+    await expect(page.getByRole('button', { name: 'Add chart selections here' })).toHaveCount(0);
+    const rootHead = page.locator('#rules > .filter-group > .group-head');
+    await rootHead.getByRole('button', { name: '+ Group', exact: true }).click();
+    const nested = page.locator('#rules .filter-group .filter-group');
+    await nested.getByLabel('Group logic').focus();
+    await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'eq', value: 'sensor' }, 'Sensors'));
+    await expect(nested.locator('.selection')).toHaveCount(1);
+    await expect(page.locator('#filterStatus')).toContainText('1,024 matches');
+    await rootHead.getByLabel('Group logic').selectOption('or');
+    await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'eq', value: 'vehicle' }, 'Vehicles'));
+    await expect(page.locator('#rules > .filter-group > .group-children > .selection')).toHaveCount(1);
+    await expect(page.locator('#filterStatus')).toContainText('2,048 matches');
+});
