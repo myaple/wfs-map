@@ -108,7 +108,7 @@ test('sources with different schemas expose only their own fields and counts', a
     await page.locator('#analysisLink').click();
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
     await page.locator('#filterSource').selectOption(id);
-    await page.locator('#addRule').click();
+    await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await expect(page.getByLabel('Attribute', {exact:true}).locator('option')).toHaveText(['temperature (number)', 'name (string)']);
     await page.getByLabel('Attribute', {exact:true}).selectOption('temperature');
     await page.getByLabel('Operator').selectOption('gte');

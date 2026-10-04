@@ -16,7 +16,7 @@ test('CSV imports alongside WFS, configures fields, filters, colours, and persis
     await expect(page.locator('#hud')).toHaveText('Loaded 18 points');
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
     await page.locator('#filterSource').selectOption(id);
-    await page.locator('#addRule').click();
+    await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await page.getByLabel('Attribute', { exact: true }).selectOption('temp');
     await page.getByLabel('Operator').selectOption('gte'); await page.getByLabel('Filter value').fill('8'); await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('1 matches');
