@@ -342,3 +342,7 @@ Application source is MIT-licensed. Dependencies retain their own licenses and e
 ### Time handling
 
 All time windows, date filters, charts, metadata, saved timestamps and CSV exports use a 24-hour clock in UTC. CSV time columns and WFS date attributes without a timezone are interpreted as UTC. ISO 8601 timestamps with `Z` or numeric offsets (such as `+02:00`) are converted to UTC before filtering or analysis. Date-only values mean midnight UTC; invalid dates are rejected. Custom ranges accept `YYYY-MM-DD HH:mm:ss` (or ISO 8601), independently of your workstation timezone.
+
+### Appearance
+
+Use **Dark mode** in the page header to switch themes. The first visit follows your system preference; an explicit choice is saved in this browser and applies to the analysis picker, data sources, charts, map grid, legends and dialogs. Basemap tiles and analyst-configured point/banner colours retain their configured colours.

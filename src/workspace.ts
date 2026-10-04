@@ -1,3 +1,4 @@
+import { themeColor } from './theme.ts';
 import { parseUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
 import { ChartInteraction, plotRect, drawAxes, pieSegments, type Point, type View } from './chart-plot.ts';
@@ -282,6 +283,7 @@ class ChartView {
     private dialog?: HTMLDialogElement;
     private placeholder?: Comment;
     private focus = 0;
+    private onThemeChange = () => this.draw();
     private hit = new Float32Array(0);
     constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string) => void, sourceChanged: (id: string) => void) {
         this.root.className = 'chart-card';
@@ -388,6 +390,7 @@ class ChartView {
         };
         this.canvas.onfocus = () => this.draw();
         this.canvas.onblur = () => this.draw();
+        window.addEventListener('themechange', this.onThemeChange);
         this.observer = new ResizeObserver(() => this.draw());
         this.observer.observe(this.canvas);
     }
@@ -574,15 +577,15 @@ class ChartView {
         const plotted = r.values ?? r.counts, finite = Array.from(plotted).filter(Number.isFinite), low = r.values ? Math.min(0, ...finite) : 0;
         const nx = r.x.labels.length, ny = r.y?.labels.length ?? 1, max = finite.reduce((a, b) => Math.max(a, b), 0), total = r.counts.reduce((a, b) => a + b, 0);
         if (!r.counts.some(v => v > 0)) {
-            ctx.fillStyle = '#607588';
+            ctx.fillStyle = themeColor('muted');
             ctx.font = '14px system-ui';
             ctx.fillText('No matching values', 24, 110);
             return;
         }
-        const colors = ['#0d9188', '#3984cf', '#8b69c7', '#d29032', '#c86579', '#4d9c50'];
+        const colors = [themeColor('chart-point'), '#3984cf', '#8b69c7', '#d29032', '#c86579', '#4d9c50'];
         this.hit = new Float32Array(r.counts.length * 4);
         ctx.font = '11px system-ui';
-        ctx.fillStyle = '#546b7a';
+        ctx.fillStyle = themeColor('muted');
         if (r.type === 'pie') {
             const v = this.interaction.view, radius = Math.min(w, h) * .36;
             ctx.save();
@@ -601,9 +604,9 @@ class ChartView {
             }
             ctx.beginPath();
             ctx.arc(w / 2, h / 2, radius * .51, 0, Math.PI * 2);
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = themeColor('surface');
             ctx.fill();
-            ctx.fillStyle = '#254557';
+            ctx.fillStyle = themeColor('text');
             ctx.textAlign = 'center';
             ctx.fillText(total.toLocaleString(), w / 2, h / 2 + 4);
             ctx.restore();
@@ -624,7 +627,7 @@ class ChartView {
             const xb = i % nx, yb = Math.floor(i / nx), x = pointX(xb), y = this.interaction.screen([0, r.y ? (yb + .5) / ny : (plotted[i] - low) / (max - low || 1)])[1];
             const lo = this.interaction.screen([xb / nx, r.y ? (yb + 1) / ny : view[3]]), hi = this.interaction.screen([(xb + 1) / nx, r.y ? yb / ny : view[1]]);
             this.hit.set([lo[0], lo[1], hi[0], hi[1]], i * 4);
-            ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : '#0d9188';
+            ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : themeColor('chart-point');
             if (r.type === 'bar')
                 ctx.fillRect(this.hit[i * 4] + 1, y, Math.max(1, dx - 2), this.interaction.screen([0, 0])[1] - y);
             else if (r.type === 'time') {
@@ -656,7 +659,7 @@ class ChartView {
         }
         ctx.restore();
         if (!r.x.ranges && !r.y) {
-            ctx.fillStyle = '#546b7a';
+            ctx.fillStyle = themeColor('muted');
             ctx.font = '11px system-ui';
             ctx.textAlign = 'center';
             for (let i = 0; i < nx; i++) {
@@ -690,5 +693,5 @@ class ChartView {
         this.draw();
     }
     suspend() { this.raw?.destroy(); this.raw = undefined; this.canvas.hidden = false; this.result = undefined; this.list.replaceChildren(); this.note.textContent = 'Load this source to calculate charts.'; this.draw(); }
-    destroy() { this.restoreSize(); this.interaction.destroy(); this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
+    destroy() { window.removeEventListener('themechange', this.onThemeChange); this.restoreSize(); this.interaction.destroy(); this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
 }

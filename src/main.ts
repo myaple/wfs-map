@@ -1,3 +1,4 @@
+import { initializeTheme, mountThemeToggle } from './theme.ts';
 import { formatUTC } from './time.ts';
 import './style.css';
 import { mountPageBanners } from './page-banners.ts';
@@ -5,6 +6,7 @@ import { createAnalysis, getAnalysis, listAnalyses, api, saveAnalysis } from './
 import { emptyState, configurationState } from './analysis-state.ts';
 import { prepareAnalysis } from './saved-analysis.ts';
 import { readSettings } from './source-settings.ts';
+initializeTheme();
 const root = document.getElementById('app')!;
 const params = new URLSearchParams(location.search);
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
@@ -20,7 +22,7 @@ async function selector() {
     const fromLabel = el('label', 'Start with this browser’s sources and map'); fromLabel.prepend(fromBrowser);
     const status = el('p'); status.setAttribute('role', 'status');
     const list = el('div'); list.className = 'analysis-list';
-    body.append(form, status, list); form.append(name, create, fromLabel); root.append(header, body);
+    body.append(form, status, list); form.append(name, create, fromLabel); root.append(header, body); mountThemeToggle(header);
     form.onsubmit = async event => {
         event.preventDefault(); create.disabled = true;
         try {

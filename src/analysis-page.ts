@@ -1,3 +1,4 @@
+import { mountThemeToggle, themeColor } from './theme.ts';
 import { formatUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
 import { configurationState, type SourceAnalysis } from './analysis-state.ts';
@@ -30,6 +31,7 @@ $('app').innerHTML = `
 <div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
+mountThemeToggle(document.querySelector('.topbar')!);
 type Source = {
     id: string;
     name: string;
@@ -233,7 +235,7 @@ for (let x = -180; x <= 180; x += 10)
 for (let y = -80; y <= 80; y += 10)
     gridFeatures.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[-180, y], [180, y]] } });
 $<HTMLInputElement>('basemap').checked = background.enabled && !!background.url;
-const style: StyleSpecification = { version: 8, sources: { grid: { type: 'geojson', data: { type: 'FeatureCollection', features: gridFeatures } }, osm: { type: 'raster', tiles: background.url ? [background.url] : [], tileSize: 256, attribution: background.attribution, maxzoom: 19 } }, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#e8eff3' } }, { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: background.enabled && background.url ? 'visible' : 'none' } }, { id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': '#b5c7d1', 'line-width': .5 } }] };
+const style: StyleSpecification = { version: 8, sources: { grid: { type: 'geojson', data: { type: 'FeatureCollection', features: gridFeatures } }, osm: { type: 'raster', tiles: background.url ? [background.url] : [], tileSize: 256, attribution: background.attribution, maxzoom: 19 } }, layers: [{ id: 'background', type: 'background', paint: { 'background-color': themeColor('map-background') } }, { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: background.enabled && background.url ? 'visible' : 'none' } }, { id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': themeColor('map-grid'), 'line-width': .5 } }] };
 const map = new maplibregl.Map({ container: 'map', style, center: mapSettings.center, zoom: mapSettings.zoom, maxZoom: 22, minZoom: 1, maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false, renderWorldCopies: false, pixelRatio: Math.min(devicePixelRatio, 2), canvasContextAttributes: { antialias: false }, attributionControl: { compact: true } });
 function rememberMap() {
     const center = map.getCenter().wrap();
@@ -244,6 +246,13 @@ function rememberMap() {
     if (localStorage.getItem(settingsKey) !== null) persist();
 }
 map.on('moveend', rememberMap);
+const updateMapTheme = () => {
+    if (!map.getLayer('background')) return;
+    map.setPaintProperty('background', 'background-color', themeColor('map-background'));
+    map.setPaintProperty('grid', 'line-color', themeColor('map-grid'));
+};
+window.addEventListener('themechange', updateMapTheme);
+map.on('load', updateMapTheme);
 map.touchZoomRotate.disableRotation();
 map.keyboard.disableRotation();
 map.doubleClickZoom.disable();

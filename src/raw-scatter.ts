@@ -1,3 +1,4 @@
+import { themeColor } from './theme.ts';
 import type { ChartResult, Expression } from './analysis.ts';
 import { ChartInteraction, plotRect, drawAxes, interpolate, tickText, type Point, type View } from './chart-plot.ts';
 // One contiguous GPU buffer; gestures update viewport uniforms, never point objects.
@@ -12,6 +13,7 @@ export class RawScatter {
     private buffer!: WebGLBuffer;
     private result?: ChartResult;
     private observer: ResizeObserver;
+    private onThemeChange = () => this.draw();
     private interaction: ChartInteraction;
     constructor(private select: (e: Expression, label: string) => void) {
         this.container.className = 'raw-scatter';
@@ -33,6 +35,7 @@ export class RawScatter {
             const box = this.canvas.getBoundingClientRect(), t = this.interaction.data([e.clientX - box.left, e.clientY - box.top]), b = this.bounds();
             this.canvas.title = `${this.result.x.field}: ${tickText(interpolate(b[0], b[2], t[0]), this.result.x.kind, (b[2] - b[0]) * (this.interaction.view[2] - this.interaction.view[0])).join(' ')} · ${this.result.y!.field}: ${tickText(interpolate(b[1], b[3], t[1]), this.result.y?.kind, (b[3] - b[1]) * (this.interaction.view[3] - this.interaction.view[1])).join(' ')}`;
         });
+        window.addEventListener('themechange', this.onThemeChange);
         this.observer = new ResizeObserver(() => this.draw());
         this.observer.observe(this.canvas);
         this.canvas.onkeydown = e => {
@@ -61,7 +64,7 @@ export class RawScatter {
         const vs = `#version 300 es
         precision highp float;layout(location=0)in vec4 p;uniform float size;uniform vec4 center;uniform vec2 scale;uniform bool precise;flat out uint id;void main(){vec2 relative=(p.xy-center.xy)+((precise?p.zw:vec2(0.))-center.zw);gl_Position=vec4(relative*scale-1.,0,1);gl_PointSize=size;id=uint(gl_VertexID)+1u;}`;
         const fs = `#version 300 es
-        precision highp float;precision highp int;flat in uint id;uniform bool picking;out vec4 c;void main(){c=picking?vec4(float(id&255u),float((id>>8u)&255u),float((id>>16u)&255u),float((id>>24u)&255u))/255.:vec4(.05,.57,.53,1);}`;
+        precision highp float;precision highp int;flat in uint id;uniform bool picking;uniform vec3 pointColor;out vec4 c;void main(){c=picking?vec4(float(id&255u),float((id>>8u)&255u),float((id>>16u)&255u),float((id>>24u)&255u))/255.:vec4(pointColor,1);}`;
         this.program = gl.createProgram()!;
         for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]] as const) {
             const shader = gl.createShader(type)!;
@@ -142,6 +145,8 @@ export class RawScatter {
         gl.uniform2f(gl.getUniformLocation(this.program, 'scale'), 1 / (view[2] - view[0]), 1 / (view[3] - view[1]));
         gl.uniform1i(gl.getUniformLocation(this.program, 'precise'), Number(!!this.result.raw.precise));
         gl.uniform1i(gl.getUniformLocation(this.program, 'picking'), Number(picking));
+        const color = themeColor('chart-point');
+        gl.uniform3f(gl.getUniformLocation(this.program, 'pointColor'), ...([1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16) / 255) as [number, number, number]));
         gl.uniform1f(gl.getUniformLocation(this.program, 'size'), picking ? 6 * d : 2 * d);
         gl.disable(gl.DITHER);
         gl.drawArrays(gl.POINTS, 0, this.result.raw.rows.length);
@@ -156,5 +161,5 @@ export class RawScatter {
             this.canvas.dataset.axisY = this.result.y?.kind ?? 'number';
         }
     }
-    destroy() { this.observer.disconnect(); this.interaction.destroy(); this.gl.deleteBuffer(this.buffer); this.gl.deleteProgram(this.program); this.result = undefined; this.container.remove(); this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
+    destroy() { window.removeEventListener('themechange', this.onThemeChange); this.observer.disconnect(); this.interaction.destroy(); this.gl.deleteBuffer(this.buffer); this.gl.deleteProgram(this.program); this.result = undefined; this.container.remove(); this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
 }
