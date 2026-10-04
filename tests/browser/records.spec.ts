@@ -27,3 +27,20 @@ test('Records is a third page, virtualizes applied results, searches, sorts, exp
  await expect(page.locator('#records > [role=status]')).toContainText(`${matches.toLocaleString()} table rows`);
  expect(errors).toEqual([]);
 });
+
+test('map chooser includes coincident records within and across sources, and excludes filtered-out rows', async ({ page }) => {
+ await page.addInitScript(config => localStorage.setItem('wfs-settings', JSON.stringify({ sources: [
+  { id: 'a', name: 'A', enabled: true, config: { ...config, type: 'csv', longitudeField: 'lon', latitudeField: 'lat', csvText: 'lon,lat,value\n-1,54,1\n-1,54,2' } },
+  { id: 'b', name: 'B', enabled: true, config: { ...config, type: 'csv', longitudeField: 'lon', latitudeField: 'lat', csvText: 'lon,lat,value\n-1,54,3' } },
+ ] })), defaultConfig);
+ await page.goto('/?time=all#analysis'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done && !s.filtering));
+ const pick = async () => {
+  await page.locator('#map').scrollIntoViewIfNeeded();
+  const point = await page.evaluate(() => { const map = (window as any).__WFS_MAP__.map; map.jumpTo({ center: [-1,54], zoom: 12 }); const p=map.project([-1,54]),r=map.getCanvas().getBoundingClientRect();return {x:r.left+p.x,y:r.top+p.y}; });
+  await page.mouse.dblclick(point.x,point.y);
+ };
+ await pick(); await expect(page.locator('.record-choices button')).toHaveCount(3); await expect(page.locator('.record-choices')).toContainText('B');
+ await page.locator('.record-choices button').last().click(); await expect(page.locator('.record-inspector')).toContainText('B');
+ await page.evaluate(() => (window as any).__WFS_MAP__.filterSource('a', [{ field: 'value', op: 'gte', value: '2' }])); await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
+ await pick(); await expect(page.locator('.record-choices button')).toHaveCount(2); expect(await page.locator('.record-choices button').first().getAttribute('data-index')).toBe('1');
+});
