@@ -7,6 +7,13 @@ test('Records is a third page, virtualizes applied results, searches, sorts, exp
  await expect(page.locator('#records')).toBeVisible(); await expect(page.locator('#analysis')).toBeHidden();
  await expect(page.locator('#recordsSource option')).toHaveText(['First','Second']);
  await expect(page.locator('#records [role=status]')).toContainText('10,000 table rows');
+ const search = page.getByLabel('Search applied records'), columns = page.locator('.records-columns > summary');
+ const height = (await search.boundingBox())!.height;
+ await columns.click(); await expect(page.locator('.records-column-options')).toBeVisible();
+ expect((await search.boundingBox())!.height).toBe(height);
+ await page.locator('.records-column-options').getByLabel('Longitude', {exact:true}).uncheck();
+ await expect(page.getByRole('button',{name:'Longitude',exact:true})).toHaveCount(0);
+ await columns.focus(); await page.keyboard.press('Escape'); await expect(page.locator('.records-column-options')).toBeHidden();
  expect(await page.locator('.record-row').count()).toBeLessThanOrEqual(40);
  await page.locator('.record-row').first().click(); await expect(page.locator('.record-inspector')).toContainText('ID');
  expect(await page.evaluate(()=>(window as any).__WFS_MAP__.sources[0].selected)).toBe(10000);
@@ -19,9 +26,11 @@ test('Records is a third page, virtualizes applied results, searches, sorts, exp
  await expect(page.getByRole('dialog',{name:'Choose overlapping record'})).toBeVisible();
  await expect(page.locator('.record-choices')).toContainText('Second');
  await page.locator('.record-choices button').last().click(); await expect(page.locator('.record-inspector')).toContainText('Second');
- await page.locator('#analysisLink').click(); await expect(page.locator('.record-inspector')).toContainText('Second');
+ await page.locator('#analysisLink').click(); await expect(page.locator('.record-inspector')).toBeHidden(); await expect(page.locator('#analysis .record-inspector')).toHaveCount(0);
+ await page.locator('#recordsLink').click(); await expect(page.locator('.record-inspector')).toBeVisible(); await expect(page.locator('.record-inspector')).toContainText('Second'); await page.locator('#analysisLink').click();
  await page.evaluate(()=>(window as any).__WFS_MAP__.filterSource('a',[{field:'quality',op:'gte',value:'90'}]));
  await page.locator('#recordsLink').click(); await page.getByLabel('Search applied records').fill('');
+ await expect(page.locator('.record-inspector')).toBeVisible();
  await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
  const matches = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected);
  await expect(page.locator('#records > [role=status]')).toContainText(`${matches.toLocaleString()} table rows`);
@@ -40,7 +49,8 @@ test('map chooser includes coincident records within and across sources, and exc
   await page.mouse.dblclick(point.x,point.y);
  };
  await pick(); await expect(page.locator('.record-choices button')).toHaveCount(3); await expect(page.locator('.record-choices')).toContainText('B');
- await page.locator('.record-choices button').last().click(); await expect(page.locator('.record-inspector')).toContainText('B');
+ await page.locator('.record-choices button').last().click(); await expect(page.locator('.record-inspector')).toBeHidden();
+ await page.locator('#recordsLink').click(); await expect(page.locator('.record-inspector')).toContainText('B'); await expect(page.locator('.record-inspector')).toBeVisible(); await page.locator('#analysisLink').click();
  await page.evaluate(() => (window as any).__WFS_MAP__.filterSource('a', [{ field: 'value', op: 'gte', value: '2' }])); await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
  await pick(); await expect(page.locator('.record-choices button')).toHaveCount(2); expect(await page.locator('.record-choices button').first().getAttribute('data-index')).toBe('1');
 });

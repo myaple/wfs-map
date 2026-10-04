@@ -220,7 +220,6 @@ function switchFilters(id: string) {
 function route() {
     const config = location.hash === '#configuration', records = location.hash === '#records';
     recordPage.root.hidden = !records;
-    (records ? document.querySelector('.records-layout')! : document.getElementById('analysis')!).append(recordPage.inspector);
     $('configuration').hidden = !config;
     $('analysis').hidden = config || records;
     for (const s of sources)

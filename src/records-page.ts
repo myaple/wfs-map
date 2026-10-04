@@ -7,6 +7,7 @@ export class RecordsPage {
     readonly inspector = el('aside');
     private source = el('select'); private search = el('input'); private status = el('p');
     private columns = el('details'); private scroll = el('div'); private table = el('table'); private body = el('tbody');
+    private columnSummary = el('summary', 'Columns'); private columnOptions = el('div');
     private visible: string[] = []; private schema = ''; private sort = ''; private descending = false;
     private navigationRequest = 0; private focusPosition = 0;
     private scrollScale() { return Math.max(1, this.total * 34 / 8000000); }
@@ -17,8 +18,18 @@ export class RecordsPage {
         this.root.id = 'records'; this.root.hidden = true; this.root.className = 'records-page';
         this.source.id = 'recordsSource'; this.source.setAttribute('aria-label', 'Records data source');
         this.search.type = 'search'; this.search.setAttribute('aria-label', 'Search applied records'); this.search.placeholder = 'Search all fields, IDs and coordinates';
-        const controls = el('div'); controls.className = 'row'; controls.append(el('label', 'Data source'), this.source, this.search, this.columns, this.exportButton);
-        this.columns.append(el('summary', 'Columns')); this.status.setAttribute('role', 'status');
+        const controls = el('div'); controls.className = 'records-toolbar';
+        const sourceControl = el('div'); sourceControl.className = 'records-source-control';
+        const sourceLabel = el('label', 'Data source'); sourceLabel.htmlFor = this.source.id; sourceControl.append(sourceLabel, this.source);
+        const searchControl = el('div'); searchControl.className = 'records-search-control'; this.search.id = 'recordsSearch';
+        const searchLabel = el('label', 'Search records'); searchLabel.htmlFor = this.search.id; searchControl.append(searchLabel, this.search);
+        const actions = el('div'); actions.className = 'records-actions'; actions.append(this.columns, this.exportButton);
+        controls.append(sourceControl, searchControl, actions);
+        this.columns.className = 'records-columns'; this.columnOptions.className = 'records-column-options';
+        this.columnOptions.setAttribute('aria-label', 'Visible columns');
+        this.columns.append(this.columnSummary, this.columnOptions); this.status.setAttribute('role', 'status');
+        this.columns.addEventListener('keydown', event => { if (event.key === 'Escape') { this.columns.open = false; this.columnSummary.focus(); event.stopPropagation(); } });
+        document.addEventListener('click', event => { if (!this.columns.contains(event.target as Node)) this.columns.open = false; });
         const layout = el('div'); layout.className = 'records-layout';
         this.scroll.className = 'records-scroll'; this.scroll.tabIndex = 0; this.scroll.setAttribute('aria-label', 'Records table. Arrow keys navigate; Enter inspects.');
         this.table.className = 'records-table'; this.table.append(el('thead'), this.body); this.scroll.append(this.table);
@@ -56,17 +67,19 @@ export class RecordsPage {
         const schema = JSON.stringify([s.id, s.fields]);
         if (schema !== this.schema) {
             this.schema = schema; this.visible = [...identityColumns, ...s.fields.map(f => f.name)]; this.sort = ''; this.search.value = '';
-            this.columns.replaceChildren(el('summary', 'Columns'));
+            this.columns.open = false; this.columnOptions.replaceChildren();
             for (const key of this.visible) {
                 const check = el('input'); check.type = 'checkbox'; check.checked = true;
-                const label = el('label', this.label(key)); label.prepend(check); this.columns.append(label);
-                check.onchange = () => { this.visible = [...identityColumns, ...s.fields.map(f => f.name)].filter(k => k === key ? check.checked : this.visible.includes(k)); this.draw(); };
+                const label = el('label'); label.append(check, el('span', this.label(key))); this.columnOptions.append(label);
+                check.onchange = () => { this.visible = [...identityColumns, ...s.fields.map(f => f.name)].filter(k => k === key ? check.checked : this.visible.includes(k)); this.updateColumnSummary(); this.draw(); };
             }
+            this.updateColumnSummary();
         }
         this.reset();
         if (this.selected && !this.sources().some(s => s.id === this.selected!.sourceId && s.enabled && s.done)) this.clearSelection();
     }
     invalidate(id: string) { if (id === this.source.value) { this.version = ''; this.refresh(); } }
+    private updateColumnSummary() { this.columnSummary.textContent = `Columns · ${this.visible.length}/${this.columnOptions.childElementCount}`; }
     private label(key: string) { return key === '@source' ? 'Source' : key === '@id' ? 'Record ID' : key === '@longitude' ? 'Longitude' : key === '@latitude' ? 'Latitude' : `${key} (${this.current()?.fields.find(f => f.name === key)?.kind ?? 'unknown'})`; }
     private fetch() { const s = this.current(); if (!s?.done || s.filtering) return; this.send(s.id, { type: 'records', request: ++this.request, query: this.query(), offset: this.offset, limit: 40 }); }
     handle(id: string, m: any) {
