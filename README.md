@@ -42,6 +42,16 @@ The banners use the normal page font and stay at the top and bottom of the base 
 
 The backend uses Rust **Poem**, **poem-openapi**, **Diesel** and a connection pool. Startup applies embedded migrations and enables PostGIS; the initial table contains configuration JSONB, ownership, revisions and revocable share tokens. No feature geometry/data is stored in PostGIS. The migration role must be allowed to enable the PostGIS extension (or have it enabled in advance). `GET /api/openapi.json` exposes the generated API specification behind the identity header; `GET /health` is a public liveness endpoint.
 
+## Kubernetes deployment
+
+Use the configurable [Helm chart](charts/wfs-map/README.md) in
+`charts/wfs-map`. It deploys the combined production UI/API image with a
+Service and optional Ingress. PostgreSQL/PostGIS is external only: point at
+an existing connection Secret, including CNPG's generated `uri` Secret.
+There is no embedded database or chart dependency. Values cover security
+contexts, volumes, environment, sidecars, probes, scheduling, HPA, PDB,
+NetworkPolicy and templated `extraResources` for CNPG or other manifests.
+
 ## Build and run offline
 
 Requires Node.js **22.18+ or 24+**, Rust **1.90**, Linux x64, a C compiler/Make/Perl for bundled libpq/OpenSSL, `tar`, and an available PostgreSQL/PostGIS database:

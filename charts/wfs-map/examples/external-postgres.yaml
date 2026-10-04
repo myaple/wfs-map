@@ -1,0 +1,70 @@
+# Existing PostgreSQL/PostGIS and Secret. Replace these names for your cluster.
+image:
+  tag: sha-512b97b
+replicaCount: 2
+externalDatabase:
+  existingSecret: analytics-db-app
+  existingSecretUrlKey: uri
+app:
+  auth:
+    mode: proxy
+    userIdHeader: x-user-id
+  banner:
+    text: Internal use only
+    background: "#ffdf80"
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    # nginx example; adapt auth annotations to your trusted gateway/controller.
+    nginx.ingress.kubernetes.io/auth-url: https://auth.example.com/oauth2/auth
+    nginx.ingress.kubernetes.io/auth-signin: https://auth.example.com/oauth2/start
+    nginx.ingress.kubernetes.io/auth-response-headers: x-user-id
+    nginx.ingress.kubernetes.io/proxy-body-size: 2m
+  hosts:
+    - host: maps.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: maps-tls
+      hosts: [maps.example.com]
+pdb:
+  enabled: true
+  minAvailable: 1
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+      ports:
+        - protocol: TCP
+          port: 8787
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: analytics-db
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

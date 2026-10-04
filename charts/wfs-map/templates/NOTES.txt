@@ -1,0 +1,16 @@
+WFS Map UI and API share the service:
+  {{ include "wfs-map.fullname" . }}.{{ include "wfs-map.namespace" . }}:{{ .Values.service.port }}
+
+Database: externally managed PostgreSQL with PostGIS enabled in the application database.
+The application applies its table migrations on startup.
+
+{{ if eq .Values.app.auth.mode "proxy" -}}
+Configure your ingress/gateway to authenticate users and replace
+{{ .Values.app.auth.userIdHeader }} with the authenticated identity.
+Only the trusted gateway should be able to reach this service.
+{{ else -}}
+Development authentication is enabled: every visitor shares one identity.
+{{ end }}
+
+Existing Secret changes do not automatically restart pods. Restart the Deployment
+after rotating credentials (or use your cluster's Secret reloader).

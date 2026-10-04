@@ -1,0 +1,39 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "wfs-map.fullname" . }}
+  namespace: {{ include "wfs-map.namespace" . }}
+  labels:
+    {{- include "wfs-map.labels" . | fromYaml | mergeOverwrite (deepCopy .Values.ingress.labels) | toYaml | nindent 4 }}
+  {{- with mergeOverwrite (deepCopy .Values.commonAnnotations) .Values.ingress.annotations }}
+  annotations: {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - {{- with .host }}
+      host: {{ tpl . $ | quote }}
+      {{- end }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path | quote }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "wfs-map.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.port }}
+          {{- end }}
+    {{- end }}
+    {{- with .Values.ingress.extraRules }}
+    {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 4 }}
+    {{- end }}
+{{- end }}

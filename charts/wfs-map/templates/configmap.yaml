@@ -1,0 +1,16 @@
+{{- include "wfs-map.validate" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "wfs-map.fullname" . }}
+  namespace: {{ include "wfs-map.namespace" . }}
+  labels:
+    {{- include "wfs-map.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  {{- $core := dict "BIND" (printf "%s:%v" .Values.app.bindAddress .Values.app.containerPort) "ASSET_DIR" .Values.app.assetDir "AUTH_MODE" .Values.app.auth.mode "USER_ID_HEADER" .Values.app.auth.userIdHeader "DEV_USER" .Values.app.auth.developmentUser "PAGE_BANNER_TEXT" .Values.app.banner.text "PAGE_BANNER_BACKGROUND" .Values.app.banner.background }}
+  {{- range $key, $value := mergeOverwrite (deepCopy .Values.app.extraConfig) $core }}
+  {{ $key }}: {{ toString $value | quote }}
+  {{- end }}
