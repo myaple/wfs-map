@@ -2,9 +2,12 @@
 set -euo pipefail
 image=${1:?Pass the preloaded application image tag}
 network=wfs-offline-test
+chart_directory=$(mktemp -d)
+chart_source="$(dirname "$0")/../charts/wfs-map"
 cleanup() {
   docker rm -f wfs-api-test wfs-db-test >/dev/null 2>&1 || true
   docker network rm "$network" >/dev/null 2>&1 || true
+  rm -rf "$chart_directory"
 }
 trap cleanup EXIT
 docker network create --internal "$network" >/dev/null
@@ -19,6 +22,9 @@ test "$ready" = true
 docker run -d --pull=never --network "$network" --name wfs-api-test \
   -e DATABASE_URL=postgres://postgres:postgres@database:5432/workspaces_test \
   -e USER_ID_HEADER=x-analyst-id "$image" >/dev/null
+# Ensure offline deployments can recover the entire chart from this image.
+docker cp wfs-api-test:/app/charts/wfs-map "$chart_directory/"
+diff -r "$chart_source" "$chart_directory/wfs-map"
 address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' wfs-api-test)
 base="http://$address:8787"
 ready=false
@@ -35,4 +41,4 @@ test "$(curl --noproxy '*' -s -o /dev/null -w '%{http_code}' -H 'x-user-id: wron
 test "$(curl --noproxy '*' -fsS -H 'x-analyst-id: offline-analyst' "$base/api/analyses")" = '[]'
 [[ "$(curl --noproxy '*' -fsS -H 'x-analyst-id: offline-analyst' "$base/api/openapi.json")" == *'WFS analysis workspaces'* ]]
 test "$(docker exec wfs-db-test psql -U postgres -d workspaces_test -tAc "SELECT extname FROM pg_extension WHERE extname='postgis'")" = postgis
-echo 'Rust/static UI/PostGIS runtime passed on an internal Docker network.'
+echo 'Rust/static UI/PostGIS runtime and complete bundled Helm chart passed on an internal Docker network.'

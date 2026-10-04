@@ -87,6 +87,12 @@ POSTGRES_PASSWORD=your-url-safe-password USER_ID_HEADER=x-analyst-id \
 
 Use a commit-SHA application tag and pin the database image digest for controlled releases. Compose has `pull_policy: never`, a persistent database volume and an internal network. Connect your existing mTLS gateway to `wfs-workspaces-private`. The application image contains the Rust binary and built UI, runs as an unprivileged user, performs no startup downloads and needs only its database connection. PostGIS is a separate preloaded service. Back up the configuration database/volume according to your deployment procedures; no CSV file recovery is possible from it.
 
+For Kubernetes, the same production image also contains the **complete Helm
+chart** at `/app/charts/wfs-map`: templates, values, JSON schema, deployment
+examples and documentation. [Extract it from a stopped container](charts/wfs-map/README.md#extract-from-the-application-image)
+using `docker create` and `docker cp`, then deploy with Helm. The chart has no
+dependencies, so transferring the image also transfers the entire chart.
+
 For a fully disconnected **image build**, preload `node:24-bookworm-slim`, `rust:1.90-bookworm` and `debian:bookworm-slim`:
 
 ```sh

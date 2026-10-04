@@ -8,6 +8,33 @@ Use your existing PostgreSQL/PostGIS or CNPG installation.
 
 ## Install
 
+### Extract from the application image
+
+Every production image contains this complete chart at `/app/charts/wfs-map`,
+including templates, default values, the values schema, examples and this
+README. Transfer the application image to the disconnected environment and
+extract the chart without starting the app or connecting to PostgreSQL:
+
+```sh
+# After docker load (or with your mirrored image tag):
+image=ghcr.io/myaple/wfs-map:latest
+container_id=$(docker create --pull=never "$image")
+docker cp "$container_id:/app/charts/wfs-map" ./wfs-map-chart
+docker rm "$container_id"
+helm upgrade --install maps ./wfs-map-chart \
+  --namespace analytics --create-namespace \
+  --set externalDatabase.existingSecret=analytics-db-app \
+  --set externalDatabase.existingSecretUrlKey=uri \
+  -f site-values.yaml
+```
+
+Use your transferred/mirrored application tag through `image.*` values and
+ensure the cluster can load that image. The chart has no dependencies to fetch;
+no repository checkout or separate chart download is needed. Helm runs on your
+deployment host. PostgreSQL/PostGIS and the CNPG operator remain cluster-managed.
+
+### Install from a repository checkout
+
 Create the namespace and supply an existing database Secret in that namespace.
 For a CNPG Cluster called `analytics-db`, its generated application Secret is
 usually `analytics-db-app`, with the full connection URI in `uri`.
