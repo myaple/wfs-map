@@ -33,7 +33,7 @@ export function tickText(value: number, kind: string | undefined, span: number):
     return [value.toLocaleString('en-GB', { maximumFractionDigits: 4 })];
 }
 export const interpolate = (lo: number, hi: number, t: number) => lo * (1 - t) + hi * t;
-export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View, bounds: View, xKind: string | undefined, yKind: string | undefined, xName: string, yName: string) {
+export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View, bounds: View, xKind: string | undefined, yKind: string | undefined, xName: string, yName: string, xLabels?: string[], yLabels?: string[]) {
     const grid = themeColor('chart-grid'), muted = themeColor('muted'), text = themeColor('text'), axis = themeColor('chart-axis');
     ctx.font = '11px system-ui';
     ctx.lineWidth = 1;
@@ -59,8 +59,20 @@ export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View,
         ctx.stroke();
         ctx.fillStyle = muted;
         ctx.textAlign = 'right';
-        tickText(v, yKind, yspan).forEach((line, j) => ctx.fillText(line, p.left - 7, y + 4 + j * 13));
+        (yKind === 'category' ? [] : tickText(v, yKind, yspan)).forEach((line, j) => ctx.fillText(line, p.left - 7, y + 4 + j * 13));
     }
+    const categories = (labels: string[] | undefined, vertical: boolean) => {
+        if (!labels) return;
+        const lo = vertical ? view[1] : view[0], hi = vertical ? view[3] : view[2];
+        if (labels.length * (hi - lo) > 12) return;
+        labels.forEach((label, i) => {
+            const t = ((i + .5) / labels.length - lo) / (hi - lo);
+            if (t < 0 || t > 1) return;
+            ctx.fillStyle = muted; ctx.textAlign = vertical ? 'right' : 'center';
+            ctx.fillText(label, vertical ? p.left - 7 : p.left + t * (p.right - p.left), vertical ? p.bottom - t * (p.bottom - p.top) + 4 : p.bottom + 18, vertical ? p.left - 15 : (p.right - p.left) / Math.max(1, labels.length * (hi - lo)) - 3);
+        });
+    };
+    categories(xLabels, false); categories(yLabels, true);
     ctx.strokeStyle = axis;
     ctx.strokeRect(p.left, p.top, p.right - p.left, p.bottom - p.top);
     ctx.fillStyle = text;

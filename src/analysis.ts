@@ -15,6 +15,8 @@ export type Expression = Rule | {
     op: 'and' | 'or';
     children: Expression[];
 };
+export type ChartSeries = { sourceId: string; x: string; y?: string };
+export type ChartDomain = { kind: string; min: number; max: number; labels?: string[] };
 export type ChartSpec = {
     id: string;
     type: 'bar' | 'pie' | 'time' | 'scatter';
@@ -22,6 +24,7 @@ export type ChartSpec = {
     y?: string;
     bins: number;
     binned?: boolean;
+    series?: ChartSeries[];
     aggregate?: 'count' | 'sum' | 'mean' | 'min' | 'max';
 };
 export type Axis = {
@@ -40,7 +43,9 @@ export type ChartResult = {
     missing: number;
     values?: Float64Array;
     measure?: string;
+    series?: { sourceId: string; name: string; color: string; result: ChartResult }[];
     raw?: {
+        series?: { start: number; end: number; sourceId: string; color: string; x: string; y: string }[];
         positions: Float32Array;
         precise?: boolean;
         rows: Uint32Array;
@@ -263,7 +268,13 @@ export class Analyzer {
         this.profiles.set(j, result);
         return result;
     }
-    private async axis(name: string, bins: number, cancelled: () => boolean): Promise<{
+    async domain(name: string, cancelled: () => boolean = () => false): Promise<ChartDomain> {
+        const j = this.store.fields.findIndex(f => f.name === name);
+        if (j < 0) throw Error(`Unknown chart attribute ${name}`);
+        const p = await this.profile(j, cancelled), c = this.store.columns[j];
+        return { kind: c.field.kind, min: p.min, max: p.max, ...(c.field.kind === 'string' ? { labels: p.top!.map(i => c.dictionary[i]) } : {}) };
+    }
+    private async axis(name: string, bins: number, cancelled: () => boolean, domain?: ChartDomain): Promise<{
         axis: Axis;
         column: number;
         bin: (v: number) => number;
@@ -271,14 +282,15 @@ export class Analyzer {
         const j = this.store.fields.findIndex(f => f.name === name);
         if (j < 0)
             throw new Error(`Unknown chart attribute ${name}`);
-        const c = this.store.columns[j], p = await this.profile(j, cancelled);
+        const c = this.store.columns[j], p = domain ?? await this.profile(j, cancelled);
         if (c.field.kind === 'string') {
-            const codes = p.top!, labels = codes.map(code => c.dictionary[code]);
+            const labels = domain?.labels ? [...domain.labels] : (p as { top: number[] }).top.map(code => c.dictionary[code]);
+            const lookup = new Map(labels.map((label, i) => [label, i]));
             const rules: Expression[] = labels.map(value => ({ field: name, op: 'eq', value }));
-            const other = c.dictionary.length > codes.length;
+            const other = !!domain || c.dictionary.length > labels.length;
             const map = new Uint8Array(c.dictionary.length);
-            map.fill(codes.length);
-            codes.forEach((code, i) => map[code] = i);
+            map.fill(labels.length);
+            c.dictionary.forEach((value, code) => { const index = lookup.get(value); if (index !== undefined) map[code] = index; });
             if (other) {
                 rules.push({ field: name, op: 'notin', values: [...labels] });
                 labels.push('Other categories');
@@ -370,7 +382,7 @@ export class Analyzer {
             }
         return { codes, axis: a.axis };
     }
-    async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false) {
+    async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false, domains?: { x: ChartDomain; y?: ChartDomain }) {
         if (specs.length > 12)
             throw new Error('Up to 12 charts are supported');
         const root = await compile(this.store, expression, cancelled), prepared: Prepared[] = [];
@@ -380,9 +392,9 @@ export class Analyzer {
             const field = this.store.fields.find(f => f.name === s.x);
             if (s.type === 'time' && field?.kind !== 'date')
                 throw new Error('Time series requires a date attribute');
-            if (s.type === 'scatter' && (!s.y || !['number', 'date'].includes(field?.kind ?? '') || !['number', 'date'].includes(this.store.fields.find(f => f.name === s.y)?.kind ?? '')))
-                throw new Error('Scatter axes require numeric or date attributes');
-            const x = await this.axis(s.x, s.bins, cancelled), y = s.type === 'scatter' ? await this.axis(s.y!, s.bins, cancelled) : undefined;
+            if (s.type === 'scatter' && (!s.y || !field || !this.store.fields.some(f => f.name === s.y)))
+                throw new Error('Scatter axes require known attributes');
+            const x = await this.axis(s.x, s.bins, cancelled, domains?.x), y = s.type === 'scatter' ? await this.axis(s.y!, s.bins, cancelled, domains?.y) : undefined;
             x.axis.kind = field?.kind;
             if (y)
                 y.axis.kind = this.store.fields[y.column].kind;
@@ -397,9 +409,9 @@ export class Analyzer {
                 result.measure = `${aggregate}(${s.y})`;
             }
             if (s.binned === false && s.type === 'scatter') {
-                const xp = await this.profile(x.column, cancelled), yp = await this.profile(y!.column, cancelled);
+                const xp = domains?.x ?? await this.profile(x.column, cancelled), yp = domains?.y ?? await this.profile(y!.column, cancelled);
                 const precise = field?.kind === 'date' || this.store.fields[y!.column].kind === 'date';
-                result.raw = { precise, positions: new Float32Array(this.store.length * (precise ? 4 : 2)), rows: new Uint32Array(this.store.length), bounds: new Float64Array([xp.min, yp.min, xp.max, yp.max]) };
+                result.raw = { precise, positions: new Float32Array(this.store.length * (precise ? 4 : 2)), rows: new Uint32Array(this.store.length), bounds: new Float64Array([x.axis.ranges ? xp.min : 0, y!.axis.ranges ? yp.min : 0, x.axis.ranges ? xp.max : x.axis.labels.length, y!.axis.ranges ? yp.max : y!.axis.labels.length]) };
                 result.counts = new Uint32Array(0);
             }
             prepared.push({ result, xi: x.column, yi: y?.column ?? -1, xbin: x.bin, ybin: y?.bin, spec: s, measure, rawCount: 0 });
@@ -422,12 +434,12 @@ export class Analyzer {
                         if (mask[i]) {
                             const r = chart.result, v = x[base + i], yv = y?.[base + i], mv = chart.measure >= 0 ? chunk.values[chart.measure][base + i] : 0;
                             if (r.raw) {
-                                if (!Number.isFinite(v) || !Number.isFinite(yv!)) {
+                                if (!Number.isFinite(v) || !Number.isFinite(yv!) || !r.x.ranges && chart.xbin(v) < 0 || !r.y!.ranges && chart.ybin!(yv!) < 0) {
                                     r.missing++;
                                     continue;
                                 }
                                 const k = chart.rawCount++, b = r.raw.bounds;
-                                const xn = normalize(v, b[0], b[2]), yn = normalize(yv!, b[1], b[3]);
+                                const xn = normalize(r.x.ranges ? v : chart.xbin(v) + .5, b[0], b[2]), yn = normalize(r.y!.ranges ? yv! : chart.ybin!(yv!) + .5, b[1], b[3]);
                                 if (r.raw.precise) {
                                     const hx = Math.fround(xn), hy = Math.fround(yn);
                                     r.raw.positions[k * 4] = hx;

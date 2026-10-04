@@ -1,3 +1,5 @@
+import { sharedDomain, combineSeries, seriesColors } from './multi-charts.ts';
+import type { ChartDomain, ChartResult, ChartSpec } from './analysis.ts';
 import { RecordsPage } from './records-page.ts';
 import type { RecordRef, RecordData } from './records.ts';
 import { MapLegend } from './map-legend.ts';
@@ -506,6 +508,7 @@ async function performLoad(s: Source) {
             if (session !== s.request)
                 return;
             const m = e.data;
+            if (m.type === 'chartReply') { const reply = chartReplies.get(m.token); chartReplies.delete(m.token); if (m.error) reply?.reject(Error(m.error)); else reply?.resolve(m.result); return; }
             try {
                 if (m.type === 'init') {
                     s.total = m.total;
@@ -621,6 +624,34 @@ function fit() {
         return;
     map.fitBounds([[Math.min(...bounds.map(b => b[0])), Math.min(...bounds.map(b => b[1]))], [Math.max(...bounds.map(b => b[2])), Math.max(...bounds.map(b => b[3]))]], { padding: 35, duration: 0 });
 }
+const appliedExpressions = new WeakMap<Source, Expression>();
+let chartToken = 0, chartGeneration = 0;
+const chartReplies = new Map<number, { resolve: (value: any) => void; reject: (e: Error) => void }>();
+function chartRPC(s: Source, message: object): Promise<any> {
+    return new Promise((resolve, reject) => {
+        if (!s.worker || !s.enabled || !s.done) { reject(Error(`${s.name} is not loaded. Enable and load every chart source.`)); return; }
+        const token = ++chartToken;
+        const timer = setTimeout(() => { chartReplies.delete(token); reject(Error('Chart calculation timed out. Reload the chart sources.')); }, 120000);
+        chartReplies.set(token, { resolve: v => { clearTimeout(timer); resolve(v); }, reject: e => { clearTimeout(timer); reject(e); } });
+        s.worker.postMessage({ ...message, token });
+    });
+}
+async function refreshMultiCharts() {
+    const generation = ++chartGeneration;
+    for (const owner of sources) for (const spec of owner.workspace.specs.filter(c => c.series?.length)) {
+        owner.workspace.chartPending(spec.id);
+        void (async () => {
+            const mappings = [{ sourceId: owner.id, x: spec.x, y: spec.y }, ...spec.series!];
+            const members = mappings.map(m => { const s = sources.find(s => s.id === m.sourceId); if (!s?.enabled || !s.done) throw Error('Enable and load every chart source.'); return s; });
+            const x = sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.x }) as Promise<ChartDomain>)));
+            const usesY = spec.type === 'scatter' || spec.type === 'time' && (spec.aggregate ?? 'count') !== 'count';
+            const y = usesY ? sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.y }) as Promise<ChartDomain>))) : undefined;
+            const results: ChartResult[] = await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartSeries', spec: { ...spec, series: undefined, x: m.x, y: m.y }, domains: { x, y }, expression: appliedExpressions.get(members[i]) ?? all([]) })));
+            if (generation !== chartGeneration || !owner.workspace.specs.includes(spec) || members.some(s => !s.enabled || !s.done)) return;
+            owner.workspace.updateComparison(combineSeries(spec, results.map((result, i) => ({ sourceId: members[i].id, name: members[i].name, color: seriesColors[i], result }))));
+        })().catch(e => { if (generation === chartGeneration) owner.workspace.chartError(spec.id, (e as Error).message); });
+    }
+}
 function filter(rules?: Rule[] | Expression, s = filterSource()) {
     if (!s?.enabled || !s.done)
         return;
@@ -632,7 +663,9 @@ function filter(rules?: Rule[] | Expression, s = filterSource()) {
     s.workspace.pending();
     s.filterStatus = 'Updating selection and charts…';
     clearInspection();
-    s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, charts: s.workspace.specs.filter(c => c.x && (c.type !== 'scatter' || c.y)) });
+    appliedExpressions.set(s, structuredClone(expression));
+    refreshMultiCharts();
+    s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, charts: s.workspace.specs.filter(c => !c.series?.length && c.x && (c.type !== 'scatter' || c.y)) });
     state();
 }
 function showMetadata(data: any, source: Source) {

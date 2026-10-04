@@ -22,6 +22,7 @@ type Config = {
 };
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 let store: Store | undefined, revision = 0, colorRevision = 0, analyzer: Analyzer | undefined;
+const chartRevisions = new Map<string, number>();
 let applied: Uint32Array | null = null, records: RecordsIndex | undefined, recordsRevision = 0;
 function post(message: unknown, transfers: Transferable[] = []) { ctx.postMessage(message, transfers); }
 async function fetchText(url: string) {
@@ -186,6 +187,22 @@ ctx.onmessage = (event: MessageEvent) => {
         void analyzer.colors(m.field, m.bins, () => r !== colorRevision, m.categories).then(result => { if (r === colorRevision)
             post({ type: 'colored', request: m.request, ...result }, [result.codes.buffer]); }).catch(e => { if (r === colorRevision)
             post({ type: 'colorError', request: m.request, message: (e as Error).message }); });
+    }
+    if ((m.type === 'chartDomain' || m.type === 'chartSeries') && store) {
+        analyzer ??= new Analyzer(store);
+        if (m.type === 'chartSeries') chartRevisions.set(m.spec.id, m.token);
+        const task = m.type === 'chartDomain' ? analyzer.domain(m.field) : analyzer.run(m.expression, [m.spec], () => chartRevisions.get(m.spec.id) !== m.token, m.domains).then(r => r.charts[0]);
+        void task.then(result => {
+            const transfers: Transferable[] = [];
+            if ('counts' in result) {
+                transfers.push(result.counts.buffer);
+                if (result.values) transfers.push(result.values.buffer);
+                if (result.raw) transfers.push(result.raw.positions.buffer, result.raw.rows.buffer, result.raw.bounds.buffer);
+                if (result.x.ranges) transfers.push(result.x.ranges.buffer);
+                if (result.y?.ranges) transfers.push(result.y.ranges.buffer);
+            }
+            post({ type: 'chartReply', token: m.token, result }, transfers);
+        }).catch(e => post({ type: 'chartReply', token: m.token, error: (e as Error).message }));
     }
     if (m.type === 'filter' || m.type === 'analyze') {
         const r = ++revision, start = performance.now();

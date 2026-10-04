@@ -1,0 +1,22 @@
+import type { ChartDomain, ChartResult, ChartSpec } from './analysis.ts';
+export const seriesColors = ['#2463d4', '#d45b24', '#8b49ba', '#17836f', '#b34378', '#957119', '#466673', '#657c25'];
+export function sharedDomain(domains: ChartDomain[]): ChartDomain {
+    if (!domains.length || domains.some(d => d.kind !== domains[0].kind)) throw Error('Each shared axis must use the same attribute type across all sources. Numbers, text, dates and booleans cannot be mixed.');
+    return { kind: domains[0].kind, min: Math.min(...domains.map(d => d.min)), max: Math.max(...domains.map(d => d.max)), ...(domains[0].kind === 'string' ? { labels: [...new Set(domains.flatMap(d => d.labels ?? []))].sort().slice(0, 63) } : {}) };
+}
+export function combineSeries(spec: ChartSpec, series: NonNullable<ChartResult['series']>): ChartResult {
+    const first = series[0].result, counts = new Uint32Array(first.counts.length);
+    for (const s of series) for (let i = 0; i < counts.length; i++) counts[i] += s.result.counts[i];
+    const result: ChartResult = { ...first, id: spec.id, counts, series, missing: series.reduce((n, s) => n + s.result.missing, 0) };
+    if (first.raw) {
+        const length = series.reduce((n, s) => n + s.result.raw!.rows.length, 0), stride = first.raw.precise ? 4 : 2;
+        const positions = new Float32Array(length * stride), rows = new Uint32Array(length);
+        let offset = 0;
+        const ranges = series.map(s => {
+            const raw = s.result.raw!, start = offset; positions.set(raw.positions, offset * stride); rows.set(raw.rows, offset); offset += raw.rows.length;
+            return { start, end: offset, sourceId: s.sourceId, color: s.color, x: s.result.x.field, y: s.result.y!.field };
+        });
+        result.raw = { ...first.raw, positions, rows, series: ranges };
+    }
+    return result;
+}
