@@ -601,7 +601,7 @@ async function performLoad(s: Source) {
                     inspection = { sourceId: s.id, index: m.index }; recordPage.selection(inspection, m.data);
                     marker?.remove(); marker = new maplibregl.Marker({ color: '#ef9d19' }).setLngLat(m.data.coordinates).addTo(map);
                     window.dispatchEvent(new CustomEvent('recordinspection', { detail: inspection }));
-                    if (!document.getElementById('analysis')!.hidden) showMetadata(m.data, s);
+                    if (m.token === undefined || !document.getElementById('analysis')!.hidden) showMetadata(m.data, s);
                 }
                 state();
             }
