@@ -122,9 +122,11 @@ test('time Y mean and scatter mode are configurable; raw scatter clicks select o
     const b = (await canvas.boundingBox())!;
     const pos = await page.evaluate(() => Array.from((window as any).__WFS_MAP__.workspace.results[2].raw.positions.slice(0, 2)) as number[]);
     await page.mouse.click(b.x + 68 + (b.width - 86) * (pos[0] + 1) / 2, b.y + b.height - 64 - (b.height - 82) * (pos[1] + 1) / 2);
+    await expect(page.locator('#rules .observation-selection')).toHaveCount(1);
+    await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('1 matches');
     await expect(page.locator('#rules')).toContainText('Observation');
-    await page.locator('#reset').click();
+    await page.locator('#reset').click(); await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     await canvas.scrollIntoViewIfNeeded();
     const box = (await canvas.boundingBox())!;
@@ -133,6 +135,7 @@ test('time Y mean and scatter mode are configurable; raw scatter clicks select o
     await page.mouse.move(box.x + 68 + (box.width - 86) * .7, box.y + 18 + (box.height - 82) * .8);
     await page.mouse.up({ button: 'right' });
     await expect(page.locator('#rules .selection .rule')).toHaveCount(4);
+    await page.locator('#apply').click();
     const e = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression());
     const rules = e.children[0].children;
     const expected = Array.from({ length: 4096 }, (_, j) => feature(j)).filter(f => rules.every((r: any) => r.op === 'gte' ? Number(f.properties[r.field]) >= Number(r.value) : Number(f.properties[r.field]) <= Number(r.value))).length;
@@ -188,6 +191,7 @@ test('sources retain independent colour attributes and geographic selections acr
     await page.getByLabel('Point colour attribute').selectOption('value');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.layer.colorCodes?.length === 1024);
     await page.evaluate(() => { const h = (window as any).__WFS_MAP__; h.workspace.select({ op: 'bbox', west: -5, east: 0, south: 52, north: 56 }, 'Other box'); });
+    await page.locator('#apply').click();
     await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[1].workspace.results.some((r: any) => r.counts.reduce((a: number, b: number) => a + b, 0) + r.missing !== (window as any).__WFS_MAP__.sources[1].selected));
     await page.locator('#filterSource').selectOption(ids[0]); await page.locator('#colorSource').selectOption(ids[0]);
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('quality');

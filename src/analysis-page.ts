@@ -31,9 +31,9 @@ $('app').innerHTML = `
 <header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav><a href="#analysis" id="analysisLink">Analysis</a><a href="#records" id="recordsLink">Records</a><a href="#configuration" id="configLink">Data sources</a></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="sourceSummary" class="hint"></div></div>
 <section id="configuration" hidden></section>
-<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply only to this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
+<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply only to this source. All edits, removals and chart selections wait for Apply filters. Chart selections use the highlighted AND / OR group.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><button id="discardFilters" disabled>Discard edits</button><button id="undoFilters" disabled>Undo query</button><button id="redoFilters" disabled>Redo query</button><span id="draftStatus" class="hint" role="status"></span><span id="filterStatus" role="status"></span></div></details></div>
 
-<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
+<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to add draft filters · Apply filters to update results · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
 mountThemeToggle(document.querySelector('.topbar')!);
@@ -64,6 +64,8 @@ type Source = {
     request: number;
     filterRequest: number;
     filtering: boolean;
+    pendingQuery?: { expression: Expression; action: 'commit' | 'undo' | 'redo' | 'refresh' };
+    queryWaiters: ((ok: boolean) => void)[];
     exportRequest: number;
     exporting: boolean;
     exportStatus: string;
@@ -115,8 +117,8 @@ function createSource(input: {
     charts.id = 'charts';
     charts.setAttribute('aria-live', 'polite');
     const color = input.color ?? colors[sources.length % colors.length];
-    const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, filtering: false, exportRequest: 0, exporting: false, exportStatus: '', colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
-    s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, enabled: source.enabled, available: source.enabled && source.done })), expression => inspectExpression(s, expression));
+    const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, filtering: false, queryWaiters: [], exportRequest: 0, exporting: false, exportStatus: '', colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
+    s.workspace = new Workspace(kind => { if (kind === 'charts') void refreshQuery(s); else state(); }, rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, enabled: source.enabled, available: source.enabled && source.done })), expression => inspectExpression(s, expression));
     sources.push(s);
     const saved = savedAnalyses.get(id);
     if (saved) {
@@ -365,7 +367,14 @@ function state() {
     const s = filterSource(), enabledSources = sources.filter(s => s.enabled);
     enabled('load', mapReady && enabledSources.some(s => !s.loading));
     enabled('cancel', sources.some(s => s.loading || s.loaded > 0));
-    for (const id of ['apply', 'reset']) enabled(id, !!s && s.enabled && s.done && s.loaded > 0);
+    const editable = !!s?.enabled && s.done && !s.filtering;
+    enabled('apply', editable);
+    enabled('reset', editable);
+    enabled('discardFilters', editable && !!s?.workspace.unapplied);
+    enabled('undoFilters', editable && !s?.workspace.unapplied && !!s?.workspace.query.canUndo);
+    enabled('redoFilters', editable && !s?.workspace.unapplied && !!s?.workspace.query.canRedo);
+    $('draftStatus').textContent = s?.workspace.unapplied ? `${s.name} · Unapplied changes` : '';
+    $('undoFilters').title = $('redoFilters').title = 'Undo or redo the selected source’s applied filters. Apply or discard draft edits first.';
     const chartSource = sources.find(s => s.id === value('chartSource'));
     enabled('addChart', !!chartSource?.enabled && chartSource.done && chartSource.loaded > 0);
     for (const id of ['fit', 'benchmark']) enabled(id, enabledSources.some(s => s.done && s.loaded > 0));
@@ -374,13 +383,14 @@ function state() {
     $('filterOwner').textContent = s ? `Filters for ${s.name} · ${s.loading ? 'loading…' : !s.done ? 'load source to edit filters' : s.selected.toLocaleString() + ' matching points'}` : 'Add or enable a data source to build filters.';
     $('rules').setAttribute('aria-label', s ? `Filters for ${s.name}` : 'Dataset filters');
     $('rules').inert = !s?.enabled || !s.done;
-    $('sourceSummary').textContent = sources.map(s => `${s.name}: ${s.enabled ? s.loading ? 'loading' : s.selected.toLocaleString() + ' displayed' : 'disabled'}`).join(' · ');
+    $('sourceSummary').textContent = sources.map(s => `${s.name}: ${s.enabled ? s.loading ? 'loading' : s.selected.toLocaleString() + ' displayed' : 'disabled'}${s.workspace.unapplied ? ' · Unapplied changes' : ''}`).join(' · ');
     const progress = $<HTMLProgressElement>('progress');
     if (enabledSources.some(s => s.loading)) progress.removeAttribute('value');
     else progress.value = enabledSources.length && enabledSources.every(s => s.done) ? 1 : 0;
     const exportSource = sources.find(s => s.id === value('exportSource'));
     enabled('exportCSV', !!exportSource?.enabled && exportSource.done && !!exportSource.worker && !exportSource.filtering && !exportSource.exporting);
     let csvStatus = !exportSource ? 'Add or enable a data source to export.' : !exportSource.done ? 'Load this source to export.' : exportSource.filtering ? 'Updating selection…' : exportSource.exportStatus || `${exportSource.selected.toLocaleString()} matching points`;
+    if (exportSource?.workspace.unapplied) csvStatus += ' · unapplied edits excluded';
     if (exportSource?.enabled && exportSource.done && exportSource.metrics.truncated) csvStatus += ' · load limit reached; exports loaded points only';
     $('csvExportStatus').textContent = csvStatus;
     pointColors.update();
@@ -433,6 +443,7 @@ function clearSource(s: Source) {
     s.abort?.abort();
     s.worker?.terminate();
     s.worker = undefined;
+    finishQuery(s, false);
     s.exportRequest++; s.exporting = s.filtering = false; s.exportStatus = '';
     s.complete?.();
     s.complete = undefined;
@@ -508,6 +519,7 @@ async function performLoad(s: Source) {
         const fail = (message: string) => {
             if (!s.loaded)
                 clearSource(s);
+            finishQuery(s, false); s.filtering = false;
             s.loading = false;
             s.done = false;
             s.error = true;
@@ -563,7 +575,7 @@ async function performLoad(s: Source) {
                     s.metrics.gpuBytes = s.layer.gpuBytes;
                     s.status = `${s.loaded.toLocaleString()} points loaded in ${(m.elapsedMs / 1000).toFixed(1)} s.${m.truncated ? ' LIMIT REACHED: dataset is incomplete.' : ''}${m.warning ? '\n' + m.warning : ''}`;
                     if (!bounds.bbox && !preserveMapView) fit();
-                    filter(undefined, s);
+                    void refreshQuery(s);
                     applyColors(s);
                     resolve();
                 }
@@ -572,6 +584,11 @@ async function performLoad(s: Source) {
                     return;
                 }
                 if (m.type === 'filtered' && m.request === s.filterRequest) {
+                    const pending = s.pendingQuery;
+                    if (pending) {
+                        if (pending.action === 'commit') s.workspace.query.commit(pending.expression);
+                        else if (pending.action !== 'refresh') s.workspace.query.move(pending.action);
+                    }
                     s.filtering = false;
                     s.workspace.update(m.charts ?? []);
                     s.workspace.settled();
@@ -583,6 +600,8 @@ async function performLoad(s: Source) {
                     s.metrics.gpuBytes = s.layer.gpuBytes;
                     s.filterStatus = `${s.selected.toLocaleString()} matches · ${m.elapsedMs.toFixed(0)} ms`;
                     recordPage.invalidate(s.id);
+                    finishQuery(s, true);
+                    void refreshMultiCharts();
                 }
                 if (m.type === 'colored' && m.request === s.colorRequest) {
                     s.colorCategories = m.categories;
@@ -597,6 +616,8 @@ async function performLoad(s: Source) {
                     s.workspace.settled();
                     s.filtering = false;
                     s.filterStatus = 'Filter error: ' + m.message;
+                    finishQuery(s, false);
+                    void refreshMultiCharts();
                 }
                 if (m.type === 'csvExported' && m.request === s.exportRequest && s.enabled && s.done) {
                     s.exporting = false;
@@ -642,7 +663,6 @@ function fit() {
         return;
     map.fitBounds([[Math.min(...bounds.map(b => b[0])), Math.min(...bounds.map(b => b[1]))], [Math.max(...bounds.map(b => b[2])), Math.max(...bounds.map(b => b[3]))]], { padding: 35, duration: 0 });
 }
-const appliedExpressions = new WeakMap<Source, Expression>();
 let chartToken = 0, chartGeneration = 0;
 const chartReplies = new Map<number, { resolve: (value: any) => void; reject: (e: Error) => void }>();
 function chartRPC(s: Source, message: object): Promise<any> {
@@ -664,27 +684,55 @@ async function refreshMultiCharts() {
             const x = sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.x }) as Promise<ChartDomain>)));
             const usesY = spec.type === 'scatter' || spec.type === 'time' && (spec.aggregate ?? 'count') !== 'count';
             const y = usesY ? sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.y }) as Promise<ChartDomain>))) : undefined;
-            const results: ChartResult[] = await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartSeries', spec: { ...spec, series: undefined, x: m.x, y: m.y }, domains: { x, y }, expression: appliedExpressions.get(members[i]) ?? all([]) })));
+            const results: ChartResult[] = await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartSeries', spec: { ...spec, series: undefined, x: m.x, y: m.y }, domains: { x, y }, expression: members[i].workspace.query.applied })));
             if (generation !== chartGeneration || !owner.workspace.specs.includes(spec) || members.some(s => !s.enabled || !s.done)) return;
             owner.workspace.updateComparison(combineSeries(spec, results.map((result, i) => ({ sourceId: members[i].id, name: members[i].name, color: seriesColors[i], result }))));
         })().catch(e => { if (generation === chartGeneration) owner.workspace.chartError(spec.id, (e as Error).message); });
     }
 }
-function filter(rules?: Rule[] | Expression, s = filterSource()) {
-    if (!s?.enabled || !s.done)
-        return;
-    let expression: Expression;
-    try { expression = Array.isArray(rules) ? all(rules) : rules ?? s.workspace.expression(); }
-    catch (error) { s.filterStatus = 'Filter error: ' + (error instanceof Error ? error.message : String(error)); state(); return; }
+function finishQuery(s: Source, ok: boolean) {
+    s.pendingQuery = undefined;
+    for (const resolve of s.queryWaiters.splice(0)) resolve(ok);
+}
+function analyzeQuery(s: Source): Promise<boolean> {
+    if (!s.enabled || !s.done || !s.worker || !s.pendingQuery) return Promise.resolve(false);
     s.filtering = true;
     s.exportRequest++; s.exporting = false; s.exportStatus = '';
     s.workspace.pending();
     s.filterStatus = 'Updating selection and charts…';
     clearInspection();
-    appliedExpressions.set(s, structuredClone(expression));
-    refreshMultiCharts();
-    s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, charts: s.workspace.specs.filter(c => !c.series?.length && c.x && (c.type !== 'scatter' || c.y)) });
+    const completed = new Promise<boolean>(resolve => s.queryWaiters.push(resolve));
+    s.worker.postMessage({ type: 'analyze', request: ++s.filterRequest, expression: s.pendingQuery.expression, charts: s.workspace.specs.filter(c => !c.series?.length && c.x && (c.type !== 'scatter' || c.y)) });
     state();
+    return completed;
+}
+function refreshQuery(s: Source) {
+    if (!s.enabled || !s.done) return Promise.resolve(false);
+    // Presentation changes may supersede a calculation, but preserve an explicit
+    // Apply already in flight. They never read the draft editor.
+    s.pendingQuery ??= { expression: s.workspace.query.applied, action: 'refresh' };
+    void refreshMultiCharts();
+    return analyzeQuery(s);
+}
+function filter(rules?: Rule[] | Expression, s = filterSource()): Promise<boolean> {
+    if (!s?.enabled || !s.done) return Promise.resolve(false);
+    let expression: Expression;
+    try { expression = Array.isArray(rules) ? all(rules) : rules ?? s.workspace.expression(); }
+    catch (error) { s.filterStatus = 'Filter error: ' + (error instanceof Error ? error.message : String(error)); state(); return Promise.resolve(false); }
+    expression = 'children' in expression ? expression : { op: 'and', children: [expression] };
+    // Programmatic applications must also keep the editor aligned with the query.
+    if (rules) s.workspace.restoreFilters(expression);
+    s.pendingQuery = { expression: structuredClone(expression), action: 'commit' };
+    return analyzeQuery(s);
+}
+function travelQuery(direction: 'undo' | 'redo') {
+    const s = filterSource();
+    if (!s?.done || s.filtering || s.workspace.unapplied) return;
+    const expression = s.workspace.query.target(direction);
+    if (!expression) return;
+    s.workspace.restoreFilters(expression);
+    s.pendingQuery = { expression, action: direction };
+    void analyzeQuery(s);
 }
 function showMetadata(data: any, source: Source) {
     popup?.remove();
@@ -769,8 +817,11 @@ async function benchmark() {
 }
 $('load').onclick = () => void load();
 $('cancel').onclick = clear;
-$('addChart').onclick = () => { const s = sources.find(s => s.id === value('chartSource')); if (s) { s.workspace.addChart(); filter(undefined, s); } };
-$('apply').onclick = () => filter();
+$('addChart').onclick = () => { const s = sources.find(s => s.id === value('chartSource')); if (s) { s.workspace.addChart(); void refreshQuery(s); } };
+$('apply').onclick = () => { void filter(); };
+$('discardFilters').onclick = () => filterSource()?.workspace.discardDraft();
+$('undoFilters').onclick = () => travelQuery('undo');
+$('redoFilters').onclick = () => travelQuery('redo');
 $('reset').onclick = () => filterSource()?.workspace.clearFilters();
 $('fit').onclick = fit;
 $('benchmark').onclick = () => void benchmark();
@@ -915,11 +966,43 @@ if (savedQuery?.choice === 'custom') {
 showQueryBounds();
 map.on('load', showQueryBounds);
 
-function savedState() {
+async function savedState() {
+    if (sources.some(s => s.filtering)) {
+        const ok = await Promise.all(sources.filter(s => s.filtering).map(s => new Promise<boolean>(resolve => s.queryWaiters.push(resolve))));
+        if (ok.some(result => !result)) throw Error('The query could not be applied. Review the filter error before saving.');
+    }
+    const drafts = sources.filter(s => s.workspace.unapplied);
+    if (drafts.length) {
+        const choice = await resolveDrafts(drafts.map(s => s.name));
+        if (choice === 'cancel') throw Error('Save cancelled. Unapplied edits are still available.');
+        if (choice === 'discard') drafts.forEach(s => s.workspace.discardDraft());
+        else {
+            // Validate every source before changing any applied query.
+            const expressions = drafts.map(s => s.workspace.expression());
+            if (drafts.some(s => !s.enabled || !s.done)) throw Error('Enable and load sources with unapplied filters before applying and saving. You can also discard their edits.');
+            const ok = await Promise.all(drafts.map((s, i) => filter(expressions[i], s)));
+            if (ok.some(result => !result)) throw Error('The query could not be applied. Review the filter error before saving.');
+        }
+    }
     const analyses: SourceAnalysis[] = sources.map(s => {
         const saved = savedAnalyses.get(s.id);
-        return saved && !s.workspace.fields.length ? saved : { id: s.id, fields: s.workspace.fields, expression: s.workspace.expression(), charts: s.workspace.specs };
+        return saved && !s.workspace.fields.length ? saved : { id: s.id, fields: s.workspace.fields, expression: s.workspace.query.applied, charts: s.workspace.specs };
     });
     return configurationState(snapshot(), { choice: value('timeWindow'), bounds: queryBounds }, analyses);
+}
+function resolveDrafts(names: string[]): Promise<'apply' | 'discard' | 'cancel'> {
+    return new Promise(resolve => {
+        const dialog = document.createElement('dialog'); dialog.className = 'query-resolution'; dialog.setAttribute('aria-label', 'Resolve unapplied filters');
+        const title = document.createElement('h2'); title.textContent = 'Unapplied filters';
+        const description = document.createElement('p'); description.textContent = `Unapplied changes in ${names.join(', ')}. Apply these filters before saving, or discard edits and save the currently applied query.`;
+        const actions = document.createElement('div'); actions.className = 'row';
+        let choice: 'apply' | 'discard' | 'cancel' = 'cancel';
+        for (const [value, label] of [['apply', 'Apply and continue'], ['discard', 'Discard edits and continue'], ['cancel', 'Cancel']] as const) {
+            const button = document.createElement('button'); button.textContent = label; button.onclick = () => { choice = value; dialog.close(); }; actions.append(button);
+        }
+        dialog.append(title, description, actions); document.body.append(dialog);
+        dialog.addEventListener('close', () => { dialog.remove(); state(); resolve(choice); }, { once: true });
+        dialog.showModal();
+    });
 }
 mountAnalysisControls(savedState);

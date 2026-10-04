@@ -3,7 +3,7 @@ import { feature } from '../../server/demo.ts';
 const ready = async (page: any) => { await page.goto('/?time=all&points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts?.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
 test('filter groups collapse independently and retain applied rules and chart selections', async ({ page }) => {
     await ready(page);
-    await expect(page.locator('.filter-actions button')).toHaveText(['Apply filters', 'Clear filters']);
+    await expect(page.locator('.filter-actions button')).toHaveText(['Apply filters', 'Clear filters', 'Discard edits', 'Undo query', 'Redo query']);
     const root = page.locator('#rules > .filter-group');
     const rootHead = root.locator(':scope > .group-head');
     await rootHead.getByRole('button', { name: '+ Group', exact: true }).click();
@@ -21,6 +21,7 @@ test('filter groups collapse independently and retain applied rules and chart se
     await expect(page.locator('#filterStatus')).toContainText('1,024 matches');
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression())).toEqual(expression);
     await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'value', op: 'gt', value: '1' }, 'Value'));
+    await page.locator('#apply').click();
     await expect(nestedHead.locator('.group-count')).toHaveText('2 rules');
     await rootHead.getByRole('button', { name: 'Collapse filter group', exact: true }).click();
     await rootHead.getByRole('button', { name: 'Expand filter group', exact: true }).focus();
@@ -33,7 +34,7 @@ test('filter groups collapse independently and retain applied rules and chart se
     await nested.locator('.rule').last().getByRole('button', { name: '×', exact: true }).click();
     await expect(rootHead.locator('.group-count')).toHaveText('1 rule');
     await rootHead.getByRole('button', { name: 'Collapse filter group', exact: true }).click();
-    await page.locator('#reset').click();
+    await page.locator('#reset').click(); await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     await expect(rootHead.locator('.group-count')).toHaveText('0 rules');
     await expect(rootHead.getByRole('button', { name: 'Collapse filter group', exact: true })).toHaveAttribute('aria-expanded', 'true');
@@ -57,15 +58,17 @@ test('chart clicks cross-filter all charts, OR selections combine, and removing 
     const first = page.locator('.chart-card').first();
     await first.locator('details summary').click();
     await first.getByRole('button', { name: 'category: sensor · 1,024', exact: true }).click();
+    await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('1,024 matches');
     await page.locator('#rules > .filter-group > .group-head > select').selectOption('or');
     await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('1,024 matches');
     await first.getByRole('button', { name: 'category: vehicle · 0', exact: true }).click();
+    await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('2,048 matches');
     const counts = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results.map((r: any) => r.counts.reduce((a: number, b: number) => a + b, 0) + r.missing));
     expect(counts).toEqual([2048, 2048, 2048]);
-    await page.locator('#reset').click();
+    await page.locator('#reset').click(); await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
 });
 test('all chart types configure from schema and scatter drag produces an exact AND range', async ({ page }) => {
@@ -73,10 +76,12 @@ test('all chart types configure from schema and scatter drag produces an exact A
     const first = page.locator('.chart-card').first();
     await first.getByLabel('Chart type').selectOption('pie');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[0].type === 'pie');
-    const canvas = first.locator('canvas'), box = (await canvas.boundingBox())!;
-    await page.mouse.click(box.x + box.width / 2 + 60, box.y + 120);
+    const canvas = first.locator('canvas'); await canvas.scrollIntoViewIfNeeded(); const box = (await canvas.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2 + 60, box.y + box.height / 2);
+    await expect(page.locator('#draftStatus')).toContainText('Unapplied changes');
+    await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('1,024 matches');
-    await page.locator('#reset').click();
+    await page.locator('#reset').click(); await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     const scatter = page.locator('.chart-card').nth(2);
     await scatter.getByLabel('Binning', { exact: true }).selectOption('8');
@@ -87,6 +92,7 @@ test('all chart types configure from schema and scatter drag produces an exact A
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(b.x + 68 + dx * 2.5, b.y + b.height - 64 - dy * 2.5);
     await page.mouse.up({ button: 'right' });
+    await page.locator('#apply').click();
     await page.waitForFunction(() => document.getElementById('filterStatus')?.textContent?.includes('matches'));
     const result = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results[2]);
     const bounds = await page.evaluate(() => { const r = (window as any).__WFS_MAP__.workspace.results[2]; return { x: r.x.ranges.slice(0, 4), y: r.y.ranges.slice(0, 4), xf: r.x.field, yf: r.y.field, count: (window as any).__WFS_MAP__.metrics.filterCount }; });
@@ -107,10 +113,11 @@ test('nested manual filters, latest request wins, empty result and keyboard sele
     await expect(page.locator('#filterStatus')).toContainText(`${n.toLocaleString()} matches`);
     await page.evaluate(() => { const h = (window as any).__WFS_MAP__; h.filter([{ field: 'id', op: 'eq', value: '1' }]); h.filter([{ field: 'id', op: 'eq', value: '-1' }]); });
     await expect(page.locator('#filterStatus')).toContainText('0 matches');
-    await page.locator('#reset').click();
+    await page.locator('#reset').click(); await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     await page.locator('.chart-card').first().locator('canvas').focus();
     await page.keyboard.press('Enter');
+    await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('1,024 matches');
 });
 
@@ -123,10 +130,12 @@ test('chart selections follow the last edited group without a target button', as
     const nested = page.locator('#rules .filter-group .filter-group');
     await nested.getByLabel('Group logic').focus();
     await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'eq', value: 'sensor' }, 'Sensors'));
+    await page.locator('#apply').click();
     await expect(nested.locator('.selection')).toHaveCount(1);
     await expect(page.locator('#filterStatus')).toContainText('1,024 matches');
     await rootHead.getByLabel('Group logic').selectOption('or');
     await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'eq', value: 'vehicle' }, 'Vehicles'));
+    await page.locator('#apply').click();
     await expect(page.locator('#rules > .filter-group > .group-children > .selection')).toHaveCount(1);
     await expect(page.locator('#filterStatus')).toContainText('2,048 matches');
 });
@@ -136,6 +145,7 @@ test('chart and manual filters use the same editable controls', async ({ page })
     const first = page.locator('.chart-card').first();
     await first.locator('details summary').click();
     await first.getByRole('button', { name: 'category: station · 1,024', exact: true }).click();
+    await page.locator('#apply').click();
     const selected = page.locator('#rules .rule').first();
     await expect(selected.getByLabel('Attribute')).toHaveValue('category');
     await expect(selected.getByLabel('Operator')).toHaveValue('eq');
@@ -152,6 +162,7 @@ test('chart and manual filters use the same editable controls', async ({ page })
     const expected = Array.from({ length: 4096 }, (_, i) => feature(i)).filter(f => f.properties.category === 'sensor' && f.properties.value > 1).length;
     await expect(page.locator('#filterStatus')).toContainText(`${expected.toLocaleString()} matches`);
     await selected.getByRole('button', { name: '×', exact: true }).click();
+    await page.locator('#apply').click();
     const remaining = Array.from({ length: 4096 }, (_, i) => feature(i)).filter(f => f.properties.value > 1).length;
     await expect(page.locator('#filterStatus')).toContainText(`${remaining.toLocaleString()} matches`);
 });
@@ -163,9 +174,11 @@ test('nested chart predicates round-trip through the shared editors and retain t
         { op: 'and', children: [{ field: 'value', op: 'gte', value: '50' }, { field: 'value', op: 'lt', value: '60' }] }
     ] };
     await page.evaluate(expr => (window as any).__WFS_MAP__.workspace.select(expr, 'Chart range'), expression);
+    await page.locator('#apply').click();
     await expect(page.locator('#rules .rule')).toHaveCount(3);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[0])).toEqual(expression);
     await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'ne', value: 'vehicle' }, 'Exclude vehicles'));
+    await page.locator('#apply').click();
     await expect(page.locator('#rules > .filter-group > .group-children > .rule')).toHaveCount(1);
     await page.evaluate(() => { const w = (window as any).__WFS_MAP__.workspace; w.restore(w.expression(), structuredClone(w.specs)); });
     await expect(page.locator('#rules .rule')).toHaveCount(4);
@@ -197,6 +210,7 @@ test('category sets and non-attribute selections keep their exact meaning in com
     await expect(page.locator('#rules .rule')).toHaveCount(2);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[1])).toEqual(expression.children[1]);
     await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ op: 'or', children: [{ op: 'row', index: 2 }] }, 'Observations'));
+    await page.locator('#apply').click();
     await page.locator('#rules .selection > .group-head').getByLabel('Group logic').focus();
     await page.evaluate(() => { const w = (window as any).__WFS_MAP__.workspace; w.discardObservationSelections(); w.select({ field: 'category', op: 'eq', value: 'vehicle' }, 'Vehicles'); });
     await expect(page.locator('#rules .rule')).toHaveCount(3);

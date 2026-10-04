@@ -23,7 +23,7 @@ export function rememberBindings(settings: Settings) {
     }
     localStorage.setItem(settingsKey + ':bindings', JSON.stringify(bindings));
 }
-export function mountAnalysisControls(snapshot: () => AnalysisState) {
+export function mountAnalysisControls(snapshot: () => AnalysisState | Promise<AnalysisState>) {
     const doc = currentAnalysis;
     if (!doc) return;
     const bar = document.createElement('section'); bar.className = 'saved-analysis-bar';
@@ -42,11 +42,11 @@ export function mountAnalysisControls(snapshot: () => AnalysisState) {
         };
         return button;
     };
-    const save = async () => { const state = snapshot(); rememberBindings(state.settings); currentAnalysis = await saveAnalysis(currentAnalysis!, name.value.trim(), state); document.title = `${currentAnalysis.name} · WFS analysis`; status.textContent = 'Analysis configuration saved'; };
+    const save = async () => { const state = await snapshot(); rememberBindings(state.settings); currentAnalysis = await saveAnalysis(currentAnalysis!, name.value.trim(), state); document.title = `${currentAnalysis.name} · WFS analysis`; status.textContent = 'Analysis configuration saved'; };
     bar.append(back, name);
     if (!doc.readOnly) bar.append(action('Save analysis', save));
     bar.append(action('Save a copy', async () => {
-        const state = snapshot(); rememberBindings(state.settings);
+        const state = await snapshot(); rememberBindings(state.settings);
         const copy = await createAnalysis(name.value.trim().slice(0, 113) + ' (copy)', state);
         location.href = '/?analysis=' + encodeURIComponent(copy.id) + location.hash;
     }));

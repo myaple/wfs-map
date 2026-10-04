@@ -34,8 +34,9 @@ test('default 24 hours bounds every source, hits and page; ordinary filters make
   expect(requests.filter(u => !u.searchParams.has('distribution')).every(u => u.searchParams.get('vendor') === 'keep')).toBe(true);
   const before = requests.length;
   await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'eq', value: 'sensor' }, 'Sensors'));
+    await page.locator('#apply').click();
   await expect(page.locator('#filterStatus')).toContainText('matches');
-  await page.locator('#reset').click();
+  await page.locator('#reset').click(); await page.locator('#apply').click();
   await expect(page.locator('#filterStatus')).toContainText(`${expected} matches`);
   expect(requests).toHaveLength(before);
 });
@@ -70,6 +71,7 @@ test('custom UTC ranges validate before requesting and an empty result retains i
   await seed(page); await page.goto('/?autoload=1'); await ready(page);
   const requests: string[] = []; page.on('request', r => requests.push(r.url()));
   await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ op: 'row', index: 0 }, 'Observation 1'));
+    await page.locator('#apply').click();
   await expect(page.locator('#filterStatus')).toContainText('1 matches');
   await page.getByLabel('Time window', { exact: true }).selectOption('custom');
   await page.getByLabel('Start (UTC)', { exact: true }).fill('2030-01-02T00:00');

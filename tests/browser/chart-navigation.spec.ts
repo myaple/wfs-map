@@ -30,9 +30,10 @@ test('binned charts left-drag zoom locally, right-drag select, double-click rese
     await page.waitForTimeout(650);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].filterRequest)).toBe(before);
     await drag(page, canvas, 'right');
+    await page.locator('#apply').click();
     await expect(page.locator('#rules .selection')).toHaveCount(1);
     await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
-    await page.locator('#reset').click();
+    await page.locator('#reset').click(); await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     const bar = page.locator('.chart-card').first().locator('canvas');
     await drag(page, bar, 'left');
@@ -64,6 +65,7 @@ test('raw date axes are readable, fill the plot, zoom independently and retain c
     await expect(canvas).not.toHaveAttribute('data-view', '[0,0,1,1]');
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     await drag(page, canvas, 'right');
+    await page.locator('#apply').click();
     await expect(page.locator('#rules .selection')).toHaveCount(1);
     const rules = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[0].children);
     expect(rules[0].value).toMatch(/^202[4-6]-\d{2}-\d{2}T/);
@@ -110,10 +112,11 @@ test('pie and time charts share zoom/select gestures; removing an enlarged chart
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(b.x + b.width * .95, b.y + b.height - 10, { steps: 5 });
     await page.mouse.up({ button: 'right' });
+    await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('2,048 matches');
     await expect(page.locator('#rules .selection > .group-head').getByLabel('Group logic')).toHaveValue('or');
     await expect(page.locator('#rules .selection .rule')).toHaveCount(2);
-    await page.locator('#reset').click();
+    await page.locator('#reset').click(); await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     const time = page.locator('.chart-card').nth(1).locator('canvas');
     await drag(page, time, 'left');
@@ -122,6 +125,7 @@ test('pie and time charts share zoom/select gestures; removing an enlarged chart
     await time.dblclick({ position: { x: 140, y: 100 } });
     await expect(time).toHaveAttribute('data-view', '[0,0,1,1]');
     await drag(page, time, 'right');
+    await page.locator('#apply').click();
     await expect(page.locator('#rules .selection')).toHaveCount(1);
     await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
     await page.locator('.chart-card').first().getByRole('button', { name: 'Enlarge', exact: true }).click();
