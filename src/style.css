@@ -765,3 +765,21 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .record-chooser { width: min(650px, 90vw); max-height: 80vh; overflow: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; }
 .record-choices { display: grid; gap: 6px; margin: 12px 0; }
 @media(max-width: 850px) { .records-layout { grid-template-columns: 1fr; } }
+
+.comparison-panel { margin: 20px; padding: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.comparison-editor { padding: 12px; background: var(--control-surface); border: 1px solid var(--border); border-radius: 8px; }
+.comparison-controls, .comparison-series { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 12px; margin-bottom: 12px; }
+.comparison-controls label, .comparison-series label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
+.comparison-series { border: 1px solid var(--border); padding: 12px; border-radius: 8px; }
+.comparison-series textarea { resize: vertical; font-family: monospace; min-width: 0; background: var(--surface); color: var(--text); }
+.comparison-card { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 12px; min-width: 0; }
+.comparison-card > button { margin-right: 6px; }
+.comparison-card table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.comparison-card th, .comparison-card td { text-align: left; padding: 6px; border-bottom: 1px solid var(--border); }
+.comparison-card table button { font-size: 12px; }
+.comparison-legend { display: flex; flex-wrap: wrap; gap: 12px; }
+.comparison-legend p { padding: 8px; font-size: 12px; max-width: 450px; overflow-wrap: anywhere; }
+.comparison-canvas { width: 100%; height: 290px; display: block; }
+.comparison-card > div { overflow-x: auto; }
+.comparison-card [role=status] { white-space: normal; }
+@media(max-width:650px) { .comparison-controls, .comparison-series { grid-template-columns: 1fr; } .comparison-panel { margin: 10px 0; } }

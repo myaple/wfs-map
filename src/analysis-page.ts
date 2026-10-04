@@ -1,5 +1,6 @@
+import { ComparisonPanel } from './comparison-panel.ts';
 import { RecordsPage } from './records-page.ts';
-import type { RecordRef, RecordData } from './records.ts';
+import type { RecordRef } from './records.ts';
 import { MapLegend } from './map-legend.ts';
 import { mountThemeToggle, themeColor } from './theme.ts';
 import { formatUTC, utcISO, utcInput } from './time.ts';
@@ -200,6 +201,7 @@ function applySettings(next: Settings, restore = false) {
         popup?.remove();
     }
     renderSources();
+    comparisons.sourcesChanged();
     for (const s of sources) s.workspace.refreshSources();
     state();
     for (const s of load) loadSource(s);
@@ -248,6 +250,8 @@ $<HTMLInputElement>('basemap').checked = background.enabled && !!background.url;
 const style: StyleSpecification = { version: 8, sources: { grid: { type: 'geojson', data: { type: 'FeatureCollection', features: gridFeatures } }, osm: { type: 'raster', tiles: background.url ? [background.url] : [], tileSize: 256, attribution: background.attribution, maxzoom: 19 } }, layers: [{ id: 'background', type: 'background', paint: { 'background-color': themeColor('map-background') } }, { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: background.enabled && background.url ? 'visible' : 'none' } }, { id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': themeColor('map-grid'), 'line-width': .5 } }] };
 const map = new maplibregl.Map({ container: 'map', style, center: mapSettings.center, zoom: mapSettings.zoom, maxZoom: 22, minZoom: 1, maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false, renderWorldCopies: false, pixelRatio: Math.min(devicePixelRatio, 2), canvasContextAttributes: { antialias: false }, attributionControl: { compact: true } });
 const recordPage = new RecordsPage(() => sources, (id, message) => sources.find(s => s.id === id)?.worker?.postMessage(message), inspectRecord);
+function localComparisonSettings() { try { return JSON.parse(localStorage.getItem(settingsKey + ':comparisons') ?? '{}'); } catch { return {}; } }
+const comparisons = new ComparisonPanel(() => sources, (id, message) => sources.find(s => s.id === id)?.worker?.postMessage(message), chooseRecords, currentAnalysis?.state ?? localComparisonSettings(), () => { try { localStorage.setItem(settingsKey + ':comparisons', JSON.stringify({ comparisons: comparisons.comparisons, relationships: comparisons.relationships })); } catch { status('Could not save comparison preferences.', true); } });
 let inspectionToken = 0, inspection: RecordRef | undefined, marker: maplibregl.Marker | undefined;
 const chooser = document.createElement('dialog'); chooser.className = 'record-chooser'; chooser.setAttribute('aria-label', 'Choose overlapping record'); document.body.append(chooser);
 let choices: RecordRef[] = [], choiceOffset = 0;
@@ -404,6 +408,7 @@ async function describe(s: Source, config: Config): Promise<{ fields: Field[]; q
     finally { clearTimeout(timeout); if (s.abort === controller) s.abort = undefined; }
 }
 function clearSource(s: Source) {
+    comparisons.refresh();
     if (inspection?.sourceId === s.id || choices.some(r => r.sourceId === s.id)) clearInspection();
     const layerIndex = layerOrder.indexOf(s);
     if (layerIndex >= 0)
@@ -566,6 +571,7 @@ async function performLoad(s: Source) {
                     s.metrics.gpuBytes = s.layer.gpuBytes;
                     s.filterStatus = `${s.selected.toLocaleString()} matches · ${m.elapsedMs.toFixed(0)} ms`;
                     recordPage.invalidate(s.id);
+                    comparisons.refresh();
                 }
                 if (m.type === 'colored' && m.request === s.colorRequest) {
                     s.colorCategories = m.categories;
@@ -591,6 +597,7 @@ async function performLoad(s: Source) {
                     s.exportStatus = 'CSV export failed: ' + m.message;
                 }
                 recordPage.handle(s.id, m);
+                comparisons.handle(s.id, m);
                 if (m.type === 'inspectionMatches' && m.token === inspectionToken) chooseRecords(Array.from(m.indices as Uint32Array, index => ({ sourceId: s.id, index })));
                 if (m.type === 'inspectionError' && m.token === inspectionToken) status(m.message, true);
                 if (m.type === 'metadataMany' && m.token === inspectionToken && chooser.open) for (const row of m.rows) {
@@ -631,7 +638,7 @@ function filter(rules?: Rule[] | Expression, s = filterSource()) {
     s.exportRequest++; s.exporting = false; s.exportStatus = '';
     s.workspace.pending();
     s.filterStatus = 'Updating selection and charts…';
-    clearInspection();
+    clearInspection(); comparisons.refresh();
     s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, charts: s.workspace.specs.filter(c => c.x && (c.type !== 'scatter' || c.y)) });
     state();
 }
@@ -744,7 +751,7 @@ $('exportCSV').onclick = () => {
     state();
 };
 $('export').onclick = () => { const blob = new Blob([JSON.stringify({ sources: sources.map(s => ({ id: s.id, name: s.name, enabled: s.enabled, metrics: s.metrics })) }, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wfs-map-metrics.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
-(window as any).__WFS_MAP__ = { map, get layer() { return filterSource()?.layer; }, get metrics() { return filterSource()?.metrics; }, get done() { return filterSource()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get workspace() { return filterSource()?.workspace; }, get sources() { return sources; }, records: recordPage, inspectRecord, chooseRecords, get inspection() { return inspection; }, switchSource: switchFilters, filterSource: (id: string, rules: Rule[] | Expression) => {
+(window as any).__WFS_MAP__ = { map, get layer() { return filterSource()?.layer; }, get metrics() { return filterSource()?.metrics; }, get done() { return filterSource()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get workspace() { return filterSource()?.workspace; }, get sources() { return sources; }, records: recordPage, comparisons, inspectRecord, chooseRecords, get inspection() { return inspection; }, switchSource: switchFilters, filterSource: (id: string, rules: Rule[] | Expression) => {
         const s = sources.find(s => s.id === id);
         if (s)
             filter(rules, s);
@@ -869,6 +876,6 @@ function savedState() {
         const saved = savedAnalyses.get(s.id);
         return saved && !s.workspace.fields.length ? saved : { id: s.id, fields: s.workspace.fields, expression: s.workspace.expression(), charts: s.workspace.specs };
     });
-    return configurationState(snapshot(), { choice: value('timeWindow'), bounds: queryBounds }, analyses);
+    return configurationState(snapshot(), { choice: value('timeWindow'), bounds: queryBounds }, analyses, { comparisons: comparisons.comparisons, relationships: comparisons.relationships });
 }
 mountAnalysisControls(savedState);

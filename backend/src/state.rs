@@ -80,7 +80,17 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
     {
         return Err("Workspace configuration exceeds 1 MiB");
     }
-    object(v, &["schemaVersion", "settings", "query", "analyses"])?;
+    object(
+        v,
+        &[
+            "schemaVersion",
+            "settings",
+            "query",
+            "analyses",
+            "comparisons",
+            "relationships",
+        ],
+    )?;
     if v.get("schemaVersion").and_then(Value::as_u64) != Some(1) {
         return Err("Unsupported workspace version");
     }
@@ -262,6 +272,176 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
             }
         }
     }
+    let mut spec_ids = std::collections::HashSet::new();
+    if let Some(comparisons) = v.get("comparisons") {
+        for comparison in array(comparisons, 12)? {
+            object(
+                comparison,
+                &[
+                    "id",
+                    "name",
+                    "kind",
+                    "unit",
+                    "bins",
+                    "bucketMs",
+                    "aggregate",
+                    "series",
+                ],
+            )?;
+            let id = required(comparison, "id")?
+                .as_str()
+                .ok_or("Invalid comparison ID")?;
+            if id.is_empty() || !spec_ids.insert(id) {
+                return Err("Duplicate comparison/relationship ID");
+            }
+            for k in ["id", "name", "unit"] {
+                string(required(comparison, k)?)?;
+            }
+            if !matches!(
+                required(comparison, "kind")?.as_str(),
+                Some("histogram" | "time")
+            ) {
+                return Err("Invalid comparison type");
+            }
+            if !matches!(
+                required(comparison, "aggregate")?.as_str(),
+                Some("count" | "mean" | "sum" | "min" | "max")
+            ) {
+                return Err("Invalid comparison aggregation");
+            }
+            let bins = required(comparison, "bins")?
+                .as_u64()
+                .ok_or("Invalid comparison bins")?;
+            if !(2..=128).contains(&bins) {
+                return Err("Invalid comparison bins");
+            }
+            finite(required(comparison, "bucketMs")?)?;
+            if comparison["bucketMs"].as_f64().unwrap_or(0.) <= 0. {
+                return Err("Invalid time bucket");
+            }
+            let series = array(required(comparison, "series")?, 8)?;
+            if series.len() < 2 {
+                return Err("Comparisons require at least two series");
+            }
+            let mut series_ids = std::collections::HashSet::new();
+            for item in series {
+                let fields = object(
+                    item,
+                    &[
+                        "id",
+                        "sourceId",
+                        "label",
+                        "x",
+                        "y",
+                        "unit",
+                        "scale",
+                        "offset",
+                        "converted",
+                        "filter",
+                    ],
+                )?;
+                for k in ["id", "sourceId", "label", "x", "unit"] {
+                    string(required(item, k)?)?;
+                }
+                if !series_ids.insert(item["id"].as_str().unwrap_or("")) {
+                    return Err("Duplicate comparison series ID");
+                }
+                if !ids.contains(item["sourceId"].as_str().unwrap_or("")) {
+                    return Err("Unknown comparison source");
+                }
+                if let Some(y) = fields.get("y") {
+                    string(y)?;
+                }
+                finite(required(item, "scale")?)?;
+                finite(required(item, "offset")?)?;
+                if item["scale"].as_f64() == Some(0.) {
+                    return Err("Conversion scale must be nonzero");
+                }
+                let converted = required(item, "converted")?
+                    .as_bool()
+                    .ok_or("Invalid conversion flag")?;
+                if !converted
+                    && (item["unit"] != comparison["unit"]
+                        || item["scale"].as_f64() != Some(1.)
+                        || item["offset"].as_f64() != Some(0.))
+                {
+                    return Err("Explicit conversion required for incompatible units");
+                }
+                expression(required(item, "filter")?, 0)?;
+            }
+        }
+    }
+    if let Some(relationships) = v.get("relationships") {
+        for relationship in array(relationships, 12)? {
+            let fields = object(
+                relationship,
+                &[
+                    "id",
+                    "name",
+                    "leftSource",
+                    "rightSource",
+                    "match",
+                    "identifier",
+                    "time",
+                    "spatial",
+                ],
+            )?;
+            let id = required(relationship, "id")?
+                .as_str()
+                .ok_or("Invalid relationship ID")?;
+            if id.is_empty() || !spec_ids.insert(id) {
+                return Err("Duplicate comparison/relationship ID");
+            }
+            for k in ["id", "name", "leftSource", "rightSource"] {
+                string(required(relationship, k)?)?;
+            }
+            let left = relationship["leftSource"].as_str().unwrap_or("");
+            let right = relationship["rightSource"].as_str().unwrap_or("");
+            if left == right || !ids.contains(left) || !ids.contains(right) {
+                return Err("Relationship requires two known sources");
+            }
+            if !matches!(
+                required(relationship, "match")?.as_str(),
+                Some("all" | "unique" | "nearest")
+            ) {
+                return Err("Invalid relationship match rule");
+            }
+            if !fields.contains_key("identifier")
+                && !fields.contains_key("time")
+                && !fields.contains_key("spatial")
+            {
+                return Err("Relationship requires a matching rule");
+            }
+            for k in ["identifier", "time"] {
+                if let Some(rule) = fields.get(k) {
+                    object(
+                        rule,
+                        if k == "time" {
+                            &["left", "right", "toleranceMs"]
+                        } else {
+                            &["left", "right"]
+                        },
+                    )?;
+                    for side in ["left", "right"] {
+                        string(required(rule, side)?)?;
+                    }
+                    if k == "time" {
+                        finite(required(rule, "toleranceMs")?)?;
+                        if rule["toleranceMs"].as_f64().unwrap_or(-1.) < 0. {
+                            return Err("Invalid time tolerance");
+                        }
+                    }
+                }
+            }
+            if let Some(rule) = fields.get("spatial") {
+                object(rule, &["radiusMetres"])?;
+                finite(required(rule, "radiusMetres")?)?;
+                if rule["radiusMetres"].as_f64().unwrap_or(-1.) < 0. {
+                    return Err("Invalid spatial radius");
+                }
+            }
+        }
+    }
     Ok(())
 }
 #[cfg(test)]
@@ -284,6 +464,45 @@ mod tests {
         let mut v = state();
         v["settings"]["sources"] = serde_json::json!([{"id":"csv1","name":"CSV","enabled":true,"config":{"type":"csv","csvText":"SECRET"}}]);
         assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn comparisons_and_relationships_accept_only_configuration() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([
+            {"id":"a","name":"A","enabled":true,"config":{"type":"wfs"}},
+            {"id":"b","name":"B","enabled":true,"config":{"type":"wfs"}}
+        ]);
+        v["comparisons"] = serde_json::json!([{"id":"c","name":"Temperatures","kind":"time","unit":"C","bins":24,"bucketMs":3600000,"aggregate":"mean","series":[
+            {"id":"s1","sourceId":"a","label":"A","x":"when","y":"temp","unit":"C","scale":1,"offset":0,"converted":false,"filter":{"op":"and","children":[]}},
+            {"id":"s2","sourceId":"b","label":"B","x":"observed","y":"temp_f","unit":"F","scale":0.555555555555,"offset":-17.777777777,"converted":true,"filter":{"op":"and","children":[]}}
+        ]}]);
+        v["relationships"] = serde_json::json!([{"id":"r","name":"Same asset","leftSource":"a","rightSource":"b","match":"unique","identifier":{"left":"asset","right":"station"},"time":{"left":"when","right":"observed","toleranceMs":1000},"spatial":{"radiusMetres":20}}]);
+        assert!(validate(&v).is_ok());
+        for key in ["rows", "results", "projection", "members"] {
+            let mut bad = v.clone();
+            bad["comparisons"][0]["series"][0][key] = serde_json::json!(["SECRET"]);
+            assert!(validate(&bad).is_err());
+        }
+        for key in ["pairs", "preview", "records"] {
+            let mut bad = v.clone();
+            bad["relationships"][0][key] = serde_json::json!(["SECRET"]);
+            assert!(validate(&bad).is_err());
+        }
+        let mut bad = v.clone();
+        bad["comparisons"][0]["series"][1]["converted"] = serde_json::json!(false);
+        assert!(validate(&bad).is_err());
+        let mut bad = v.clone();
+        bad["comparisons"][0]["series"][0]["filter"] = serde_json::json!({"op":"row","index":7});
+        assert!(validate(&bad).is_err());
+        let mut bad = v.clone();
+        bad["relationships"][0]["time"]["toleranceMs"] = serde_json::json!(-1);
+        assert!(validate(&bad).is_err());
+        let mut bad = v.clone();
+        bad["relationships"][0]["rightSource"] = serde_json::json!("unknown");
+        assert!(validate(&bad).is_err());
+        let mut bad = v.clone();
+        bad["comparisons"][0]["series"][1]["id"] = serde_json::json!("s1");
+        assert!(validate(&bad).is_err());
     }
     #[test]
     fn rejects_local_observation_indices_and_deep_filters() {

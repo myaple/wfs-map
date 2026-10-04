@@ -6,11 +6,11 @@ test('Records is a third page, virtualizes applied results, searches, sorts, exp
  await page.goto('/?time=all#records');
  await expect(page.locator('#records')).toBeVisible(); await expect(page.locator('#analysis')).toBeHidden();
  await expect(page.locator('#recordsSource option')).toHaveText(['First','Second']);
- await expect(page.locator('#records [role=status]')).toContainText('10,000 table rows');
+ await expect(page.locator('#records > [role=status]')).toContainText('10,000 table rows');
  expect(await page.locator('.record-row').count()).toBeLessThanOrEqual(40);
  await page.locator('.record-row').first().click(); await expect(page.locator('.record-inspector')).toContainText('ID');
  expect(await page.evaluate(()=>(window as any).__WFS_MAP__.sources[0].selected)).toBe(10000);
- await page.getByLabel('Search applied records').fill('sensor'); await expect(page.locator('#records [role=status]')).toContainText('2,500 table rows');
+ await page.getByLabel('Search applied records').fill('sensor'); await expect(page.locator('#records > [role=status]')).toContainText('2,500 table rows');
  await page.getByRole('button',{name:'quality (number)',exact:true}).click();
  await page.locator('.records-scroll').focus(); await page.keyboard.press('End');
  await expect.poll(()=>page.locator('.record-row').first().getAttribute('aria-rowindex')).toMatch(/\d+/);

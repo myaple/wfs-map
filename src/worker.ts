@@ -1,3 +1,4 @@
+import { project } from './comparison.ts';
 import { readCSVText } from './source-storage.ts';
 import { csvDataset } from './csv.ts';
 import type { Config as SourceConfig } from './source-settings.ts';
@@ -137,6 +138,10 @@ async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: str
 }
 ctx.onmessage = (event: MessageEvent) => {
     const m = event.data;
+    if (m.type === 'project' && store) {
+        const r = revision;
+        void project(store, m.sourceId ?? '', applied, m.fields, m.filter, () => r !== revision).then(data => { if (r === revision) post({ type: 'projected', token: m.token, task: m.task, part: m.part, data }); }).catch(e => { if (r === revision) post({ type: 'projectionError', token: m.token, task: m.task, message: (e as Error).message }); });
+    }
     if (['records', 'recordAt', 'recordsExport'].includes(m.type) && store) {
         const r = ++recordsRevision, localStore = store;
         records ??= new RecordsIndex(store);

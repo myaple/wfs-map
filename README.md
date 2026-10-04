@@ -369,3 +369,33 @@ filtering** beside their existing filter action; individual scatter observations
 also highlight when inspected elsewhere. Inspection is transient and cleared on
 reload/filter changes. Raw records and inspection indices are never saved to the
 analysis service.
+
+### Multi-source comparisons and relationships
+
+**Source comparisons** on Analysis map two to eight series to source-specific
+fields, with common histogram edges or fixed-duration UTC time buckets and a
+shared Y axis. Specify the common unit and each series' unit; different units
+require an explicit `common = value × scale + offset` conversion. Histograms
+compare numeric measurements; time series support count, mean, sum, min and max.
+Empty measurement buckets are null, while count buckets are zero. Every series
+respects its source's applied filters/time/map bounds and can add a JSON filter
+expression (the same AND/OR/attribute syntax used by dataset filters). Source
+labels, mappings, conversions and missing-value counts appear beside the plot.
+The paginated bin table offers keyboard access to inspect original records.
+
+**Record relationships** on Records save exact identifier mappings, inclusive
+UTC time tolerances and/or great-circle proximity radii in metres. Enabled rules
+are combined with AND. Identifiers use exact value and type; null values never
+match. Choose all matches, unique matches (exclude ambiguous candidates), or the
+nearest candidate (distance, then time difference, then lowest source row).
+Previews show full matched/unmatched totals on both sides, ambiguous candidate
+counts, incoming multiplicity and a 50-record sample. **Inspect related records**
+explicitly propagates inspection through accepted links without changing filters.
+
+Specifications round-trip with named analyses and local preferences. Workers
+recalculate from current applied results; source changes invalidate old results.
+Only field mappings, filters, units/conversions and matching rules are saved to
+the API. Raw projections, record indices, match pairs and previews remain local.
+Comparisons support up to 4096 time buckets; relationships fail explicitly above
+10 million candidate checks or one million accepted links, so broad rules must
+be tightened rather than silently producing incomplete matches.
