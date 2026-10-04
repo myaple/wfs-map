@@ -93,3 +93,75 @@ test('chart selections follow the last edited group without a target button', as
     await expect(page.locator('#rules > .filter-group > .group-children > .selection')).toHaveCount(1);
     await expect(page.locator('#filterStatus')).toContainText('2,048 matches');
 });
+
+test('chart and manual filters use the same editable controls', async ({ page }) => {
+    await ready(page);
+    const first = page.locator('.chart-card').first();
+    await first.locator('details summary').click();
+    await first.getByRole('button', { name: 'category: station · 1,024', exact: true }).click();
+    const selected = page.locator('#rules .rule').first();
+    await expect(selected.getByLabel('Attribute')).toHaveValue('category');
+    await expect(selected.getByLabel('Operator')).toHaveValue('eq');
+    await expect(selected.getByLabel('Filter value')).toHaveValue('station');
+    await page.locator('#addRule').click();
+    const manual = page.locator('#rules .rule').last();
+    await manual.getByLabel('Attribute').selectOption('value');
+    await manual.getByLabel('Operator').selectOption('gt');
+    await manual.getByLabel('Filter value').fill('1');
+    const geometry = await page.locator('#rules .rule').evaluateAll(rows => rows.map(row => [...row.children].map(control => ({ tag: control.tagName, width: Math.round(control.getBoundingClientRect().width) }))));
+    expect(geometry[0]).toEqual(geometry[1]);
+    await selected.getByLabel('Filter value').fill('sensor');
+    await page.locator('#apply').click();
+    const expected = Array.from({ length: 4096 }, (_, i) => feature(i)).filter(f => f.properties.category === 'sensor' && f.properties.value > 1).length;
+    await expect(page.locator('#filterStatus')).toContainText(`${expected.toLocaleString()} matches`);
+    await selected.getByRole('button', { name: '×', exact: true }).click();
+    const remaining = Array.from({ length: 4096 }, (_, i) => feature(i)).filter(f => f.properties.value > 1).length;
+    await expect(page.locator('#filterStatus')).toContainText(`${remaining.toLocaleString()} matches`);
+});
+
+test('nested chart predicates round-trip through the shared editors and retain the selection target', async ({ page }) => {
+    await ready(page);
+    const expression = { op: 'or', children: [
+        { field: 'category', op: 'eq', value: 'station' },
+        { op: 'and', children: [{ field: 'value', op: 'gte', value: '50' }, { field: 'value', op: 'lt', value: '60' }] }
+    ] };
+    await page.evaluate(expr => (window as any).__WFS_MAP__.workspace.select(expr, 'Chart range'), expression);
+    await expect(page.locator('#rules .rule')).toHaveCount(3);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[0])).toEqual(expression);
+    await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'ne', value: 'vehicle' }, 'Exclude vehicles'));
+    await expect(page.locator('#rules > .filter-group > .group-children > .rule')).toHaveCount(1);
+    await page.evaluate(() => { const w = (window as any).__WFS_MAP__.workspace; w.restore(w.expression(), structuredClone(w.specs)); });
+    await expect(page.locator('#rules .rule')).toHaveCount(4);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[0])).toEqual(expression);
+    await page.locator('#rules .rule').first().getByLabel('Operator').selectOption('ne');
+    await page.locator('#apply').click();
+    const expected = Array.from({ length: 4096 }, (_, i) => feature(i)).filter(f => (f.properties.category !== 'station' || (f.properties.value >= 50 && f.properties.value < 60)) && f.properties.category !== 'vehicle').length;
+    await expect(page.locator('#filterStatus')).toContainText(`${expected.toLocaleString()} matches`);
+});
+
+test('category sets and non-attribute selections keep their exact meaning in compact rows', async ({ page }) => {
+    await ready(page);
+    const expression = { op: 'and', children: [
+        { field: 'category', op: 'notin', values: ['station', 'value, with comma', 'value\nwith newline'] },
+        { op: 'bbox', west: -180, south: -90, east: 180, north: 90 }
+    ] };
+    await page.evaluate(expr => { const w = (window as any).__WFS_MAP__.workspace; w.restore(expr, structuredClone(w.specs)); }, expression);
+    await expect(page.locator('#rules .rule')).toHaveCount(2);
+    const set = page.locator('#rules .rule').first();
+    await expect(set.getByLabel('Operator')).toHaveValue('notin');
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression())).toEqual(expression);
+    await set.getByLabel('Filter value').fill('invalid list');
+    await page.locator('#apply').click();
+    await expect(page.locator('#filterStatus')).toContainText('Filter error: Category values');
+    await set.getByLabel('Filter value').fill('["station", "sensor"]');
+    await page.locator('#apply').click();
+    await expect(page.locator('#filterStatus')).toContainText('2,048 matches');
+    await page.evaluate(() => { const w = (window as any).__WFS_MAP__.workspace; w.select({ op: 'row', index: 2 }, 'Observation'); w.discardObservationSelections(); });
+    await expect(page.locator('#rules .rule')).toHaveCount(2);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[1])).toEqual(expression.children[1]);
+    await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ op: 'or', children: [{ op: 'row', index: 2 }] }, 'Observations'));
+    await page.locator('#rules .selection > .group-head').getByLabel('Group logic').focus();
+    await page.evaluate(() => { const w = (window as any).__WFS_MAP__.workspace; w.discardObservationSelections(); w.select({ field: 'category', op: 'eq', value: 'vehicle' }, 'Vehicles'); });
+    await expect(page.locator('#rules .rule')).toHaveCount(3);
+    await expect(page.locator('#rules > .filter-group > .group-children > .rule').last().getByLabel('Filter value')).toHaveValue('vehicle');
+});

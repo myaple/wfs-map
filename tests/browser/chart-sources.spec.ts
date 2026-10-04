@@ -36,7 +36,9 @@ test('all charts stay visible and each source selector repopulates axes, aggrega
     await chart.getByRole('button', { name: /station: north/ }).click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].selected === 1);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(16);
-    await page.locator('#filterSource').selectOption(ids[1]); await expect(page.locator('#rules .selection')).toContainText('station: north');
+    await page.locator('#filterSource').selectOption(ids[1]);
+    await expect(page.locator('#rules .selection').getByLabel('Attribute')).toHaveValue('station');
+    await expect(page.locator('#rules .selection').getByLabel('Filter value')).toHaveValue('north');
     await chart.getByLabel('Data source', { exact: true }).selectOption(ids[0]);
     await expect(chart.getByLabel('Group by', { exact: true }).locator('option')).not.toContainText(['station']);
     await expect(chart).toHaveAttribute('data-source-id', ids[0]);

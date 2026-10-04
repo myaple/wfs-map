@@ -111,7 +111,8 @@ test('pie and time charts share zoom/select gestures; removing an enlarged chart
     await page.mouse.move(b.x + b.width * .95, b.y + b.height - 10, { steps: 5 });
     await page.mouse.up({ button: 'right' });
     await expect(page.locator('#filterStatus')).toContainText('2,048 matches');
-    await expect(page.locator('#rules')).toContainText('2 segments');
+    await expect(page.locator('#rules .selection > .group-head').getByLabel('Group logic')).toHaveValue('or');
+    await expect(page.locator('#rules .selection .rule')).toHaveCount(2);
     await page.locator('#reset').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     const time = page.locator('.chart-card').nth(1).locator('canvas');

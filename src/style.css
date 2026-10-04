@@ -238,21 +238,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
 .rule input {
   flex: 1;
 }
-.selection {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  max-width: 760px;
-  font-size: 12px;
-}
-.selection span {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.selection button {
-  margin-left: auto;
-}
 .row {
   display: flex;
   gap: 8px;

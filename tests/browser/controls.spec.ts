@@ -132,7 +132,7 @@ test('time Y mean and scatter mode are configurable; raw scatter clicks select o
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(box.x + 68 + (box.width - 86) * .7, box.y + 18 + (box.height - 82) * .8);
     await page.mouse.up({ button: 'right' });
-    await expect(page.locator('#rules')).toContainText('rectangle');
+    await expect(page.locator('#rules .selection .rule')).toHaveCount(4);
     const e = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression());
     const rules = e.children[0].children;
     const expected = Array.from({ length: 4096 }, (_, j) => feature(j)).filter(f => rules.every((r: any) => r.op === 'gte' ? Number(f.properties[r.field]) >= Number(r.value) : Number(f.properties[r.field]) <= Number(r.value))).length;
@@ -191,12 +191,13 @@ test('sources retain independent colour attributes and geographic selections acr
     await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[1].workspace.results.some((r: any) => r.counts.reduce((a: number, b: number) => a + b, 0) + r.missing !== (window as any).__WFS_MAP__.sources[1].selected));
     await page.locator('#filterSource').selectOption(ids[0]); await page.locator('#colorSource').selectOption(ids[0]);
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('quality');
-    await expect(page.locator('#rules')).not.toContainText('Other box');
+    await expect(page.locator('#rules .rule')).toHaveCount(0);
     await expect(page.locator('.raw-scatter canvas:not(.raw-scatter-axes)')).toHaveCount(1);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(4096);
     await page.locator('#filterSource').selectOption(ids[1]); await page.locator('#colorSource').selectOption(ids[1]);
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('value');
-    await expect(page.locator('#rules')).toContainText('Other box');
+    await expect(page.locator('#rules .rule').getByLabel('Attribute')).toHaveValue('bbox');
+    await expect(page.locator('#rules .rule').getByLabel('Filter value')).toHaveValue('W -5, S 52, E 0, N 56');
     await page.reload();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done && s.layer.colorCodes));
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('quality');

@@ -53,6 +53,16 @@ test('legend shows exact colours for every enabled source, scrolls all values an
 });
 
 test('legend tracks palette edits, filters, disabled sources and dark mode', async ({ page }) => {
+    // Exercise delayed routing: content assertions also pass while Analysis is
+    // hidden, but scrolling its virtual legend at that point is ineffective.
+    await page.addInitScript(() => {
+        const add = window.addEventListener.bind(window);
+        window.addEventListener = ((type, listener, options) => {
+            if (type === 'hashchange' && typeof listener === 'function') {
+                add(type, event => setTimeout(() => listener.call(window, event), 750), options);
+            } else add(type, listener, options);
+        }) as typeof window.addEventListener;
+    });
     await seed(page);
     await page.locator('#colorSource').selectOption('categories');
     await page.getByLabel('Colour for Category-000', { exact: true }).fill('#00ffff');
@@ -68,6 +78,7 @@ test('legend tracks palette edits, filters, disabled sources and dark mode', asy
     await page.getByLabel('Enable Categories', { exact: true }).uncheck();
     await page.locator('#saveSettings').click();
     await page.locator('#analysisLink').click();
+    await expect(page.locator('#mapLegend')).toBeVisible();
     await expect(page.locator('#mapLegend')).not.toContainText('Categories');
     await expect(page.locator('#mapLegend')).toContainText('Gradient');
     await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = 0);
