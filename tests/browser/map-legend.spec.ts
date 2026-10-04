@@ -71,7 +71,12 @@ test('legend tracks palette edits, filters, disabled sources and dark mode', asy
     await expect(page.locator('#mapLegend')).not.toContainText('Categories');
     await expect(page.locator('#mapLegend')).toContainText('Gradient');
     await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = 0);
+    // Wait for the virtual list to render the lowest bin after scrolling.
+    // DOM order includes overscan rows and is not a stable bin identifier.
+    const lowestBin = page.locator('[data-source=gradient]').filter({ has: page.getByText('0 – 2', { exact: true }) });
+    await expect(lowestBin).toBeVisible();
     await page.locator('#colorSource').selectOption('gradient');
     await page.locator('#colorLow').fill('#ff0000'); await page.locator('#colorLow').dispatchEvent('change');
-    await expect(page.locator('[data-source=gradient] .map-legend-swatch').first()).toHaveCSS('background-color', 'rgb(255, 0, 0)');
+    await expect(lowestBin.locator('.map-legend-swatch')).toHaveCSS('background-color', 'rgb(255, 0, 0)');
+    await expect(page.locator('.map-legend-viewport')).toHaveJSProperty('scrollTop', 0);
 });

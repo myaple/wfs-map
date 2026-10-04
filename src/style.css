@@ -740,7 +740,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 
 .map-legend { padding: 10px; border-top: 1px solid var(--border); background: var(--surface); color: var(--text); }
 .map-legend h2 { font-size: 13px; margin: 0 0 6px; }
-.map-legend-viewport { position: relative; overflow: auto; max-height: 220px; overscroll-behavior: contain; }
+.map-legend-viewport { position: relative; overflow: auto; overflow-anchor: none; max-height: 220px; overscroll-behavior: contain; }
 .map-legend-viewport:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .map-legend-space { position: relative; }
 .map-legend-rows { position: absolute; inset-inline: 0; }
