@@ -34,7 +34,7 @@ export class Workspace {
     private views = new Map<string, ChartView>();
     private owners = new Map<string, { workspace: Workspace }>();
     private active?: HTMLDivElement;
-    constructor(private changed: () => void, private rules: HTMLElement = document.getElementById('rules')!, private charts: HTMLElement = document.getElementById('charts')!, private sourceId = '', private chartSources: () => ChartSource[] = () => []) { }
+    constructor(private changed: () => void, private rules: HTMLElement = document.getElementById('rules')!, private charts: HTMLElement = document.getElementById('charts')!, private sourceId = '', private chartSources: () => ChartSource[] = () => [], private inspect?: (expression: Expression) => void) { }
     reset() {
         this.fields = [];
         this.specs = [];
@@ -242,7 +242,7 @@ export class Workspace {
         const view = new ChartView(this.charts, spec, this.fields,
             () => owner.workspace.changed(),
             () => owner.workspace.removeChart(spec.id),
-            (expr, label) => owner.workspace.select(expr, label),
+            (expr, label, inspection) => inspection ? owner.workspace.inspect?.(expr) : owner.workspace.select(expr, label),
             id => {
                 const target = owner.workspace.chartSources().find(s => s.id === id)?.workspace;
                 if (target) owner.workspace.moveChart(spec.id, target);
@@ -348,7 +348,8 @@ class ChartView {
     private focus = 0;
     private onThemeChange = () => this.draw();
     private hit = new Float32Array(0);
-    constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string) => void, sourceChanged: (id: string) => void) {
+    private action = element('select');
+    constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string, inspection?: boolean) => void, sourceChanged: (id: string) => void) {
         this.root.className = 'chart-card';
         this.root.dataset.chartId = spec.id;
         const header = element('div'), head = element('div');
@@ -376,6 +377,7 @@ class ChartView {
         this.expand.setAttribute('aria-haspopup', 'dialog');
         this.expand.setAttribute('aria-expanded', 'false');
         this.expand.onclick = () => this.enlarge();
+        this.action.setAttribute('aria-label', 'Chart selection action'); this.action.append(option('filter', 'Filter on selection'), option('inspect', 'Inspect without filtering'));
         actions.append(settings, this.expand, removeButton);
         const typeField = chartField(this.type, 'Chart type', '');
         typeField.hint.hidden = true;
@@ -386,7 +388,7 @@ class ChartView {
         this.sourceName.className = 'hint chart-source-name';
         const heading = element('div'); heading.append(this.title, this.sourceName);
         header.append(heading, actions);
-        head.append(sourceField.root, typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.binsField.root);
+        head.append(chartField(this.action, 'Selection action', 'Inspect records without changing filters, or add selected values to filters.').root, sourceField.root, typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.binsField.root);
         this.canvas.tabIndex = 0;
         this.canvas.setAttribute('role', 'img');
         this.note.className = 'hint';
@@ -544,7 +546,7 @@ class ChartView {
         if (!r?.raw)
             return;
         if (this.root.isConnected && !document.getElementById('analysis')?.hidden) {
-            this.raw ??= new RawScatter(this.select);
+            this.raw ??= new RawScatter((expr, label) => this.select(expr, label, this.action.value === 'inspect'), () => this.root.dataset.sourceId ?? '');
             if (!this.raw.container.isConnected)
                 this.canvas.after(this.raw.container);
             this.raw.update(r);
@@ -580,7 +582,7 @@ class ChartView {
             children.push(interval(r.x, lo, hi));
             i++;
         }
-        this.select(children.length === 1 ? children[0] : { op: 'or', children }, `${r.x.field}: ${cells.length} segments`);
+        this.select(children.length === 1 ? children[0] : { op: 'or', children }, `${r.x.field}: ${cells.length} segments`, this.action.value === 'inspect');
     }
     private choose(a: number, b: number) {
         const r = this.result;
@@ -593,7 +595,7 @@ class ChartView {
             expr = { op: 'and', children: [expr, interval(r.y, loY, hiY)] };
             label += ` · ${r.y.field}: ${r.y.labels[loY]}${loY !== hiY ? ' … ' + r.y.labels[hiY] : ''}`;
         }
-        this.select(expr, label);
+        this.select(expr, label, this.action.value === 'inspect');
     }
     private cellAt(point: Point) {
         const r = this.result;

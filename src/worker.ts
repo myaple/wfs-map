@@ -5,6 +5,7 @@ import type { QueryBounds } from './wfs-query.ts';
 import { Analyzer, all } from './analysis.ts';
 import { decodePage, countFrom, inferFields, packPositions, spatialPage, wfsURL, type Field, type Rule } from './data.ts';
 import { Store } from './store.ts';
+import { RecordsIndex, recordsCSV } from './records.ts';
 import { exportCSV } from './csv-export.ts';
 type Config = {
     url: string;
@@ -21,6 +22,7 @@ type Config = {
 };
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 let store: Store | undefined, revision = 0, colorRevision = 0, analyzer: Analyzer | undefined;
+let applied: Uint32Array | null = null, records: RecordsIndex | undefined, recordsRevision = 0;
 function post(message: unknown, transfers: Transferable[] = []) { ctx.postMessage(message, transfers); }
 async function fetchText(url: string) {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 120000);
@@ -135,6 +137,27 @@ async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: str
 }
 ctx.onmessage = (event: MessageEvent) => {
     const m = event.data;
+    if (['records', 'recordAt', 'recordsExport'].includes(m.type) && store) {
+        const r = m.type === 'recordAt' ? recordsRevision : ++recordsRevision, dataRevision = revision, localStore = store;
+        const cancelled = () => m.type === 'recordAt' ? dataRevision !== revision : r !== recordsRevision;
+        records ??= new RecordsIndex(store);
+        void records.query(applied, m.query, cancelled).then(async rows => {
+            if (cancelled()) return;
+            if (m.type === 'records') post({ type: 'records', request: m.request, total: rows.length, offset: Math.min(m.offset, Math.max(0, rows.length - 1)), rows: Array.from(rows.subarray(Math.min(m.offset, Math.max(0, rows.length - 1)), Math.min(m.offset, Math.max(0, rows.length - 1)) + Math.min(100, m.limit)), index => ({ index, data: localStore.get(index) })) });
+            if (m.type === 'recordAt') { const index = rows[m.position]; post({ type: 'recordAt', request: m.request, row: index === undefined ? null : { index, data: localStore.get(index) } }); }
+            if (m.type === 'recordsExport') { const blob = await recordsCSV(localStore, rows, m.columns, m.sourceName, () => r !== recordsRevision); if (r === recordsRevision) post({ type: 'recordsExported', request: m.request, blob, total: rows.length }); }
+        }).catch(e => { if (!cancelled()) post({ type: 'recordsError', request: m.request, message: (e as Error).message }); });
+    }
+    if (m.type === 'inspectExpression' && store) {
+        const r = revision;
+        void new Analyzer(store).run(m.expression, []).then(result => {
+            if (r !== revision) return;
+            const rows = result.indices ?? Uint32Array.from({ length: store!.length }, (_, i) => i);
+            const allowed = applied ? new Set(applied) : undefined;
+            post({ type: 'inspectionMatches', token: m.token, indices: allowed ? rows.filter(i => allowed.has(i)) : rows });
+        }).catch(e => post({ type: 'inspectionError', token: m.token, message: (e as Error).message }));
+    }
+    if (m.type === 'getMany' && store) post({ type: 'metadataMany', token: m.token, rows: m.indices.slice(0, 40).map((index: number) => ({ index, data: store!.get(index) })) });
     if (m.type === 'exportCSV') {
         const r = revision;
         if (!store) {
@@ -151,7 +174,7 @@ ctx.onmessage = (event: MessageEvent) => {
         void load(m.config).catch(e => post({ type: 'error', message: (e as Error).message }));
     if (m.type === 'get') {
         try {
-            post({ type: 'metadata', request: m.request, data: store?.get(m.index) });
+            post({ type: 'metadata', request: m.request, index: m.index, token: m.token, data: store?.get(m.index) });
         }
         catch (e) {
             post({ type: 'error', message: (e as Error).message });
@@ -186,6 +209,7 @@ ctx.onmessage = (event: MessageEvent) => {
                 if (chart.y?.ranges)
                     transfers.push(chart.y.ranges.buffer);
             }
+            applied = result.indices?.slice() ?? null; records?.reset(); recordsRevision++;
             post({ type: 'filtered', request: m.request, ...result, elapsedMs: performance.now() - start }, transfers);
         }).catch(e => {
             if (r === revision)

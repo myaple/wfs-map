@@ -52,6 +52,16 @@ test('million-row CSV saves beyond localStorage quota and reloads from IndexedDB
         await page.reload();
         await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done, undefined, { timeout: 120_000 });
         expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(1_000_000);
+        await page.locator('#recordsLink').click();
+        await expect(page.locator('#records > [role=status]')).toContainText('1,000,000 table rows');
+        await page.locator('.records-scroll').focus(); await page.keyboard.press('End');
+        await expect.poll(() => page.evaluate(() => (window as any).__WFS_MAP__.inspection?.index)).toBe(999999);
+        await expect(page.locator('.record-row').last()).toHaveAttribute('data-record-index', '999999');
+        expect(await page.locator('.record-row').count()).toBeLessThanOrEqual(40);
+        expect(await page.locator('.records-scroll').evaluate(el => el.scrollHeight)).toBeLessThan(8100000);
+        await page.keyboard.press('Home');
+        await expect.poll(() => page.evaluate(() => (window as any).__WFS_MAP__.inspection?.index)).toBe(0);
+        await expect(page.locator('.record-row').first()).toHaveAttribute('data-record-index', '0');
         await page.locator('#configLink').click();
         await page.getByRole('button', { name: 'Configure Million points', exact: true }).click();
         await expect(page.locator('#csvFileStatus')).toContainText(/\d+ columns/, { timeout: 120_000 });

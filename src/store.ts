@@ -69,8 +69,10 @@ export class Store {
     finish() { this.seen.clear(); for (const c of this.columns)
         c.codes.clear(); }
     get(index: number) {
-        const chunk = this.chunks.find(c => index >= c.offset && index < c.offset + c.length);
-        if (!chunk)
+        let lo = 0, hi = this.chunks.length - 1;
+        while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (this.chunks[mid].offset <= index) lo = mid; else hi = mid - 1; }
+        const chunk = this.chunks[lo];
+        if (!Number.isInteger(index) || !chunk || index < chunk.offset || index >= chunk.offset + chunk.length)
             throw new Error('Point index out of bounds');
         const i = index - chunk.offset, properties: Record<string, unknown> = {};
         this.columns.forEach((c, j) => {

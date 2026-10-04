@@ -1,3 +1,5 @@
+import { RecordsPage } from './records-page.ts';
+import type { RecordRef, RecordData } from './records.ts';
 import { MapLegend } from './map-legend.ts';
 import { mountThemeToggle, themeColor } from './theme.ts';
 import { formatUTC, utcISO, utcInput } from './time.ts';
@@ -24,7 +26,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const value = (id: string) => $<HTMLInputElement>(id).value;
 const params = new URLSearchParams(location.search);
 $('app').innerHTML = `
-<header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav><a href="#analysis" id="analysisLink">Analysis</a><a href="#configuration" id="configLink">Data sources</a></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
+<header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav><a href="#analysis" id="analysisLink">Analysis</a><a href="#records" id="recordsLink">Records</a><a href="#configuration" id="configLink">Data sources</a></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="sourceSummary" class="hint"></div></div>
 <section id="configuration" hidden></section>
 <section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply only to this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
@@ -112,7 +114,7 @@ function createSource(input: {
     charts.setAttribute('aria-live', 'polite');
     const color = input.color ?? colors[sources.length % colors.length];
     const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, filtering: false, exportRequest: 0, exporting: false, exportStatus: '', colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
-    s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, enabled: source.enabled, available: source.enabled && source.done })));
+    s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, enabled: source.enabled, available: source.enabled && source.done })), expression => inspectExpression(s, expression));
     sources.push(s);
     const saved = savedAnalyses.get(id);
     if (saved) {
@@ -216,13 +218,16 @@ function switchFilters(id: string) {
     state();
 }
 function route() {
-    const config = location.hash === '#configuration';
+    const config = location.hash === '#configuration', records = location.hash === '#records';
+    recordPage.root.hidden = !records;
     $('configuration').hidden = !config;
-    $('analysis').hidden = config;
+    $('analysis').hidden = config || records;
     for (const s of sources)
         s.workspace.visibilityChanged();
     $('configLink').classList.toggle('current', config);
-    $('analysisLink').classList.toggle('current', !config);
+    $('analysisLink').classList.toggle('current', !config && !records);
+    $('recordsLink').classList.toggle('current', records);
+    for (const [id, active] of [['analysisLink', !config && !records], ['configLink', config], ['recordsLink', records]] as const) $(id).setAttribute('aria-current', active ? 'page' : 'false');
     if (mapReady) {
         requestAnimationFrame(() => map.resize());
         if (!config) ensureSourcesLoaded();
@@ -241,6 +246,42 @@ for (let y = -80; y <= 80; y += 10)
 $<HTMLInputElement>('basemap').checked = background.enabled && !!background.url;
 const style: StyleSpecification = { version: 8, sources: { grid: { type: 'geojson', data: { type: 'FeatureCollection', features: gridFeatures } }, osm: { type: 'raster', tiles: background.url ? [background.url] : [], tileSize: 256, attribution: background.attribution, maxzoom: 19 } }, layers: [{ id: 'background', type: 'background', paint: { 'background-color': themeColor('map-background') } }, { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: background.enabled && background.url ? 'visible' : 'none' } }, { id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': themeColor('map-grid'), 'line-width': .5 } }] };
 const map = new maplibregl.Map({ container: 'map', style, center: mapSettings.center, zoom: mapSettings.zoom, maxZoom: 22, minZoom: 1, maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false, renderWorldCopies: false, pixelRatio: Math.min(devicePixelRatio, 2), canvasContextAttributes: { antialias: false }, attributionControl: { compact: true } });
+const recordPage = new RecordsPage(() => sources, (id, message) => sources.find(s => s.id === id)?.worker?.postMessage(message), inspectRecord);
+let inspectionToken = 0, inspection: RecordRef | undefined, marker: maplibregl.Marker | undefined;
+const chooser = document.createElement('dialog'); chooser.className = 'record-chooser'; chooser.setAttribute('aria-label', 'Choose overlapping record'); document.body.append(chooser);
+let choices: RecordRef[] = [], choiceOffset = 0;
+function inspectRecord(ref: RecordRef) {
+    const s = sources.find(s => s.id === ref.sourceId && s.enabled && s.done && !s.filtering); if (!s) return;
+    inspection = ref; s.worker?.postMessage({ type: 'get', index: ref.index, request: s.request, token: ++inspectionToken });
+}
+function inspectExpression(s: Source, expression: Expression) {
+    if ('index' in expression) { inspectRecord({ sourceId: s.id, index: expression.index }); return; }
+    s.worker?.postMessage({ type: 'inspectExpression', expression, token: ++inspectionToken });
+}
+function chooseRecords(refs: RecordRef[]) {
+    choices = refs; choiceOffset = 0;
+    if (refs.length === 1) { inspectRecord(refs[0]); return; }
+    if (!refs.length) return;
+    drawChooser(); if (!chooser.open) chooser.showModal();
+}
+function drawChooser() {
+    chooser.replaceChildren();
+    const heading = document.createElement('h2'); heading.textContent = `Choose a record · ${choices.length.toLocaleString()} matches`;
+    const close = document.createElement('button'); close.textContent = 'Close'; close.onclick = () => chooser.close();
+    const list = document.createElement('div'); list.className = 'record-choices';
+    for (const [k, ref] of choices.slice(choiceOffset, choiceOffset + 30).entries()) {
+        const b = document.createElement('button'); b.dataset.sourceId = ref.sourceId; b.dataset.index = String(ref.index); b.textContent = `${sources.find(s => s.id === ref.sourceId)?.name} · row ${ref.index + 1}`; b.onclick = () => { chooser.close(); inspectRecord(ref); }; list.append(b);
+        if (!k) setTimeout(() => { if (chooser.open) b.focus(); }, 0);
+    }
+    const prev = document.createElement('button'), next = document.createElement('button'); prev.textContent = 'Previous matches'; next.textContent = 'Next matches'; prev.disabled = choiceOffset === 0; next.disabled = choiceOffset + 30 >= choices.length;
+    prev.onclick = () => { choiceOffset -= 30; drawChooser(); }; next.onclick = () => { choiceOffset += 30; drawChooser(); };
+    chooser.append(heading, close, list, prev, next);
+    for (const source of sources) { const indices = choices.slice(choiceOffset, choiceOffset + 30).filter(r => r.sourceId === source.id).map(r => r.index); if (indices.length) source.worker?.postMessage({ type: 'getMany', indices, token: inspectionToken }); }
+}
+function clearInspection() {
+    inspectionToken++; inspection = undefined; marker?.remove(); marker = undefined; popup?.remove(); if (chooser.open) chooser.close(); recordPage.clearSelection(); window.dispatchEvent(new CustomEvent('recordinspection', { detail: null }));
+}
+window.addEventListener('clearinspection', clearInspection);
 function rememberMap() {
     const center = map.getCenter().wrap();
     mapSettings = { center: [center.lng, center.lat], zoom: map.getZoom(), pointSize: Number(value('size')) };
@@ -303,6 +344,7 @@ new ResizeObserver(() => map.resize()).observe($('map'));
 function status(text: string, error = false) { $('status').textContent = text; $('status').classList.toggle('error', error); }
 function enabled(id: string, on: boolean) { $<HTMLButtonElement>(id).disabled = !on; }
 function state() {
+    recordPage.refresh();
     const s = filterSource(), enabledSources = sources.filter(s => s.enabled);
     enabled('load', mapReady && enabledSources.some(s => !s.loading));
     enabled('cancel', sources.some(s => s.loading || s.loaded > 0));
@@ -361,6 +403,7 @@ async function describe(s: Source, config: Config): Promise<{ fields: Field[]; q
     finally { clearTimeout(timeout); if (s.abort === controller) s.abort = undefined; }
 }
 function clearSource(s: Source) {
+    if (inspection?.sourceId === s.id || choices.some(r => r.sourceId === s.id)) clearInspection();
     const layerIndex = layerOrder.indexOf(s);
     if (layerIndex >= 0)
         layerOrder.splice(layerIndex, 1);
@@ -521,6 +564,7 @@ async function performLoad(s: Source) {
                     s.metrics.filterCount = m.count;
                     s.metrics.gpuBytes = s.layer.gpuBytes;
                     s.filterStatus = `${s.selected.toLocaleString()} matches · ${m.elapsedMs.toFixed(0)} ms`;
+                    recordPage.invalidate(s.id);
                 }
                 if (m.type === 'colored' && m.request === s.colorRequest) {
                     s.colorCategories = m.categories;
@@ -545,8 +589,19 @@ async function performLoad(s: Source) {
                     s.exporting = false;
                     s.exportStatus = 'CSV export failed: ' + m.message;
                 }
-                if (m.type === 'metadata' && m.request === s.request && m.data)
-                    showMetadata(m.data, s);
+                recordPage.handle(s.id, m);
+                if (m.type === 'inspectionMatches' && m.token === inspectionToken) chooseRecords(Array.from(m.indices as Uint32Array, index => ({ sourceId: s.id, index })));
+                if (m.type === 'inspectionError' && m.token === inspectionToken) status(m.message, true);
+                if (m.type === 'metadataMany' && m.token === inspectionToken && chooser.open) for (const row of m.rows) {
+                    const b = [...chooser.querySelectorAll<HTMLButtonElement>('[data-index]')].find(b => b.dataset.sourceId === s.id && Number(b.dataset.index) === row.index);
+                    if (b) b.textContent = `${s.name} · ID ${row.data.id ?? 'null'} · ${row.data.coordinates.join(', ')}`;
+                }
+                if (m.type === 'metadata' && m.request === s.request && m.data && (m.token === undefined || m.token === inspectionToken)) {
+                    inspection = { sourceId: s.id, index: m.index }; recordPage.selection(inspection, m.data);
+                    marker?.remove(); marker = new maplibregl.Marker({ color: '#ef9d19' }).setLngLat(m.data.coordinates).addTo(map);
+                    window.dispatchEvent(new CustomEvent('recordinspection', { detail: inspection }));
+                    if (m.token === undefined || !document.getElementById('analysis')!.hidden) showMetadata(m.data, s);
+                }
                 state();
             }
             catch (e) {
@@ -575,7 +630,7 @@ function filter(rules?: Rule[] | Expression, s = filterSource()) {
     s.exportRequest++; s.exporting = false; s.exportStatus = '';
     s.workspace.pending();
     s.filterStatus = 'Updating selection and charts…';
-    popup?.remove();
+    clearInspection();
     s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, charts: s.workspace.specs.filter(c => c.x && (c.type !== 'scatter' || c.y)) });
     state();
 }
@@ -599,17 +654,9 @@ function showMetadata(data: any, source: Source) {
 }
 map.on('dblclick', e => {
     e.preventDefault();
-    for (let i = layerOrder.length - 1; i >= 0; i--) {
-        const s = layerOrder[i];
-        if (!s.enabled || !s.loaded)
-            continue;
-        const started = performance.now(), index = s.layer.pick(e.point.x, e.point.y);
-        s.metrics.lastPickMs = performance.now() - started;
-        if (index !== null) {
-            s.worker?.postMessage({ type: 'get', index, request: s.request });
-            break;
-        }
-    }
+    const refs: RecordRef[] = [];
+    for (const s of layerOrder) if (s.enabled && s.done && !s.filtering) for (const index of s.layer.pickAll(e.point.x, e.point.y)) refs.push({ sourceId: s.id, index });
+    inspectionToken++; chooseRecords(refs);
 });
 map.on('webglcontextlost', () => status('GPU context lost; waiting for restoration.', true));
 map.on('webglcontextrestored', () => {
@@ -696,7 +743,7 @@ $('exportCSV').onclick = () => {
     state();
 };
 $('export').onclick = () => { const blob = new Blob([JSON.stringify({ sources: sources.map(s => ({ id: s.id, name: s.name, enabled: s.enabled, metrics: s.metrics })) }, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wfs-map-metrics.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
-(window as any).__WFS_MAP__ = { map, get layer() { return filterSource()?.layer; }, get metrics() { return filterSource()?.metrics; }, get done() { return filterSource()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get workspace() { return filterSource()?.workspace; }, get sources() { return sources; }, switchSource: switchFilters, filterSource: (id: string, rules: Rule[] | Expression) => {
+(window as any).__WFS_MAP__ = { map, get layer() { return filterSource()?.layer; }, get metrics() { return filterSource()?.metrics; }, get done() { return filterSource()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get workspace() { return filterSource()?.workspace; }, get sources() { return sources; }, records: recordPage, inspectRecord, chooseRecords, get inspection() { return inspection; }, switchSource: switchFilters, filterSource: (id: string, rules: Rule[] | Expression) => {
         const s = sources.find(s => s.id === id);
         if (s)
             filter(rules, s);

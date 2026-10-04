@@ -740,3 +740,44 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .map-dialog .map-legend { position: absolute; top: 10px; left: 10px; z-index: 2; width: min(290px, calc(100% - 64px)); max-height: calc(100% - 65px); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 2px 8px #0003; display: flex; flex-direction: column; }
 .map-dialog .map-legend-viewport { max-height: 330px; min-height: 0; }
 @media(max-width:600px) { .map-dialog .map-legend { width: min(230px, calc(100% - 64px)); } .map-dialog .map-legend-viewport { max-height: 180px; } }
+
+.records-page { padding: 20px; }
+.records-toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin: 18px 0 12px; }
+.records-source-control, .records-search-control { display: grid; gap: 6px; min-width: 0; }
+.records-source-control { flex: 0 1 220px; }
+.records-search-control { flex: 1 1 280px; }
+.records-toolbar label { font-weight: 600; color: var(--muted); }
+.records-toolbar select, .records-toolbar input[type=search] { width: 100%; height: 36px; }
+.records-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.records-actions > button { min-height: 36px; }
+.records-columns { position: relative; }
+.records-columns > summary { border: 1px solid var(--input-border); border-radius: 5px; padding: 7px 10px; min-height: 36px; background: var(--surface); white-space: nowrap; }
+.records-columns > summary:hover, .records-columns[open] > summary { border-color: var(--accent); background: var(--hover); }
+.records-columns > summary:focus-visible { outline: 3px solid #3984cf; outline-offset: 2px; }
+.records-column-options { position: absolute; top: calc(100% + 8px); right: 0; z-index: 3; width: min(420px, calc(100vw - 40px)); max-height: 280px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 10px; border: 1px solid var(--input-border); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px #0003; }
+.records-column-options label { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 4px; color: var(--text); font-weight: 400; cursor: pointer; }
+.records-column-options label:hover { background: var(--hover); }
+.records-column-options input[type=checkbox] { flex: none; width: 16px; height: 16px; margin: 0; padding: 0; }
+.records-column-options span { min-width: 0; overflow-wrap: anywhere; }
+.records-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; }
+.records-scroll { height: 520px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.records-table { border-collapse: collapse; width: 100%; white-space: nowrap; }
+.records-table thead { position: sticky; top: 0; z-index: 1; background: var(--surface); }
+.records-table th { text-align: left; }
+.records-table th button { border: 0; padding: 9px 12px; white-space: nowrap; }
+.records-table .record-row { height: 34px; cursor: pointer; }
+.records-table td { padding: 0 12px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--border); }
+.record-row:hover, .record-row[aria-selected=true] { background: var(--selected); outline: 1px solid var(--accent); }
+.null-value { font-style: italic; color: var(--muted); }
+.record-inspector { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; max-height: 520px; overflow: auto; overflow-wrap: anywhere; }
+.record-inspector table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.record-inspector th, .record-inspector td { text-align: left; vertical-align: top; padding: 6px; border-bottom: 1px solid var(--border); }
+.record-inspector button, .record-inspector a { margin: 4px; }
+.record-chooser { width: min(650px, 90vw); max-height: 80vh; overflow: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; }
+.record-choices { display: grid; gap: 6px; margin: 12px 0; }
+@media(max-width: 850px) { .records-layout { grid-template-columns: 1fr; } }
+@media(max-width: 600px) {
+  .records-source-control, .records-search-control { flex-basis: 100%; }
+  .records-actions { width: 100%; }
+  .records-column-options { left: 0; right: auto; grid-template-columns: 1fr; }
+}

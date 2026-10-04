@@ -350,3 +350,22 @@ Use **Dark mode** in the page header to switch themes. The first visit follows y
 ### Map legend
 
 The map legend lists point colours for every enabled source below the normal map. Enlarging the map moves the same legend into a scrollable overlay; returning or pressing Escape puts it below the map again. It shows solid source colours, each numeric bin with its actual GPU palette colour, every category (including overrides), and grey missing values. Category domains remain fixed when filtering. Only visible legend rows are rendered, keeping large domains usable.
+
+### Linked record inspection
+
+Analysis setups have three pages: **Analysis**, **Data sources**, and **Records**
+(`#records`). Records browses one enabled source's applied results, using a
+worker-side search/sort index and a bounded 40-row viewport. The source, record
+ID, coordinates, column types and null values remain explicit. Sources without
+feature IDs show a load-local row number rather than inventing a stable ID.
+Column selection affects table CSV exports; searches affect the table and its
+export, not the map's applied filter. Copy record copies typed JSON. Arrow keys,
+Home/End and Enter navigate/inspect records.
+
+Double-clicking the map opens a paginated chooser when visible records overlap,
+including records from different sources. The persistent inspector and map
+marker follow inspection across pages. Charts expose **Inspect without
+filtering** beside their existing filter action; individual scatter observations
+also highlight when inspected elsewhere. Inspection is transient and cleared on
+reload/filter changes. Raw records and inspection indices are never saved to the
+analysis service.
