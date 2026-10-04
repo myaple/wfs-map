@@ -1,3 +1,4 @@
+pub mod site_config;
 pub mod state;
 use chrono::{DateTime, Utc};
 use diesel::{
@@ -421,6 +422,10 @@ pub fn app(pool: DbPool, auth: Auth, assets: &str) -> Route {
         });
     Route::new()
         .at("/health", poem::get(health))
+        .at(
+            "/api/site-config",
+            poem::get(site_config::SiteConfig::from_env().endpoint()),
+        )
         .nest("/api", routes)
         .nest(
             "/",

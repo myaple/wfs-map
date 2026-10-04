@@ -1,4 +1,5 @@
 import './style.css';
+import { mountPageBanners } from './page-banners.ts';
 import { createAnalysis, getAnalysis, listAnalyses, api, saveAnalysis } from './analyses-api.ts';
 import { emptyState, configurationState } from './analysis-state.ts';
 import { prepareAnalysis } from './saved-analysis.ts';
@@ -62,4 +63,5 @@ async function start() {
         await import('./analysis-page.ts');
     } else await selector();
 }
+await mountPageBanners();
 await start();

@@ -26,6 +26,8 @@ services:
       DATABASE_URL: postgres://wfs:local-e2e@database:5432/wfs_e2e
       AUTH_MODE: proxy
       USER_ID_HEADER: x-e2e-user
+      PAGE_BANNER_TEXT: ${PAGE_BANNER_TEXT:-}
+      PAGE_BANNER_BACKGROUND: ${PAGE_BANNER_BACKGROUND:-#eaf0f4}
     depends_on:
       database:
         condition: service_healthy
