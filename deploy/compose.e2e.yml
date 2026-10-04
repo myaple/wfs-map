@@ -45,7 +45,7 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
-    networks: [private]
+    networks: [private, edge]
 
   fixture:
     image: wfs-map-e2e-fixture:local
@@ -89,5 +89,8 @@ services:
 networks:
   private:
     internal: true
+  # Host port publishing is skipped for internal-only containers, so the
+  # frontend additionally joins this publish-only network.
+  edge: {}
 volumes:
   e2e-database:
