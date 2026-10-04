@@ -568,7 +568,9 @@ function fit() {
 function filter(rules?: Rule[] | Expression, s = filterSource()) {
     if (!s?.enabled || !s.done)
         return;
-    const expression = Array.isArray(rules) ? all(rules) : rules ?? s.workspace.expression();
+    let expression: Expression;
+    try { expression = Array.isArray(rules) ? all(rules) : rules ?? s.workspace.expression(); }
+    catch (error) { s.filterStatus = 'Filter error: ' + (error instanceof Error ? error.message : String(error)); state(); return; }
     s.filtering = true;
     s.exportRequest++; s.exporting = false; s.exportStatus = '';
     s.workspace.pending();

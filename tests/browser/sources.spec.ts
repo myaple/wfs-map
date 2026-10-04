@@ -48,7 +48,7 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].metrics.filterCount === 512);
     await page.locator('#analysisLink').click();
     await page.locator('#filterSource').selectOption(ids[1]);
-    await expect(page.locator('#rules .selection')).toContainText('Vehicles');
+    await expect(page.locator('#rules .selection').getByLabel('Filter value')).toHaveValue('vehicle');
     await expect(page.locator('#filterStatus')).toContainText('512 matches');
     expect(errors).toEqual([]);
 });

@@ -185,7 +185,7 @@ test('Save, Share and Save a copy refuse row selections without changing existin
             expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[0])).toEqual(expr);
             expect((await (await request.get('/api/analyses/' + doc.id)).json()).revision).toBe(1);
         }
-        await page.locator('#rules .selection button').click();
+        await page.locator('#rules .selection > .group-head').getByRole('button', { name: '×', exact: true }).click();
         const portable = { op: 'and', children: [{ field: 'id', op: 'gte', value: '3' }, { op: 'or', children: [{ field: 'id', op: 'eq', value: '4' }, { field: 'id', op: 'eq', value: '5' }] }] };
         await page.evaluate(expression => (window as any).__WFS_MAP__.workspace.select(expression, 'Portable nested filter'), portable);
         await expect(page.locator('#filterStatus')).toContainText('2 matches');

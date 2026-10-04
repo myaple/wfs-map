@@ -98,7 +98,7 @@ export class Workspace {
         return group;
     }
     private markActive() { this.rules.querySelectorAll('.filter-group').forEach(g => g.classList.toggle('active-group', g === this.active)); }
-    addRule(group = this.active) {
+    addRule(group = this.active, rule?: Rule) {
         if (!group)
             return;
         const row = element('div');
@@ -106,24 +106,54 @@ export class Workspace {
         const field = element('select');
         field.setAttribute('aria-label', 'Attribute');
         field.append(...this.fields.map(f => option(f.name, `${f.name} (${f.kind})`)));
+        if (rule && !this.fields.some(f => f.name === rule.field)) field.append(option(rule.field));
+        if (rule) field.value = rule.field;
         const op = element('select');
         op.setAttribute('aria-label', 'Operator');
-        for (const [v, t] of [['eq', '='], ['ne', '≠'], ['gte', '≥'], ['lte', '≤'], ['gt', '>'], ['lt', '<'], ['contains', 'contains'], ['null', 'is null'], ['notnull', 'not null']])
+        for (const [v, t] of [['eq', '='], ['ne', '≠'], ['gte', '≥'], ['lte', '≤'], ['gt', '>'], ['lt', '<'], ['contains', 'contains'], ['null', 'is null'], ['notnull', 'not null'], ['in', 'is one of'], ['notin', 'is not one of']])
             op.append(option(v, t));
+        if (rule) op.value = rule.op;
         const input = element('input');
         input.placeholder = 'Value · YYYY-MM-DD HH:mm:ss UTC for dates';
         input.setAttribute('aria-label', 'Filter value');
-        op.onchange = () => input.disabled = ['null', 'notnull'].includes(op.value);
+        const setOp = () => ['in', 'notin'].includes(op.value);
+        input.value = rule ? setOp() ? JSON.stringify(rule.values ?? []) : this.fields.find(f => f.name === rule.field)?.kind === 'date' && rule.value && Number.isFinite(parseUTC(rule.value)) ? utcInput(rule.value) : rule.value ?? '' : '';
+        let wasSet = setOp();
+        const updateInput = () => {
+            input.disabled = ['null', 'notnull'].includes(op.value);
+            input.placeholder = setOp() ? '["first value", "second value"]' : 'Value · YYYY-MM-DD HH:mm:ss UTC for dates';
+            input.title = setOp() ? 'Category values as a JSON list of strings. Values may contain commas.' : '';
+            input.setCustomValidity('');
+        };
+        op.onchange = () => {
+            if (setOp() !== wasSet) {
+                if (setOp()) input.value = JSON.stringify([input.value]);
+                else { try { input.value = JSON.parse(input.value)[0] ?? ''; } catch { input.value = ''; } }
+            }
+            wasSet = setOp(); updateInput();
+        };
+        input.oninput = () => input.setCustomValidity('');
+        updateInput();
         row.append(field, op, input, button('×', () => { row.remove(); this.changed(); }));
         group.querySelector(':scope > .group-children')!.append(row);
+        return row;
     }
     private read(node: Element): Expression {
         if (node.classList.contains('filter-group'))
             return { op: (node.querySelector(':scope > .group-head > select') as HTMLSelectElement).value as 'and' | 'or', children: [...node.querySelector(':scope > .group-children')!.children].map(c => this.read(c)) };
-        if (node.classList.contains('selection'))
+        if ((node as any).expression)
             return (node as any).expression;
         const inputs = node.querySelectorAll('select,input');
         const field = (inputs[0] as HTMLSelectElement).value, op = (inputs[1] as HTMLSelectElement).value as Rule['op'], input = inputs[2] as HTMLInputElement;
+        if (['in', 'notin'].includes(op)) {
+            let values: unknown;
+            try { values = JSON.parse(input.value); } catch { /* Report invalid lists below. */ }
+            if (!Array.isArray(values) || !values.every(value => typeof value === 'string')) {
+                const message = 'Category values must be a JSON list of strings, such as ["station", "sensor"].';
+                input.setCustomValidity(message); input.reportValidity(); throw Error(message);
+            }
+            return { field, op, values };
+        }
         const date = this.fields.find(f => f.name === field)?.kind === 'date' && !['null', 'notnull'].includes(op) && Number.isFinite(parseUTC(input.value));
         const value = date ? utcISO(input.value) : input.value;
         if (date) input.value = utcInput(value);
@@ -134,18 +164,43 @@ export class Workspace {
     discardObservationSelections() {
         // Raw scatter observation indices belong to the previous loaded rows;
         // attribute predicates remain meaningful when server bounds change.
-        const hasRow = (expr: Expression): boolean => expr.op === 'row' || ('children' in expr && expr.children.some(hasRow));
-        for (const row of this.rules.querySelectorAll('.selection')) if (hasRow((row as any).expression)) row.remove();
+        for (const selection of this.rules.querySelectorAll('.selection, .observation-selection')) {
+            // Read only the immutable observation markers; unfinished attribute
+            // edits must not prevent discarding indices from the previous load.
+            if ([selection, ...selection.querySelectorAll('.rule')].some(row => (row as any).expression?.op === 'row')) {
+                if (selection.contains(this.active ?? null)) this.active = selection.parentElement?.closest<HTMLDivElement>('.filter-group') ?? undefined;
+                selection.remove();
+            }
+        }
+        this.markActive();
     }
-    select(expression: Expression, label: string) {
+    private appendExpression(group: HTMLDivElement, expression: Expression): HTMLElement {
+        if ('children' in expression) {
+            const nested = this.makeGroup(group.querySelector<HTMLElement>(':scope > .group-children')!, expression.op);
+            for (const child of expression.children) this.appendExpression(nested, child);
+            return nested;
+        }
+        if ('field' in expression) return this.addRule(group, expression)!;
+        // Observation indices and geographic boxes are not attribute predicates.
+        // Keep their exact semantics, displayed in the same compact control row.
+        const row = element('div'); row.className = expression.op === 'row' ? 'rule observation-selection' : 'rule';
+        (row as any).expression = structuredClone(expression);
+        const field = element('select'), op = element('select'), value = element('input');
+        field.setAttribute('aria-label', 'Attribute'); op.setAttribute('aria-label', 'Operator'); value.setAttribute('aria-label', 'Filter value');
+        field.append(option(expression.op, expression.op === 'row' ? 'Observation' : 'Map area'));
+        op.append(option(expression.op, expression.op === 'row' ? '=' : 'within'));
+        field.disabled = op.disabled = true; value.readOnly = true;
+        value.value = expression.op === 'row' ? String(expression.index) : `W ${expression.west}, S ${expression.south}, E ${expression.east}, N ${expression.north}`;
+        row.append(field, op, value, button('×', () => { row.remove(); this.changed(); }));
+        group.querySelector(':scope > .group-children')!.append(row);
+        return row;
+    }
+    select(expression: Expression, _label: string) {
         if (!this.active)
             return;
-        const row = element('div');
-        row.className = 'selection';
-        (row as any).expression = expression;
-        const text = element('span', label);
-        row.append(text, button('×', () => { row.remove(); this.changed(); }));
-        this.active.querySelector(':scope > .group-children')!.append(row);
+        const target = this.active;
+        this.appendExpression(target, expression).classList.add('selection');
+        this.active = target; this.markActive();
         this.changed();
     }
     addChart(type: ChartSpec['type'] = 'bar', x = this.fields[0]?.name, y?: string, saved?: ChartSpec) {
@@ -171,29 +226,9 @@ export class Workspace {
         for (const view of this.views.values()) view.destroy();
         this.views.clear(); this.owners.clear(); this.specs = []; this.results = [];
         this.rules.replaceChildren();
-        const build = (parent: HTMLElement, expr: Expression): HTMLDivElement => {
-            const isGroup = 'children' in expr;
-            const group = this.makeGroup(parent, isGroup ? expr.op : 'and');
-            const children = group.querySelector<HTMLElement>(':scope > .group-children')!;
-            for (const child of isGroup ? expr.children : [expr]) {
-                if ('children' in child) { build(children, child); continue; }
-                if ('field' in child && !['in', 'notin'].includes(child.op)) {
-                    this.addRule(group);
-                    const row = children.lastElementChild!, inputs = row.querySelectorAll('select,input');
-                    (inputs[0] as HTMLSelectElement).value = child.field;
-                    (inputs[1] as HTMLSelectElement).value = child.op;
-                    (inputs[2] as HTMLInputElement).value = this.fields.find(f => f.name === child.field)?.kind === 'date' && child.value && Number.isFinite(parseUTC(child.value)) ? utcInput(child.value) : child.value ?? '';
-                    (inputs[2] as HTMLInputElement).disabled = ['null', 'notnull'].includes(child.op);
-                } else {
-                    const row = element('div'); row.className = 'selection';
-                    (row as any).expression = structuredClone(child);
-                    row.append(element('span', 'Saved chart selection'), button('×', () => { row.remove(); this.changed(); }));
-                    children.append(row);
-                }
-            }
-            return group;
-        };
-        this.active = build(this.rules, expression); this.markActive();
+        const root = this.makeGroup(this.rules, 'children' in expression ? expression.op : 'and');
+        for (const child of 'children' in expression ? expression.children : [expression]) this.appendExpression(root, child);
+        this.active = root; this.markActive();
         for (const chart of charts) this.addChart(chart.type, chart.x, chart.y, chart);
     }
     private removeChart(id: string) {
