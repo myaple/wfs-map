@@ -40,7 +40,7 @@ services:
       context: ..
       target: test-frontend
       network: none
-    ports: ['127.0.0.1:${WFS_E2E_PORT:-8787}:8080']
+    ports: ['0.0.0.0:${WFS_E2E_PORT:-8899}:8080']
     depends_on: [api, fixture]
     healthcheck:
       test: [CMD-SHELL, 'wget -q -O - http://127.0.0.1:8080/api/me >/dev/null']
