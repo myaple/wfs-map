@@ -1,3 +1,4 @@
+import { MapLegend } from './map-legend.ts';
 import { mountThemeToggle, themeColor } from './theme.ts';
 import { formatUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
@@ -28,10 +29,11 @@ $('app').innerHTML = `
 <section id="configuration" hidden></section>
 <section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply only to this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="addRule" disabled>+ Add rule</button><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
 
-<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
+<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
 mountThemeToggle(document.querySelector('.topbar')!);
+const mapLegend = new MapLegend($('mapLegend'));
 type Source = {
     id: string;
     name: string;
@@ -64,6 +66,7 @@ type Source = {
     colorRequest: number;
     coloring: NonNullable<SavedSource['coloring']>;
     colorCategories?: string[];
+    colorLabels?: string[];
     colorLegend: string;
     metrics: Record<string, any>;
     status: string;
@@ -162,6 +165,7 @@ const pointColors = new PointColors(() => sources, (source, previous) => {
     sourceSettings.syncColoring(s); persist();
     if (s.fields.find(f => f.name === s.coloring.field)?.kind === 'number' && s.layer.colorCodes && previous.field === s.coloring.field && previous.bins === s.coloring.bins) s.layer.setPalette(s.coloring.low, s.coloring.high);
     else applyColors(s);
+    mapLegend.update(sources);
     map.triggerRepaint();
 });
 function applySettings(next: Settings, restore = false) {
@@ -264,6 +268,7 @@ function restoreMap() {
     const dialog = mapDialog;
     if (!dialog) return;
     mapDialog = undefined;
+    $('map').after($('mapLegend'));
     mapPlaceholder?.replaceWith(mapPanel); mapPlaceholder = undefined;
     dialog.close(); dialog.remove();
     enlargeMap.textContent = 'Enlarge';
@@ -284,6 +289,7 @@ enlargeMap.onclick = () => {
     dialog.className = 'map-dialog';
     dialog.setAttribute('aria-label', 'Enlarged map');
     document.body.append(dialog); dialog.append(mapPanel);
+    $('map').append($('mapLegend'));
     enlargeMap.textContent = 'Return to normal size';
     enlargeMap.setAttribute('aria-label', 'Return map to normal size');
     enlargeMap.setAttribute('aria-expanded', 'true');
@@ -319,6 +325,7 @@ function state() {
     if (exportSource?.enabled && exportSource.done && exportSource.metrics.truncated) csvStatus += ' · load limit reached; exports loaded points only';
     $('csvExportStatus').textContent = csvStatus;
     pointColors.update();
+    mapLegend.update(sources);
     hud();
 }
 function endpoint(config: Config) { return new URL(config.url, location.href).href; }
@@ -378,6 +385,7 @@ function clearSource(s: Source) {
     s.total = undefined;
     s.metrics = {};
     s.filterStatus = '';
+    s.colorLabels = s.colorCategories = undefined; s.colorLegend = '';
     s.status = 'Cleared. Load to resume analysis.';
     s.error = false;
     s.workspace.discardObservationSelections();
@@ -516,6 +524,7 @@ async function performLoad(s: Source) {
                 }
                 if (m.type === 'colored' && m.request === s.colorRequest) {
                     s.colorCategories = m.categories;
+                    s.colorLabels = m.categories ? undefined : m.axis.labels;
                     s.layer.setColors(m.codes, s.coloring.low, s.coloring.high, m.axis.labels.length, !!m.categories);
                     s.colorLegend = m.categories ? `${m.categories.length.toLocaleString()} unique values · grey = missing` : m.axis.labels.length ? `${m.axis.labels[0]} … ${m.axis.labels.at(-1)} · grey = missing` : 'No values';
                 }
@@ -713,7 +722,7 @@ function ensureSourcesLoaded() {
 }
 function applyColors(s: Source) {
     const request = ++s.colorRequest;
-    s.colorCategories = undefined;
+    s.colorCategories = s.colorLabels = undefined;
     if (s.done && s.coloring.field && !s.fields.some(f => f.name === s.coloring.field && ['number', 'string'].includes(f.kind))) {
         s.coloring = { ...s.coloring, field: '' }; sourceSettings.syncColoring(s); persist();
     }

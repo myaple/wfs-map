@@ -346,3 +346,7 @@ All time windows, date filters, charts, metadata, saved timestamps and CSV expor
 ### Appearance
 
 Use **Dark mode** in the page header to switch themes. The first visit follows your system preference; an explicit choice is saved in this browser and applies to the analysis picker, data sources, charts, map grid, legends and dialogs. Basemap tiles and analyst-configured point/banner colours retain their configured colours.
+
+### Map legend
+
+The map legend lists point colours for every enabled source below the normal map. Enlarging the map moves the same legend into a scrollable overlay; returning or pressing Escape puts it below the map again. It shows solid source colours, each numeric bin with its actual GPU palette colour, every category (including overrides), and grey missing values. Category domains remain fixed when filtering. Only visible legend rows are rendered, keeping large domains usable.
