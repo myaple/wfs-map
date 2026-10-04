@@ -77,7 +77,10 @@ test('removal can be undone and saved removal of the last loaded source releases
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
     expect(errors).toEqual([]);
 });
-test('start a test WFS separately and add it through the normal editor', async ({ page }) => {
+for (const withoutRandomUUID of [false, true]) {
+test(`start a test WFS separately and add it through the normal editor${withoutRandomUUID ? ' without crypto.randomUUID' : ''}`, async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+    if (withoutRandomUUID) await page.addInitScript(() => Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined }));
     await page.goto('/?time=all#configuration'); await page.locator('#testServer summary').click();
     await page.locator('#points').fill('96'); await page.locator('#distribution').selectOption('dense');
     await page.locator('#startTestServer').click(); await expect(page.locator('#testServerStatus')).toContainText('is running');
@@ -93,7 +96,10 @@ test('start a test WFS separately and add it through the normal editor', async (
     await page.locator('#analysisLink').click(); await expect(page.locator('#hud')).toContainText('Loaded 96');
     await page.reload(); await page.locator('#load').click(); await page.waitForFunction(() => (window as any).__WFS_MAP__.done);
     await expect(page.locator('#hud')).toContainText('Loaded 96');
+    await expect(page.locator('.chart-card')).toHaveCount(3);
+    expect(errors).toEqual([]);
 });
+}
 test('validation and storage failure leave drafts available without changing running sources', async ({ page }) => {
     await page.goto('/?time=all#configuration'); await add(page);
     await page.locator('#backgroundSettings summary').click(); await page.locator('#basemapURL').fill('javascript:bad');

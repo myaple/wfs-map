@@ -1,3 +1,4 @@
+import { createUUID } from './uuid.ts';
 import { configurationState, type SourceAnalysis } from './analysis-state.ts';
 import { currentAnalysis, mountAnalysisControls, rememberBindings } from './saved-analysis.ts';
 import { fileUser } from './source-storage.ts';
@@ -98,7 +99,7 @@ function createSource(input: {
         number
     ];
 }, existing = false): Source {
-    const id = input.id ?? crypto.randomUUID(), rules = existing ? $('rules') : document.createElement('div'), charts = $('charts');
+    const id = input.id ?? createUUID(), rules = existing ? $('rules') : document.createElement('div'), charts = $('charts');
     rules.id = 'rules';
     charts.id = 'charts';
     charts.setAttribute('aria-live', 'polite');
@@ -119,7 +120,7 @@ function createSource(input: {
 if (!settings.sources.length && (params.has('points') || params.has('url'))) {
     const url = new URL(params.get('url') ?? '/wfs', location.href);
     for (const key of ['points', 'distribution']) if (params.has(key)) url.searchParams.set(key, params.get(key)!);
-    settings.sources.push({ id: crypto.randomUUID(), name: 'WFS source', enabled: true, config: { ...defaultConfig, url: url.href, layer: params.get('layer') ?? 'demo:points' } });
+    settings.sources.push({ id: createUUID(), name: 'WFS source', enabled: true, config: { ...defaultConfig, url: url.href, layer: params.get('layer') ?? 'demo:points' } });
 }
 for (const [i, source] of settings.sources.entries()) createSource(source, i === 0);
 filterSourceId = filterSource()?.id ?? '';

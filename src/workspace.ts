@@ -1,3 +1,4 @@
+import { createUUID } from './uuid.ts';
 import { ChartInteraction, plotRect, drawAxes, pieSegments, type Point, type View } from './chart-plot.ts';
 import { RawScatter } from './raw-scatter.ts';
 import type { Field, Rule } from './data.ts';
@@ -138,7 +139,7 @@ export class Workspace {
     addChart(type: ChartSpec['type'] = 'bar', x = this.fields[0]?.name, y?: string, saved?: ChartSpec) {
         if (!x || this.specs.length >= 12)
             return;
-        const spec: ChartSpec = saved ? structuredClone(saved) : { id: `chart-${crypto.randomUUID()}`, type, x, y, bins: 24 };
+        const spec: ChartSpec = saved ? structuredClone(saved) : { id: `chart-${createUUID()}`, type, x, y, bins: 24 };
         this.charts.querySelector('.empty')?.remove();
         this.specs.push(spec);
         const owner = { workspace: this };
