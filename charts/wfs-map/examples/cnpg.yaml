@@ -1,0 +1,33 @@
+# The CNPG operator and CRDs must already be installed.
+# This example owns a Cluster through extraResources; no database dependency.
+externalDatabase:
+  existingSecret: "{{ .Release.Name }}-db-app"
+  existingSecretUrlKey: uri
+extraResources:
+  - apiVersion: postgresql.cnpg.io/v1
+    kind: Cluster
+    metadata:
+      name: "{{ .Release.Name }}-db"
+      namespace: "{{ include \"wfs-map.namespace\" . }}"
+      annotations:
+        # Helm uninstall must not delete this data-bearing resource.
+        helm.sh/resource-policy: keep
+    spec:
+      instances: 3
+      # Choose a PostGIS operand image compatible with your CNPG installation.
+      imageName: ghcr.io/cloudnative-pg/postgis:18.4-3.6.2-system-trixie
+      storage:
+        size: 10Gi
+      bootstrap:
+        initdb:
+          database: wfs
+          owner: wfs
+          # Enable as superuser before the app's non-superuser migration runs.
+          postInitApplicationSQL:
+            - CREATE EXTENSION IF NOT EXISTS postgis;
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          memory: 1Gi

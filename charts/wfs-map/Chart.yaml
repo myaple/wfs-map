@@ -1,0 +1,11 @@
+apiVersion: v2
+name: wfs-map
+description: WFS analysis UI and API with externally managed PostgreSQL/PostGIS
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/myaple/wfs-map
+sources:
+  - https://github.com/myaple/wfs-map
+# Intentionally no dependencies: database/operator lifecycle belongs to the cluster.

@@ -1,0 +1,41 @@
+name: Helm chart
+
+on:
+  push:
+    paths: ['charts/**', 'scripts/test-helm.py', '.github/workflows/helm.yml']
+  pull_request:
+    paths: ['charts/**', 'scripts/test-helm.py', '.github/workflows/helm.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.19.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install PyYAML==6.0.3
+      - name: Install pinned kubeconform
+        run: |
+          curl -fsSL --retry 3 -o kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
+          curl -fsSL --retry 3 -o CHECKSUMS https://github.com/yannh/kubeconform/releases/download/v0.7.0/CHECKSUMS
+          grep ' kubeconform-linux-amd64.tar.gz$' CHECKSUMS | sed 's/kubeconform-linux-amd64.tar.gz/kubeconform.tar.gz/' | sha256sum -c -
+          tar --no-same-owner -xzf kubeconform.tar.gz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+      - name: Lint defaults and deployment examples
+        run: |
+          helm lint charts/wfs-map --strict
+          helm lint charts/wfs-map --strict -f charts/wfs-map/examples/external-postgres.yaml
+          helm lint charts/wfs-map --strict -f charts/wfs-map/examples/cnpg.yaml
+      - name: Render contracts and strict Kubernetes schema validation
+        run: python scripts/test-helm.py
+        env:
+          KUBECONFORM: /usr/local/bin/kubeconform
+      - name: Package chart
+        run: helm package charts/wfs-map --destination /tmp/charts

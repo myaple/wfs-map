@@ -1,0 +1,160 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wfs-map.fullname" . }}
+  namespace: {{ include "wfs-map.namespace" . }}
+  labels:
+    {{- include "wfs-map.labels" . | fromYaml | mergeOverwrite (deepCopy .Values.deploymentLabels) | toYaml | nindent 4 }}
+  {{- with mergeOverwrite (deepCopy .Values.commonAnnotations) .Values.deploymentAnnotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
+  strategy: {{- toYaml .Values.updateStrategy | nindent 4 }}
+  selector:
+    matchLabels: {{- include "wfs-map.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "wfs-map.labels" . | fromYaml | mergeOverwrite (deepCopy .Values.podLabels) | toYaml | nindent 8 }}
+      annotations:
+        {{- $checksums := dict "checksum/config" (include (print $.Template.BasePath "/configmap.yaml") . | sha256sum) "checksum/database" (include (print $.Template.BasePath "/secret.yaml") . | sha256sum) }}
+        {{- toYaml (mergeOverwrite (deepCopy .Values.commonAnnotations) .Values.podAnnotations $checksums) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "wfs-map.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.automountServiceAccountToken }}
+      enableServiceLinks: {{ .Values.enableServiceLinks }}
+      hostNetwork: {{ .Values.hostNetwork }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- if .Values.podSecurityContext.enabled }}
+      securityContext: {{- omit .Values.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- $pullSecrets := concat .Values.global.imagePullSecrets .Values.image.pullSecrets }}
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- range $pullSecrets }}
+        - name: {{ if kindIs "string" . }}{{ . | quote }}{{ else }}{{ .name | quote }}{{ end }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with .Values.runtimeClassName }}
+      runtimeClassName: {{ . | quote }}
+      {{- end }}
+      {{- with .Values.schedulerName }}
+      schedulerName: {{ . | quote }}
+      {{- end }}
+      {{- if or .Values.dnsPolicy .Values.hostNetwork }}
+      dnsPolicy: {{ default "ClusterFirstWithHostNet" .Values.dnsPolicy }}
+      {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.hostAliases }}
+      hostAliases: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 8 }}
+      {{- end }}
+      {{- with .Values.initContainers }}
+      initContainers: {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: wfs-map
+          image: {{ include "wfs-map.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.containerSecurityContext.enabled }}
+          securityContext: {{- omit .Values.containerSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- with .Values.command }}
+          command: {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 12 }}
+          {{- end }}
+          {{- with .Values.args }}
+          args: {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 12 }}
+          {{- end }}
+          {{- with .Values.workingDir }}
+          workingDir: {{ . | quote }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.containerPort }}
+              protocol: TCP
+            {{- with .Values.extraContainerPorts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "wfs-map.fullname" . }}
+            {{- with .Values.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ tpl . $ | quote }}
+            {{- end }}
+            {{- with .Values.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ tpl . $ | quote }}
+            {{- end }}
+            {{- with .Values.extraEnvFrom }}
+            {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 12 }}
+            {{- end }}
+          env:
+            {{- $db := .Values.externalDatabase }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  {{- if and $db.existingSecret $db.existingSecretUrlKey }}
+                  name: {{ include "wfs-map.databaseSecretName" . | quote }}
+                  key: {{ $db.existingSecretUrlKey | quote }}
+                  {{- else }}
+                  name: {{ printf "%s-database" (include "wfs-map.fullname" .) | trunc 63 | trimSuffix "-" }}
+                  key: DATABASE_URL
+                  {{- end }}
+            {{- if not (and $db.existingSecret $db.existingSecretUrlKey) }}
+            {{- if or $db.existingSecret (not $db.url) $db.password }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wfs-map.databaseSecretName" . | quote }}
+                  key: {{ if $db.existingSecret }}{{ $db.existingSecretPasswordKey | quote }}{{ else }}PGPASSWORD{{ end }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraEnvVars }}
+            {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 12 }}
+            {{- end }}
+          {{- range $name := list "startupProbe" "readinessProbe" "livenessProbe" }}
+          {{- $probe := index $.Values $name }}
+          {{- if $probe.enabled }}
+          {{ $name }}: {{- omit $probe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.lifecycleHooks }}
+          lifecycle: {{- include "wfs-map.render" (dict "value" .Values.lifecycleHooks "context" $) | nindent 12 }}
+          {{- else if .Values.gracefulShutdown.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep {{ .Values.gracefulShutdown.delaySeconds }}; kill -INT 1"]
+          {{- end }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.extraVolumeMounts }}
+          volumeMounts: {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 12 }}
+          {{- end }}
+        {{- with .Values.sidecars }}
+        {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 8 }}
+        {{- end }}
+      {{- with .Values.extraVolumes }}
+      volumes: {{- include "wfs-map.render" (dict "value" . "context" $) | nindent 8 }}
+      {{- end }}

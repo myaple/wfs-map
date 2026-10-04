@@ -1,0 +1,217 @@
+# Names and metadata. Common labels cannot override the Deployment selector.
+nameOverride: ""
+fullnameOverride: ""
+namespaceOverride: ""
+commonLabels: {}
+commonAnnotations: {}
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+image:
+  registry: ghcr.io
+  repository: myaple/wfs-map
+  # Pin sha-<short commit> or a digest for reproducible deployments.
+  tag: latest
+  digest: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+replicaCount: 1
+revisionHistoryLimit: 10
+updateStrategy:
+  type: RollingUpdate
+minReadySeconds: 0
+deploymentLabels: {}
+deploymentAnnotations: {}
+
+app:
+  containerPort: 8787
+  bindAddress: 0.0.0.0
+  assetDir: /app/dist
+  auth:
+    # In proxy mode the gateway MUST authenticate and replace the identity header.
+    mode: proxy
+    userIdHeader: x-user-id
+    developmentUser: local-analyst
+  banner:
+    text: ""
+    background: "#eaf0f4"
+  # Additional non-secret environment entries in the managed ConfigMap.
+  extraConfig: {}
+
+# External database ONLY. No PostgreSQL/PostGIS subchart, StatefulSet or PVC.
+# Default: a pre-existing Secret with a complete libpq URI (CNPG uses key 'uri').
+# All Secret references must be in the release namespace.
+externalDatabase:
+  existingSecret: wfs-map-database
+  existingSecretUrlKey: uri
+  # Password-only Secret mode: set UrlKey to "", set host/user/database and this key.
+  existingSecretPasswordKey: ""
+  # Alternatively clear existingSecret and provide a full URI or the fields below.
+  # Inline credentials are stored in a chart-managed Secret and Helm release history.
+  url: ""
+  host: ""
+  port: 5432
+  username: wfs
+  database: wfs
+  password: ""
+  sslMode: prefer
+  # libpq URI query parameters, e.g. sslrootcert: /etc/postgres/ca.crt
+  parameters: {}
+  secretAnnotations: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+  labels: {}
+  annotations: {}
+# Pod token setting is explicit even when using an existing ServiceAccount.
+automountServiceAccountToken: false
+
+podLabels: {}
+podAnnotations: {}
+podSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  enabled: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+# Set either context's enabled to false to remove it; use null
+# to remove a merged default field (e.g. runAsUser: null on OpenShift).
+resources: {}
+command: []
+args: []
+workingDir: ""
+lifecycleHooks: {}
+terminationGracePeriodSeconds: 30
+# Current server handles SIGINT for graceful shutdown.
+gracefulShutdown:
+  enabled: true
+  delaySeconds: 5
+
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 60
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 2
+  failureThreshold: 3
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 20
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+# Templated with the root Helm context; values can reference .Release.Name.
+extraEnvVars: []
+extraEnvVarsCM: ""
+extraEnvVarsSecret: ""
+extraEnvFrom: []
+extraVolumes: []
+extraVolumeMounts: []
+initContainers: []
+sidecars: []
+extraContainerPorts: []
+
+nodeSelector: {}
+affinity: {}
+tolerations: []
+topologySpreadConstraints: []
+priorityClassName: ""
+runtimeClassName: ""
+schedulerName: ""
+hostAliases: []
+hostNetwork: false
+dnsPolicy: ""
+dnsConfig: {}
+enableServiceLinks: false
+
+service:
+  type: ClusterIP
+  port: 80
+  # Named app port by default; override for an authentication sidecar if needed.
+  targetPort: http
+  nodePort: null
+  clusterIP: ""
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  externalTrafficPolicy: ""
+  internalTrafficPolicy: ""
+  sessionAffinity: None
+  sessionAffinityConfig: {}
+  ipFamilyPolicy: ""
+  ipFamilies: []
+  extraPorts: []
+  labels: {}
+  annotations: {}
+
+# One ingress routes / (including /api and all UI pages) without path rewriting.
+# Controller-specific auth/TLS/body-size configuration belongs in annotations.
+ingress:
+  enabled: false
+  className: ""
+  labels: {}
+  annotations: {}
+  hosts:
+    - host: wfs-map.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  extraRules: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: null
+  # Non-empty metrics replaces the built-in CPU/memory metrics.
+  metrics: []
+  behavior: {}
+
+pdb:
+  enabled: false
+  minAvailable: 1
+  # Set minAvailable: null when configuring maxUnavailable.
+  maxUnavailable: null
+  unhealthyPodEvictionPolicy: ""
+
+# Disabled by default because gateway and database selectors are cluster-specific.
+# When enabled, empty rules deny all ingress/egress. Explicitly allow gateway ->
+# app, app -> PostgreSQL and DNS. WFS/CSV data fetches happen in the browser.
+networkPolicy:
+  enabled: false
+  labels: {}
+  annotations: {}
+  ingress: []
+  egress: []
+
+# Arbitrary templated Kubernetes resources (objects or YAML strings).
+# Useful for CNPG Cluster/Database/Pooler, ExternalSecret, certificates, etc.
+# CRDs/operators must already be installed. Helm owns these resources; use a
+# helm.sh/resource-policy: keep annotation for data-bearing resources.
+extraResources: []
