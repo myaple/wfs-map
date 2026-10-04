@@ -117,7 +117,7 @@ async function load(c: Config) {
 async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: string) {
     const start = performance.now();
     if (!config.csvText && config.csvRef) config.csvText = await readCSVText(config.csvRef, fileUser);
-    const dataset = csvDataset(config, bounds), total = dataset.features.length;
+    const dataset = csvDataset(config, bounds, (stage, completed, total) => post({ type: 'csvProgress', stage, completed, total })), total = dataset.features.length;
     store = new Store(dataset.fields);
     post({ type: 'init', capacity: total, total });
     post({ type: 'fields', fields: store.fields });
@@ -131,7 +131,7 @@ async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: str
         await new Promise(resolve => setTimeout(resolve, 0));
     }
     store.finish(); analyzer = new Analyzer(store);
-    post({ type: 'done', loaded: total, total, bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false });
+    post({ type: 'done', loaded: total, total, bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false, accepted: dataset.accepted, rejected: dataset.rejected, warning: dataset.rejected ? `${dataset.accepted.toLocaleString()} valid records; ${dataset.rejected.toLocaleString()} invalid records quarantined. Configure this source to review and download diagnostics.` : '' });
 }
 ctx.onmessage = (event: MessageEvent) => {
     const m = event.data;

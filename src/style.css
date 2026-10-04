@@ -640,7 +640,7 @@ button.danger { color: var(--danger); }
 .query-area button { padding: 6px 10px; font-size: 12px; }
 @media(max-width:600px) { .query-panel { padding: 12px; } .query-controls { gap: 8px; } #customTime { flex-basis: 100%; } #customTime label { width: 100%; } }
 
-.source-type-fields { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 8px; }
+.source-type-fields { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 
 .chart-header > div:first-child { min-width: 0; flex: 1 1 85px; overflow-wrap: anywhere; }
 .chart-source-name { display: block; }
@@ -740,3 +740,13 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .map-dialog .map-legend { position: absolute; top: 10px; left: 10px; z-index: 2; width: min(290px, calc(100% - 64px)); max-height: calc(100% - 65px); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 2px 8px #0003; display: flex; flex-direction: column; }
 .map-dialog .map-legend-viewport { max-height: 330px; min-height: 0; }
 @media(max-width:600px) { .map-dialog .map-legend { width: min(230px, calc(100% - 64px)); } .map-dialog .map-legend-viewport { max-height: 180px; } }
+
+.csv-review { min-width: 0; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; }
+.csv-review .row { flex-wrap: wrap; }
+.csv-table-scroll { max-width: 100%; overflow: auto; max-height: 300px; margin-top: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.csv-review table { border-collapse: collapse; font-size: 12px; width: 100%; }
+.csv-review th, .csv-review td { padding: 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.csv-review th { position: sticky; top: 0; background: var(--surface); }
+.csv-review td { min-width: 90px; max-width: 240px; overflow-wrap: anywhere; }
+.csv-review select { min-width: 130px; }
+#csvMissingValues { width: 100%; padding: 8px; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }

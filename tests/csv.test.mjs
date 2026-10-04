@@ -34,3 +34,54 @@ test('CSV Point geometry formats and invalid rows fail with row context', () => 
     assert.throws(() => csvDataset(config('lon,lat,t\n-1,54,bad', { timeField: 't' })), /row 2.*Invalid ISO/);
     assert.throws(() => csvDataset(config('geom\nLINESTRING (0 0, 1 1)', { geometryMode: 'wkt', geometryField: 'geom' })));
 });
+
+test('CSV review preserves IDs, casts explicitly, counts missing tokens and quarantines every invalid record', async () => {
+    const { previewCSV } = await import('../src/csv.ts');
+    const text = '\uFEFFlon,lat,id,value,active,when\r\n-1,54,000123,2,TRUE,2026-10-01 12:30\r\n-2,53,000124,N/A,false,2026-10-01T14:30+02:00\r\n-3,52,000125,bad,yes,2026-02-30\r\n-4,95,000126,4,true,2026-10-02\r\n-5,51,000127,,false,\r\n';
+    const c = config(text, { timeField: 'when', csvTypes: JSON.stringify({ id: 'string', value: 'number', active: 'boolean' }), csvInvalidRows: 'quarantine' });
+    const preview = previewCSV(c), loaded = csvDataset(c);
+    assert.deepEqual([preview.total, preview.accepted, preview.rejected], [5, 3, 2]);
+    assert.deepEqual([loaded.accepted, loaded.rejected], [3, 2]);
+    assert.deepEqual(loaded.features.map(f => f.id), ['csv.2', 'csv.3', 'csv.6']);
+    assert.deepEqual(loaded.features.map(f => f.properties.id), ['000123', '000124', '000127']);
+    assert.equal(preview.inferred.find(f => f.name === 'id').kind, 'string');
+    assert.equal(preview.missing[3], 2); assert.equal(preview.failed[3], 1);
+    assert.equal(preview.failed[4], 1); assert.equal(preview.failed[5], 1);
+    assert.equal(loaded.features[1].properties.value, null);
+    assert.equal(loaded.features[0].properties.when, loaded.features[1].properties.when);
+    assert.equal(c.csvText, text);
+    const diagnostics = parseCSV(await preview.diagnostics.text());
+    assert.equal(diagnostics.rows.length, 4); // all three casts in record 4 plus record 5's geometry
+    assert.deepEqual([...new Set(diagnostics.rows.map(r => r[0]))], ['4', '5']);
+    assert.ok(diagnostics.rows.every(r => JSON.parse(r[4]).length === 6));
+    assert.throws(() => csvDataset({ ...c, csvInvalidRows: 'reject' }), /CSV row 4/);
+    const store = new Store(loaded.fields); store.append(loaded.features); store.finish();
+    const { exportCSV } = await import('../src/csv-export.ts');
+    const exported = parseCSV(await (await exportCSV(store, null)).text());
+    assert.deepEqual(exported.rows.map(r => r[5]), ['000123', '000124', '000127']);
+    assert.deepEqual(csvDataset(structuredClone(c)), loaded);
+});
+test('CSV missing tokens support numeric inference; explicit casts do not silently coerce values', async () => {
+    const { previewCSV } = await import('../src/csv.ts');
+    const c = config('lon,lat,id,value\n-1,54,000123,2\n-2,53,000124,N/A\n-3,52,000125,');
+    assert.equal(csvDataset(c).fields.find(f => f.name === 'value').kind, 'number');
+    assert.equal(csvDataset(c).features[0].properties.id, '000123');
+    assert.equal(csvDataset({ ...c, csvTypes: '{"id":"number"}' }).features[0].properties.id, 123);
+    assert.equal(csvDataset({ ...c, csvMissingValues: '[""]' }).fields.find(f => f.name === 'value').kind, 'string');
+    const custom = config('lon,lat,value\n-1,54,  missing  \n-2,53,Missing\n-3,52,0x10\n-4,51,Infinity', { csvTypes: '{"value":"number"}', csvMissingValues: '["missing"]', csvInvalidRows: 'quarantine' });
+    const preview = previewCSV(custom);
+    assert.equal(preview.missing[2], 1); assert.equal(preview.failed[2], 3);
+    assert.deepEqual(csvDataset(custom).features.map(f => f.properties.value), [null]);
+    assert.throws(() => csvDataset({ ...c, csvTypes: '{"id":"string"}', timeField: 'id' }), /date\/time type/);
+    for (const overrides of ['[]', '{"id":"wat"}', '{"id":{}}']) assert.throws(() => csvDataset({ ...c, csvTypes: overrides }));
+});
+test('quarantine handles wrong-width and empty records, preserves logical record IDs and reserves malformed quoting', async () => {
+    const { previewCSV } = await import('../src/csv.ts');
+    const c = config('lon,lat,label\n-1,54,"line 1\nline 2"\n\n-2,53\n,,\n-3,52,last', { csvInvalidRows: 'quarantine' });
+    const preview = previewCSV(c), loaded = csvDataset(c);
+    assert.deepEqual([preview.accepted, preview.rejected], [2, 2]);
+    assert.deepEqual(loaded.features.map(f => f.id), ['csv.2', 'csv.6']);
+    assert.deepEqual(parseCSV(await preview.diagnostics.text()).rows.map(r => r[0]), ['4', '5']);
+    assert.throws(() => previewCSV(config('lon,lat\n"bad,54', { csvInvalidRows: 'quarantine' })), /unterminated/);
+    assert.equal(csvDataset(config('lon,lat,constructor,__proto__\n-1,54,label,001')).features[0].properties.constructor, 'label');
+});

@@ -31,3 +31,13 @@ test('portable nested filters round-trip with their exact group semantics',()=>{
     saved.children.pop();
     assert.equal(e.children.length,2);
 });
+
+test('saved analyses retain CSV schema and choices without preview, diagnostics or raw records', () => {
+    const config = { ...defaultConfig, type: 'csv', csvText: 'lon,lat,id\n-1,54,SECRET_ROW', csvRef: 'local', longitudeField: 'lon', latitudeField: 'lat', csvTypes: '{"id":"string"}', csvMissingValues: '["","N/A"]', csvInvalidRows: 'quarantine' };
+    const settings = { sources: [{ id: 'csv', name: 'CSV', enabled: true, config, preview: { raw: 'SECRET_ROW' }, diagnostics: 'SECRET_ROW' }], background: { url: '', attribution: '', enabled: false } };
+    const remote = configurationState(settings, { choice: 'all', bounds: {} }, []);
+    const restored = localSettings(remote).sources[0].config;
+    for (const key of ['longitudeField', 'latitudeField', 'csvTypes', 'csvMissingValues', 'csvInvalidRows']) assert.equal(restored[key], config[key]);
+    const json = JSON.stringify(remote);
+    assert(!json.includes('SECRET_ROW')); assert(!json.includes('preview')); assert(!json.includes('diagnostics')); assert(!json.includes('csvText'));
+});

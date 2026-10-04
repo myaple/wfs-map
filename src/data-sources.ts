@@ -1,7 +1,11 @@
+Warning: truncated output (original token count: 11859)
+Total output lines: 526
+
 import { createUUID } from './uuid.ts';
 import { currentAnalysis } from './saved-analysis.ts';
 import { readCSVText, saveSettings } from './source-storage.ts';
-import { parseCSV } from './csv.ts';
+import type { CSVPreview } from './csv.ts';
+import { csvOptionDefaults, type CSVKind } from './csv-options.ts';
 import { createBackup, readBackup } from './source-backup.ts';
 import { wfsURL, xmlDocument } from './data.ts';
 import { configKeys, defaultConfig, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
@@ -15,6 +19,12 @@ export class DataSources {
     private capabilities?: Document;
     private csvText = '';
     private csvRef = '';
+    private csvHeaders: string[] = [];
+    private csvTypes: Record<string, CSVKind> = {};
+    private csvWorker?: Worker;
+    private csvRequest = 0;
+    private csvReport?: CSVPreview;
+    private csvParsing = false;
     private saving = false;
     private fileName = '';
     private fileRevision = 0;
@@ -58,13 +68,27 @@ export class DataSources {
             <div id="csvXY" class="settings-fields"><label for="longitudeField">Longitude column</label><select id="longitudeField" required></select><label for="latitudeField">Latitude column</label><select id="latitudeField" required></select></div>
             <div id="csvPoint" class="settings-fields" hidden><label for="csvGeometry">Geometry column</label><select id="csvGeometry"></select></div>
             <label for="csvTime">Time attribute (optional)</label><select id="csvTime"></select><p class="hint">ISO 8601 dates/times, using a 24-hour clock. Times without a timezone are assumed UTC; explicit offsets are converted to UTC. Use All time when no time column is selected. Coordinates must be longitude/latitude in WGS84; only points are supported.</p>
+            <label for="csvMissingValues">Missing-value tokens (one per line)</label><textarea id="csvMissingValues" rows="3" spellcheck="false" aria-describedby="csvMissingHelp"></textarea><p id="csvMissingHelp" class="hint">Blank or whitespace-only cells are always missing. Other tokens are trimmed and case sensitive; defaults include N/A, NA and NULL.</p>
+            <label for="csvInvalidRows">Invalid records</label><select id="csvInvalidRows"><option value="reject">Reject entire import if any record is invalid</option><option value="quarantine">Quarantine invalid records; import valid records only</option></select><p class="hint">Invalid records stay in the original file but are excluded from maps, plots and filtered exports. Malformed quoting or headers always require fixing the file.</p>
+            <section class="csv-review" aria-labelledby="csvReviewTitle"><h3 id="csvReviewTitle">Review import</h3><p id="csvReviewStatus" role="status" aria-live="polite">Choose a file to preview.</p><div class="row"><button type="button" id="refreshCSV">Review file</button><button type="button" id="cancelCSV" hidden>Cancel review</button><button type="button" id="csvDiagnostics" disabled>Download diagnostics</button></div><p class="hint">Full-file validation runs locally. Record numbers count the header as 1; quoted newlines stay within their record. Text preserves leading zeros. Date/time values use UTC.</p><div class="csv-table-scroll" tabindex="0" aria-label="Column schema"><table id="csvSchema"></table></div><details id="csvRecordPreview" open><summary>Representative records — raw → interpreted</summary><div class="csv-table-scroll" tabindex="0" aria-label="Representative CSV records"><table id="csvSamples"></table></div></details></section>
             <p class="hint">The imported file is saved in this browser with its settings. Available storage depends on your browser and device; a save error leaves your existing saved sources intact.</p>
           </fieldset>
           <p id="sourceError" class="error" role="alert" hidden></p>
         </div><div class="source-dialog-footer"><span class="hint">Save changes on the page to apply.</span><button id="cancelSource" type="button">Cancel</button><button id="updateSource" class="primary" type="submit">Add to list</button></div></form></dialog>`;
         $('type').onchange = () => { this.stopDiscovery(); this.showType(); };
-        $('geometryMode').onchange = () => this.showGeometry();
-        $('delimiter').onchange = () => { try { this.csvColumns(); } catch (e) { this.showError(e); } };
+        $('geometryMode').onchange = () => { this.showGeometry(); this.reviewCSV(); };
+        $('delimiter').onchange = () => this.inspectCSV();
+        for (const id of ['longitudeField', 'latitudeField', 'csvGeometry', 'csvTime', 'csvInvalidRows']) $(id).onchange = () => this.reviewCSV();
+        $('csvMissingValues').oninput = () => { this.csvRequest++; this.csvReport = undefined; this.csvSubmitState(); $<HTMLButtonElement>('csvDiagnostics').disabled = true; $('csvReviewStatus').textContent = 'Missing-value tokens changed. Leave this field or click Review file to validate.'; };
+        $('csvMissingValues').onchange = () => this.reviewCSV();
+        $('refreshCSV').onclick = () => {
+            if (this.csvText) this.inspectCSV();
+            else if (input('csvFile').files?.length) void this.readCSV();
+            else if (this.csvRef) void this.restoreCSV(this.config(), this.fileRevision);
+            else this.showError(Error('Choose a CSV file.'));
+        };
+        $('cancelCSV').onclick = () => this.cancelCSV();
+        $('csvDiagnostics').onclick = () => { if (this.csvReport) this.downloadCSVReport(this.csvReport.diagnostics); };
         $('csvFile').onchange = () => void this.readCSV();
         $('exportBackup').onclick = () => void this.exportBackup();
         $('importBackup').onclick = () => input('backupFile').click();
@@ -145,95 +169,7 @@ export class DataSources {
     }
     private cancelBackup() {
         if (this.backupBusy) return;
-        this.pendingBackup = undefined; $<HTMLDialogElement>('backupDialog').close();
-    }
-    private async restoreBackup() {
-        if (!this.pendingBackup || this.backupBusy || this.saving) return;
-        this.setBackupBusy(true); $('restoreError').hidden = true;
-        try {
-            const saved = await saveSettings(this.pendingBackup);
-            this.saved = structuredClone(saved); this.draft = structuredClone(saved); this.removed = undefined;
-            this.pendingBackup = undefined; this.csvText = '';
-            input('basemapURL').value = saved.background.url; input('basemapAttribution').value = saved.background.attribution;
-            this.apply(structuredClone(saved), true); this.render();
-            $<HTMLDialogElement>('backupDialog').close(); $('backupStatus').textContent = 'Backup restored and saved in this browser.';
-        } catch (e) { $('restoreError').textContent = `Could not restore backup: ${(e as Error).message}`; $('restoreError').hidden = false; }
-        finally { this.setBackupBusy(false); }
-    }
-    private updateState() {
-        const dirty = JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved));
-        $('saveState').textContent = dirty ? 'Unsaved changes' : 'All changes saved';
-        $<HTMLButtonElement>('saveSettings').disabled = this.saving || !dirty;
-        $<HTMLButtonElement>('discardSettings').disabled = this.saving || !dirty;
-        $('saveError').hidden = true;
-        window.onbeforeunload = dirty ? e => { e.preventDefault(); e.returnValue = ''; } : null;
-    }
-    private render() {
-        const list = $('sourceList');
-        list.replaceChildren();
-        if (!this.draft.sources.length) {
-            const empty = document.createElement('li'); empty.className = 'source-empty';
-            empty.textContent = 'No data sources yet. Add a WFS endpoint or import a CSV file.'; list.append(empty);
-        }
-        for (const s of this.draft.sources) {
-            const row = document.createElement('li'); row.className = 'source-row'; row.dataset.sourceId = s.id;
-            const check = document.createElement('input'); check.type = 'checkbox'; check.checked = s.enabled; check.setAttribute('aria-label', 'Enable ' + s.name);
-            check.onchange = () => { s.enabled = check.checked; this.updateState(); };
-            const description = document.createElement('div'); description.className = 'source-description';
-            const name = document.createElement('strong'); name.textContent = s.name;
-            const url = document.createElement('span'); url.textContent = s.config.type === 'csv' ? `CSV · ${s.config.fileName}` : s.config.url; url.className = 'hint';
-            const layer = document.createElement('span'); layer.textContent = s.config.type === 'csv' ? (s.config.geometryMode === 'xy' ? `${s.config.longitudeField}, ${s.config.latitudeField}` : s.config.geometryField) : s.config.layer; layer.className = 'source-layer';
-            description.append(name, url, layer);
-            const actions = document.createElement('div'); actions.className = 'source-actions';
-            const configure = document.createElement('button'); configure.textContent = 'Configure'; configure.setAttribute('aria-label', 'Configure ' + s.name); configure.setAttribute('aria-haspopup', 'dialog'); configure.onclick = () => this.open(s.config, s.name, s);
-            const remove = document.createElement('button'); remove.textContent = 'Remove'; remove.className = 'danger'; remove.setAttribute('aria-label', 'Remove ' + s.name);
-            remove.onclick = () => { const index = this.draft.sources.indexOf(s); this.draft.sources.splice(index, 1); this.removed = { source: s, index }; this.render(); };
-            actions.append(configure, remove); row.append(check, description, actions); list.append(row);
-        }
-        $('sourceCount').textContent = `${this.draft.sources.length} / 8 sources`;
-        for (const id of ['addSource', 'addTestSource', 'undoRemove']) $<HTMLButtonElement>(id).disabled = this.draft.sources.length >= 8 || (id === 'addTestSource' && !input('testEndpoint').value);
-        $('sourceUndo').hidden = !this.removed;
-        $('removedName').textContent = this.removed ? `${this.removed.source.name} removed from the list.` : '';
-        this.updateState();
-    }
-    private open(config: Config = defaultConfig, name = '', source?: SavedSource) {
-        this.editing = source;
-        this.fileRevision++;
-        for (const key of configKeys) if (!['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField'].includes(key)) input(key).value = config[key];
-        this.csvRef = config.csvRef; this.csvText = config.csvText; this.fileName = config.fileName;
-        input('csvFile').value = '';
-        this.csvColumns(config);
-        this.showType();
-        input('sourceName').value = name;
-        $('sourceDialogTitle').textContent = source ? 'Configure data source' : 'Add data source';
-        $<HTMLButtonElement>('updateSource').disabled = false;
-        $('updateSource').textContent = source ? 'Update source' : 'Add to list';
-        this.stopDiscovery(); this.resetLayers(true);
-        $('sourceError').hidden = true; $('discoveryStatus').textContent = '';
-        $<HTMLDetailsElement>('wfsCompatibility').open = false;
-        $<HTMLDialogElement>('sourceDialog').showModal();
-        input('sourceName').focus();
-        if (config.type === 'csv' && config.csvRef && !config.csvText) void this.restoreCSV(config, this.fileRevision);
-    }
-    private async restoreCSV(config: Config, revision: number) {
-        $<HTMLButtonElement>('updateSource').disabled = true;
-        $('csvFileStatus').textContent = `Reading ${config.fileName}…`;
-        try {
-            const text = await readCSVText(config.csvRef);
-            if (revision !== this.fileRevision) return;
-            this.csvText = text; this.csvColumns(config);
-        } catch (e) { if (revision === this.fileRevision) this.showError(e); }
-        finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
-    }
-    private stopDiscovery() {
-        this.discovery?.abort(); this.discovery = undefined;
-        $<HTMLButtonElement>('discover').disabled = false;
-    }
-    private close() { this.fileRevision++; this.csvText = ''; this.editing = undefined; this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
-    private resetLayers(selectCurrent = false) {
-        this.capabilities = undefined;
-        const name = input('layer').value;
-        $('layerSelect').replaceChildren(...(selectCurrent && name ? [new Option(name, name)] : []), new Option('Custom layer name…', ''));
+        this.pendingBackup = undefined; $<HTMLDialogElement>('backupDialog').close(…1859 tokens truncated…), new Option('Custom layer name…', ''));
         this.showCustomLayer();
     }
     private showCustomLayer() {
@@ -266,7 +202,7 @@ export class DataSources {
         for (const [id, active] of [['wfsFields', !csv], ['csvFields', csv]] as const) {
             const fields = $<HTMLFieldSetElement>(id); fields.hidden = !active; fields.disabled = !active;
         }
-        this.showGeometry();
+        this.showGeometry(); this.csvSubmitState();
     }
     private showGeometry() {
         const xy = input('geometryMode').value === 'xy';
@@ -276,8 +212,8 @@ export class DataSources {
         $<HTMLSelectElement>('csvGeometry').required = !xy;
     }
     private csvColumns(config?: Config) {
-        const headers = this.csvText ? parseCSV(this.csvText, input('delimiter').value).headers : [];
-        const restoring = !this.csvText && !!this.csvRef;
+        const headers = this.csvHeaders;
+        const restoring = !headers.length && !!this.csvRef;
         for (const id of ['longitudeField', 'latitudeField', 'csvGeometry', 'csvTime']) {
             const select = $<HTMLSelectElement>(id), previous = config ? config[id === 'csvGeometry' ? 'geometryField' : id === 'csvTime' ? 'timeField' : id as 'longitudeField' | 'latitudeField'] : select.value;
             // Preserve saved mappings while IndexedDB loads the file, including
@@ -294,33 +230,117 @@ export class DataSources {
         $('csvFileStatus').textContent = this.fileName ? restoring ? `Reading ${this.fileName}…` : `${this.fileName} · ${headers.length} columns` : 'Choose a file to populate its columns.';
     }
     private showError(e: unknown) { $('sourceError').textContent = (e as Error).message; $('sourceError').hidden = false; }
-    private async readCSV() {
-        const file = input('csvFile').files?.[0], revision = ++this.fileRevision;
-        if (!file) return;
-        $<HTMLButtonElement>('updateSource').disabled = true;
-        try {
-            const text = await file.text();
-            if (revision !== this.fileRevision) return;
-            const parsed = parseCSV(text, input('delimiter').value);
-            if (this.editing?.config.type === 'csv') {
-                const mapped = ['longitudeField', 'latitudeField', 'geometryField', 'timeField'] as const;
-                const savedFields = currentAnalysis?.state.analyses.find(s => s.id === this.editing!.id)?.fields.map(f => f.name) ?? [];
-                const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields])].filter(k => k && !parsed.headers.includes(k));
-                if (missing.length) throw Error('The chosen CSV is missing configured columns: ' + missing.join(', '));
+    private downloadCSVReport(blob: Blob) {
+        const url = URL.createObjectURL(blob), link = document.createElement('a');
+        link.href = url; link.download = 'csv-import-diagnostics.csv'; link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    private csvSubmitState() {
+        if (input('type').value !== 'csv') { $<HTMLButtonElement>('updateSource').disabled = false; return; }
+        const report = this.csvReport;
+        $<HTMLButtonElement>('updateSource').disabled = this.csvParsing || !report || (report.rejected > 0 && input('csvInvalidRows').value === 'reject');
+    }
+    private cancelCSV() {
+        this.csvRequest++; this.fileRevision++;
+        this.csvWorker?.terminate(); this.csvWorker = undefined;
+        this.csvParsing = false; this.csvReport = undefined;
+        $('cancelCSV').hidden = true; $<HTMLButtonElement>('csvDiagnostics').disabled = true;
+        $('csvReviewStatus').textContent = 'Review cancelled. Click Review file to restart.';
+        this.csvSubmitState();
+    }
+    private inspectCSV(config?: Config) {
+        this.csvWorker?.terminate(); this.csvReport = undefined;
+        if (!this.csvText) { this.csvParsing = false; $('cancelCSV').hidden = true; this.csvSubmitState(); this.showError(Error('Choose a non-empty CSV file.')); return; }
+        this.csvParsing = true; this.csvSubmitState();
+        $('cancelCSV').hidden = false; $<HTMLButtonElement>('csvDiagnostics').disabled = true;
+        $('csvReviewStatus').textContent = 'Reading records…';
+        $('csvSchema').replaceChildren(); $('csvSamples').replaceChildren();
+        const worker = this.csvWorker = new Worker(new URL('./csv-preview-worker.ts', import.meta.url), { type: 'module' });
+        worker.onerror = e => { this.csvParsing = false; this.csvReport = undefined; this.showError(Error(e.message)); this.csvSubmitState(); $('cancelCSV').hidden = true; };
+        worker.onmessage = e => {
+            const m = e.data;
+            if (m.request !== this.csvRequest) return;
+            if (m.type === 'progress') $('csvReviewStatus').textContent = `${m.stage}… ${m.total ? Math.floor(m.completed / m.total * 100) : 100}%`;
+            if (m.type === 'headers') {
+                this.csvHeaders = m.headers;
+                const required = this.editing?.config.type === 'csv' ? [...Object.keys(this.csvTypes), ...['longitudeField', 'latitudeField', 'geometryField', 'timeField'].map(k => this.editing!.config[k as keyof Config]), ...(currentAnalysis?.state.analyses.find(s => s.id === this.editing!.id)?.fields.map(f => f.name) ?? [])] : [];
+                const missing = [...new Set(required)].filter(k => k && !this.csvHeaders.includes(k));
+                if (missing.length) {
+                    worker.terminate(); this.csvWorker = undefined; this.csvParsing = false; this.csvSubmitState(); $('cancelCSV').hidden = true;
+                    this.showError(Error('The chosen CSV is missing configured columns: ' + missing.join(', '))); return;
+                }
+                this.csvColumns(config); this.reviewCSV();
             }
+            if (m.type === 'preview') {
+                this.csvParsing = false; this.csvReport = m.report; $('sourceError').hidden = true;
+                $('cancelCSV').hidden = true; this.renderCSVReview(); this.csvSubmitState();
+            }
+            if (m.type === 'error') {
+                this.csvParsing = false; this.csvReport = undefined; this.csvSubmitState();
+                $('cancelCSV').hidden = true; $('csvReviewStatus').textContent = 'Review failed. Correct the file or import settings.'; this.showError(Error(m.message));
+            }
+        };
+        worker.postMessage({ type: 'parse', text: this.csvText, delimiter: input('delimiter').value, request: ++this.csvRequest });
+    }
+    private reviewCSV() {
+        this.csvReport = undefined; $<HTMLButtonElement>('csvDiagnostics').disabled = true;
+        $('csvSamples').replaceChildren();
+        if (!this.csvWorker || !this.csvHeaders.length) { this.csvSubmitState(); return; }
+        this.csvParsing = true; this.csvSubmitState(); $('cancelCSV').hidden = false;
+        $('csvReviewStatus').textContent = 'Validating records…';
+        this.csvWorker.postMessage({ type: 'preview', config: { ...this.config(), csvText: '' }, request: ++this.csvRequest });
+    }
+    private renderCSVReview() {
+        const r = this.csvReport!;
+        const blocked = r.rejected > 0 && input('csvInvalidRows').value === 'reject';
+        $('csvReviewStatus').textContent = `${r.total.toLocaleString()} records · ${r.accepted.toLocaleString()} valid · ${r.rejected.toLocaleString()} invalid. ${blocked ? 'Entire import rejected. Fix the errors or choose quarantine.' : `${r.accepted.toLocaleString()} accepted / ${r.rejected.toLocaleString()} quarantined on import.`}`;
+        $<HTMLButtonElement>('csvDiagnostics').disabled = !r.rejected;
+        const heading = (table: HTMLElement, labels: string[]) => {
+            table.replaceChildren(); const head = document.createElement('thead'), row = document.createElement('tr');
+            for (const label of labels) { const th = document.createElement('th'); th.scope = 'col'; th.textContent = label; row.append(th); }
+            head.append(row); table.append(head); const body = document.createElement('tbody'); table.append(body); return body;
+        };
+        const td = (row: HTMLElement, text: string) => { const cell = document.createElement('td'); cell.textContent = text; row.append(cell); return cell; };
+        const labels: Record<CSVKind, string> = { string: 'Text', number: 'Number', boolean: 'Boolean', date: 'Date/time (UTC)' };
+        const schema = heading($('csvSchema'), ['Column', 'Inferred', 'Import as', 'Missing', 'Failed casts']);
+        for (const [i, field] of r.fields.entries()) {
+            const row = document.createElement('tr'); td(row, field.name); td(row, labels[r.inferred[i].kind]);
+            const control = td(row, ''), select = document.createElement('select'); select.setAttribute('aria-label', `Import type for ${field.name}`);
+            select.append(new Option('Auto', ''), ...Object.entries(labels).map(([value, label]) => new Option(label, value)));
+            select.value = this.csvTypes[field.name] ?? '';
+            select.onchange = () => { if (select.value) this.csvTypes[field.name] = select.value as CSVKind; else delete this.csvTypes[field.name]; this.reviewCSV(); };
+            control.append(select); td(row, r.missing[i].toLocaleString()); td(row, r.failed[i].toLocaleString()); schema.append(row);
+        }
+        const samples = heading($('csvSamples'), ['Record / validation', ...r.fields.map(f => f.name)]);
+        for (const sample of r.samples) {
+            const row = document.createElement('tr'); td(row, `${sample.row} · ${sample.errors.join(' ') || 'Valid'}`);
+            r.fields.forEach((_, j) => td(row, `${JSON.stringify(sample.raw[j] ?? '')} → ${sample.values[j] == null ? '∅ (missing or failed)' : JSON.stringify(sample.values[j])}`)); samples.append(row);
+        }
+    }
+    private async readCSV() {
+        const file = input('csvFile').files?.[0];
+        if (!file) return;
+        this.cancelCSV(); const revision = this.fileRevision;
+        this.csvText = ''; this.csvRef = ''; this.csvHeaders = []; this.fileName = file.name;
+        $('csvSchema').replaceChildren(); $('csvSamples').replaceChildren();
+        this.csvParsing = true; this.csvSubmitState(); $('cancelCSV').hidden = false;
+        $('csvFileStatus').textContent = `Reading ${file.name}…`;
+        try {
+            const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer());
+            if (revision !== this.fileRevision) return;
             this.csvText = text; this.csvRef = createUUID(); this.fileName = file.name;
-            this.csvColumns(this.editing?.config); $('sourceError').hidden = true;
-        } catch (e) { if (revision === this.fileRevision) this.showError(e); }
-        finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
+            this.csvHeaders = []; this.inspectCSV(this.editing?.config);
+        } catch (e) { if (revision === this.fileRevision) { this.csvParsing = false; this.showError(e); this.csvSubmitState(); } }
     }
     private config(): Config {
-        const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
-        if (config.type === 'csv') Object.assign(config, { csvText: this.csvRef === this.editing?.config.csvRef ? this.editing.config.csvText : this.csvText, csvRef: this.csvRef, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value });
+        const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'csvTypes', 'csvMissingValues', 'csvInvalidRows'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
+        if (config.type === 'csv') Object.assign(config, { csvText: this.csvRef === this.editing?.config.csvRef ? this.editing.config.csvText : this.csvText, csvRef: this.csvRef, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value, csvTypes: JSON.stringify(this.csvTypes), csvMissingValues: JSON.stringify(['', ...$<HTMLTextAreaElement>('csvMissingValues').value.split('\n').map(v => v.trim()).filter(Boolean)]), csvInvalidRows: input('csvInvalidRows').value });
         return config;
     }
     private updateSource() {
         try {
             const config = this.config(); validateConfig(config);
+            if (config.type === 'csv' && (!this.csvReport || this.csvParsing || (this.csvReport.rejected && config.csvInvalidRows === 'reject'))) throw Error('Complete CSV review and resolve invalid records before importing.');
             const name = input('sourceName').value.trim();
             if (!name) throw Error('Enter a source name.');
             if (this.editing) { this.editing.name = name; this.editing.config = config; }

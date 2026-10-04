@@ -1,3 +1,4 @@
+import { csvOptionDefaults } from './csv-options.ts';
 import { createUUID } from './uuid.ts';
 import { packArchive, unpackArchive } from './backup-archive.ts';
 import { configKeys, settingsMetadata, validateBackground, validateConfig, validateMapSettings, type Config, type Settings, type SavedSource } from './source-settings.ts';
@@ -60,6 +61,8 @@ export async function readBackup(archive: Blob): Promise<Settings> {
     let csvCount = 0;
     for (const source of manifest.settings.sources as SavedSource[]) {
         if (!object(source) || !object(source.config)) throw Error('Invalid data source in backup.');
+        // Version-1 archives written before import review have no CSV options.
+        for (const [key, value] of Object.entries(csvOptionDefaults)) if (!(key in source.config)) (source.config as Record<string, string>)[key] = value;
         if (source.config.csvText !== '' || source.config.csvRef !== '') throw Error('Backup manifest must not contain local CSV contents or references.');
         if (source.config.type !== 'csv') continue;
         csvCount++;

@@ -109,3 +109,18 @@ test('corruption, truncation, unsafe paths, duplicates, links and oversized head
     await assert.rejects(readBackup(new Blob([gzipSync(Buffer.concat([tar.subarray(0, firstEnd), tar]))])), /duplicate/);
     await assert.rejects(readBackup(new Blob([gzipSync(tar.subarray(0, tar.length - 512))])), /truncated/);
 });
+
+test('CSV import choices survive backup; old version-1 archives gain safe defaults', async () => {
+    const before = settings();
+    Object.assign(before.sources[0].config, { csvTypes: '{"name":"string"}', csvMissingValues: '["","N/A","unknown"]', csvInvalidRows: 'quarantine' });
+    const after = await readBackup(await createBackup(before, async () => csv));
+    assert.deepEqual(normalized(after), normalized(before));
+    const archive = await createBackup(settings(), async () => csv);
+    const manifest = JSON.parse(execFileSync('tar', ['-xOzf', '-', 'manifest.json'], { input: Buffer.from(await archive.arrayBuffer()), encoding: 'utf8' }));
+    for (const source of manifest.settings.sources) for (const key of ['csvTypes', 'csvMissingValues', 'csvInvalidRows']) delete source.config[key];
+    const legacy = await packArchive(new Map([['manifest.json', new Blob([JSON.stringify(manifest)])], ['csv/source-1.csv', new Blob([csv])], ['csv/source-2.csv', new Blob([settings().sources[1].config.csvText])]]));
+    const restored = await readBackup(legacy);
+    assert.equal(restored.sources[0].config.csvTypes, '{}');
+    assert.equal(restored.sources[0].config.csvInvalidRows, 'reject');
+    assert.equal(restored.sources[0].config.csvText, csv);
+});

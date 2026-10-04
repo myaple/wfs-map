@@ -124,10 +124,42 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                 "geometryMode",
                 "longitudeField",
                 "latitudeField",
+                "csvTypes",
+                "csvMissingValues",
+                "csvInvalidRows",
             ],
         )?;
-        for value in c.values() {
-            string(value)?;
+        for (key, value) in c {
+            if key == "csvTypes" {
+                let schema: Value = serde_json::from_str(value.as_str().ok_or("Invalid CSV types")?)
+                    .map_err(|_| "Invalid CSV types")?;
+                let columns = schema.as_object().ok_or("Invalid CSV types")?;
+                if columns.len() > 1000
+                    || columns.iter().any(|(name, kind)| {
+                        name.len() > 8192
+                            || !matches!(
+                                kind.as_str(),
+                                Some("string" | "number" | "boolean" | "date")
+                            )
+                    })
+                {
+                    return Err("Invalid CSV types");
+                }
+            } else {
+                string(value)?;
+            }
+        }
+        if let Some(value) = c.get("csvMissingValues") {
+            let tokens: Value = serde_json::from_str(value.as_str().ok_or("Invalid CSV missing values")?)
+                .map_err(|_| "Invalid CSV missing values")?;
+            for token in array(&tokens, 200)? {
+                string(token)?;
+            }
+        }
+        if let Some(value) = c.get("csvInvalidRows") {
+            if !matches!(value.as_str(), Some("reject" | "quarantine")) {
+                return Err("Invalid CSV record policy");
+            }
         }
         if !matches!(
             config.get("type").and_then(Value::as_str),
@@ -284,6 +316,23 @@ mod tests {
         let mut v = state();
         v["settings"]["sources"] = serde_json::json!([{"id":"csv1","name":"CSV","enabled":true,"config":{"type":"csv","csvText":"SECRET"}}]);
         assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn csv_import_choices_are_configuration_only() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"csv1","name":"CSV","enabled":true,"config":{"type":"csv","csvTypes":"{\"id\":\"string\",\"when\":\"date\"}","csvMissingValues":"[\"\",\"N/A\"]","csvInvalidRows":"quarantine"}}]);
+        assert!(validate(&v).is_ok());
+        for (key, value) in [
+            ("csvTypes", "{\"id\":\"SECRET_ROW\"}"),
+            ("csvMissingValues", "{}"),
+            ("csvInvalidRows", "ignore"),
+            ("preview", "SECRET_ROW"),
+            ("diagnostics", "SECRET_ROW"),
+        ] {
+            let mut invalid = v.clone();
+            invalid["settings"]["sources"][0]["config"][key] = serde_json::json!(value);
+            assert!(validate(&invalid).is_err());
+        }
     }
     #[test]
     fn rejects_local_observation_indices_and_deep_filters() {

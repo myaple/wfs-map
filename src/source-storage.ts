@@ -37,7 +37,7 @@ export async function readCSVText(reference: string, user = fileUser): Promise<s
         const request = transaction.objectStore(storeName).get(reference);
         await done;
         if (!(request.result instanceof Blob)) throw Error('The saved CSV file is missing. Choose the file again in Data sources.');
-        return await request.result.text();
+        return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await request.result.arrayBuffer());
     } finally { db.close(); }
 }
 function references(settings: Settings): Set<string> {
