@@ -1,3 +1,4 @@
+import { formatUTC } from './time.ts';
 import './style.css';
 import { mountPageBanners } from './page-banners.ts';
 import { createAnalysis, getAnalysis, listAnalyses, api, saveAnalysis } from './analyses-api.ts';
@@ -33,7 +34,7 @@ async function selector() {
         for (const doc of docs) {
             const card = el('article'); card.className = 'analysis-card';
             const title = el('h2', doc.name);
-            const details = el('p', `Saved ${new Date(doc.updatedAt).toLocaleString()}${doc.shared ? ' · shared' : ''}`); details.className = 'hint';
+            const details = el('p', `Saved ${formatUTC(doc.updatedAt)}${doc.shared ? ' · shared' : ''}`); details.className = 'hint';
             const links = el('div'); links.className = 'row';
             const open = el('a', 'Open analysis'); open.href = '/?analysis=' + doc.id + '#analysis';
             const sources = el('a', 'Data sources'); sources.href = '/?analysis=' + doc.id + '#configuration';

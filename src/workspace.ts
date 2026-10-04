@@ -1,3 +1,4 @@
+import { parseUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
 import { ChartInteraction, plotRect, drawAxes, pieSegments, type Point, type View } from './chart-plot.ts';
 import { RawScatter } from './raw-scatter.ts';
@@ -103,7 +104,7 @@ export class Workspace {
         for (const [v, t] of [['eq', '='], ['ne', '≠'], ['gte', '≥'], ['lte', '≤'], ['gt', '>'], ['lt', '<'], ['contains', 'contains'], ['null', 'is null'], ['notnull', 'not null']])
             op.append(option(v, t));
         const input = element('input');
-        input.placeholder = 'Value · ISO 8601 for dates';
+        input.placeholder = 'Value · YYYY-MM-DD HH:mm:ss UTC for dates';
         input.setAttribute('aria-label', 'Filter value');
         op.onchange = () => input.disabled = ['null', 'notnull'].includes(op.value);
         row.append(field, op, input, button('×', () => { row.remove(); this.changed(); }));
@@ -115,7 +116,11 @@ export class Workspace {
         if (node.classList.contains('selection'))
             return (node as any).expression;
         const inputs = node.querySelectorAll('select,input');
-        return { field: (inputs[0] as HTMLSelectElement).value, op: (inputs[1] as HTMLSelectElement).value as Rule['op'], value: (inputs[2] as HTMLInputElement).value };
+        const field = (inputs[0] as HTMLSelectElement).value, op = (inputs[1] as HTMLSelectElement).value as Rule['op'], input = inputs[2] as HTMLInputElement;
+        const date = this.fields.find(f => f.name === field)?.kind === 'date' && !['null', 'notnull'].includes(op) && Number.isFinite(parseUTC(input.value));
+        const value = date ? utcISO(input.value) : input.value;
+        if (date) input.value = utcInput(value);
+        return { field, op, value };
     }
     expression(): Expression { const root = this.rules.querySelector(':scope > .filter-group'); return root ? this.read(root) : all([]); }
     clearFilters() { this.rules.replaceChildren(); this.makeGroup(this.rules, 'and'); this.changed(); }
@@ -170,7 +175,7 @@ export class Workspace {
                     const row = children.lastElementChild!, inputs = row.querySelectorAll('select,input');
                     (inputs[0] as HTMLSelectElement).value = child.field;
                     (inputs[1] as HTMLSelectElement).value = child.op;
-                    (inputs[2] as HTMLInputElement).value = child.value ?? '';
+                    (inputs[2] as HTMLInputElement).value = this.fields.find(f => f.name === child.field)?.kind === 'date' && child.value && Number.isFinite(parseUTC(child.value)) ? utcInput(child.value) : child.value ?? '';
                     (inputs[2] as HTMLInputElement).disabled = ['null', 'notnull'].includes(child.op);
                 } else {
                     const row = element('div'); row.className = 'selection';

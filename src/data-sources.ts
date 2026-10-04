@@ -44,7 +44,7 @@ export class DataSources {
             <label for="format">Output format</label><input id="format" required><p class="hint">Use the exact format advertised by the server. GeoJSON is recommended.</p>
             <label for="srs">Requested coordinate reference system</label><input id="srs" required>
             <label for="axis">GML coordinate order</label><select id="axis"><option value="xy">Longitude, latitude</option><option value="yx">Latitude, longitude</option></select><p class="hint">GeoJSON always uses longitude, latitude.</p>
-            <label for="timeField">Time attribute (optional override)</label><input id="timeField" placeholder="Auto-detect from schema"><p class="hint">Used for the global time window sent to WFS. Specify the date/time field if discovery is unavailable or ambiguous.</p>
+            <label for="timeField">Time attribute (optional override)</label><input id="timeField" placeholder="Auto-detect from schema"><p class="hint">Used for the global time window sent to WFS. Specify the date/time field if discovery is unavailable or ambiguous. Times without a timezone are assumed UTC; explicit offsets are converted to UTC.</p>
             <label for="geometryField">Geometry attribute (optional override)</label><input id="geometryField" placeholder="Auto-detect from schema"><p class="hint">Used for map area requests. Enter the server’s geometry property name, e.g. the_geom.</p>
             <label for="sort">Stable unique sort attribute (optional)</label><input id="sort" placeholder="e.g. id">
             <label for="pageSize">Features per request</label><input id="pageSize" type="number" min="1" max="100000" required>
@@ -57,7 +57,7 @@ export class DataSources {
             <label for="geometryMode">Geometry format</label><select id="geometryMode"><option value="xy">Longitude / latitude columns</option><option value="wkt">WKT Point column</option><option value="geojson">GeoJSON Point column</option></select>
             <div id="csvXY" class="settings-fields"><label for="longitudeField">Longitude column</label><select id="longitudeField" required></select><label for="latitudeField">Latitude column</label><select id="latitudeField" required></select></div>
             <div id="csvPoint" class="settings-fields" hidden><label for="csvGeometry">Geometry column</label><select id="csvGeometry"></select></div>
-            <label for="csvTime">Time attribute (optional)</label><select id="csvTime"></select><p class="hint">ISO 8601 dates/times. Use All time when no time column is selected. Coordinates must be longitude/latitude in WGS84; only points are supported.</p>
+            <label for="csvTime">Time attribute (optional)</label><select id="csvTime"></select><p class="hint">ISO 8601 dates/times, using a 24-hour clock. Times without a timezone are assumed UTC; explicit offsets are converted to UTC. Use All time when no time column is selected. Coordinates must be longitude/latitude in WGS84; only points are supported.</p>
             <p class="hint">The imported file is saved in this browser with its settings. Available storage depends on your browser and device; a save error leaves your existing saved sources intact.</p>
           </fieldset>
           <p id="sourceError" class="error" role="alert" hidden></p>

@@ -1,3 +1,4 @@
+import { parseUTC } from './time.ts';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 export type FieldKind = 'number' | 'string' | 'date' | 'boolean';
 export type Field = { name: string; kind: FieldKind };
@@ -72,7 +73,7 @@ export function fieldKind(type: string): FieldKind {
 export function inferFields(features:Feature[], hints:Field[]=[]):Field[] {
   const result=new Map(hints.map(f=>[f.name,f.kind]));
   for(const f of features) for(const [name,v] of Object.entries(f.properties ?? {})) {
-    if(!result.has(name) && v!=null) result.set(name, typeof v==='number'?'number':typeof v==='boolean'?'boolean':typeof v==='string'&&/^\d{4}-\d\d-\d\dT/.test(v)&&Number.isFinite(Date.parse(v))?'date':'string');
+    if(!result.has(name) && v!=null) result.set(name, typeof v==='number'?'number':typeof v==='boolean'?'boolean':typeof v==='string'&&Number.isFinite(parseUTC(v))?'date':'string');
   }
   for(const f of features) for(const name of Object.keys(f.properties ?? {})) if(!result.has(name)) result.set(name,'string');
   return [...result].map(([name,kind])=>({name,kind}));
@@ -84,7 +85,7 @@ export function numericValue(v:unknown, kind:FieldKind):number {
     if(v===false || v==='false' || v===0 || v==='0') return 0;
     throw new Error(`Invalid boolean ${String(v)}`);
   }
-  const n=kind==='date'?Date.parse(String(v)):typeof v==='string'&&v.trim()===''?NaN:Number(v);
+  const n=kind==='date'?parseUTC(String(v)):typeof v==='string'&&v.trim()===''?NaN:Number(v);
   if(!Number.isFinite(n)) throw new Error(`Invalid ${kind}: ${String(v)}`);
   return n;
 }
