@@ -236,7 +236,16 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
         for chart in array(required(analysis, "charts")?, 12)? {
             let c = object(
                 chart,
-                &["id", "type", "x", "y", "bins", "binned", "aggregate", "series"],
+                &[
+                    "id",
+                    "type",
+                    "x",
+                    "y",
+                    "bins",
+                    "binned",
+                    "aggregate",
+                    "series",
+                ],
             )?;
             for k in ["id", "x", "y"] {
                 if let Some(v) = c.get(k) {
