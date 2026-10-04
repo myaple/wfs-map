@@ -40,7 +40,7 @@ test('millisecond date boundaries remain exact even when bin widths are fraction
 test('analysis cancellation and schema validation reject safely',async()=>{
   const a=build(Array.from({length:300},(_,i)=>feature(i)));
   await assert.rejects(a.run(all([]),[{id:'a',type:'bar',x:'value',bins:24}],()=>true),/Superseded/);
-  await assert.rejects(a.run(all([]),[{id:'a',type:'scatter',x:'category',y:'value',bins:24}]),/numeric or date/);
+  await assert.rejects(a.run(all([]),[{id:'a',type:'scatter',x:'missing',y:'value',bins:24}]),/known attributes/);
   await assert.rejects(a.run(all([]),[{id:'a',type:'time',x:'value',bins:24}]),/date attribute/);
 });
 test('numeric boundary rounding, huge finite values and subnormals preserve exact click membership',async()=>{

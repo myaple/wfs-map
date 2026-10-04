@@ -1,3 +1,4 @@
+import { seriesColors } from './multi-charts.ts';
 import { themeColor } from './theme.ts';
 import { parseUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
@@ -242,7 +243,7 @@ export class Workspace {
         const view = new ChartView(this.charts, spec, this.fields,
             () => owner.workspace.changed(),
             () => owner.workspace.removeChart(spec.id),
-            (expr, label, inspection) => inspection ? owner.workspace.inspect?.(expr) : owner.workspace.select(expr, label),
+            (expr, label, inspection, sourceId) => { const workspace = sourceId ? owner.workspace.chartSources().find(s => s.id === sourceId)?.workspace : owner.workspace; if (inspection) workspace?.inspect?.(expr); else workspace?.select(expr, label); },
             id => {
                 const target = owner.workspace.chartSources().find(s => s.id === id)?.workspace;
                 if (target) owner.workspace.moveChart(spec.id, target);
@@ -291,8 +292,11 @@ export class Workspace {
         for (const view of this.views.values()) view.setSources(this.sourceId, sources);
     }
 
+    chartPending(id: string) { this.views.get(id)?.error('Updating chart…'); }
+    chartError(id: string, message: string) { this.results = this.results.filter(r => r.id !== id); this.views.get(id)?.error(message); }
+    updateComparison(result: ChartResult) { this.results = [...this.results.filter(r => r.id !== result.id), result]; this.views.get(result.id)?.update(result); }
     update(results: ChartResult[]) {
-        this.results = results;
+        this.results = [...results, ...this.results.filter(r => this.specs.some(s => s.id === r.id && s.series?.length))];
         for (const result of results)
             this.views.get(result.id)?.update(result);
     }
@@ -329,6 +333,11 @@ class ChartView {
     private observer: ResizeObserver;
     private source = element('select');
     private sourceName = element('span');
+    private seriesControls = element('div');
+    private seriesLegend = element('div');
+    private sources: ChartSource[] = [];
+    private changed: () => void = () => {};
+    private addSeries = element('button', '+ Add source');
     private x = element('select');
     private y = element('select');
     private type = element('select');
@@ -349,7 +358,8 @@ class ChartView {
     private onThemeChange = () => this.draw();
     private hit = new Float32Array(0);
     private action = element('select');
-    constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string, inspection?: boolean) => void, sourceChanged: (id: string) => void) {
+    constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string, inspection?: boolean, sourceId?: string) => void, sourceChanged: (id: string) => void) {
+        this.changed = changed;
         this.root.className = 'chart-card';
         this.root.dataset.chartId = spec.id;
         const header = element('div'), head = element('div');
@@ -382,13 +392,25 @@ class ChartView {
         const typeField = chartField(this.type, 'Chart type', '');
         typeField.hint.hidden = true;
         typeField.root.classList.add('chart-field-wide');
-        const sourceField = chartField(this.source, 'Data source', 'Axes and selections use this source’s attributes and filters.');
+        const sourceField = chartField(this.source, 'Data source', 'First series. Each source uses its own applied dataset filters.');
         sourceField.root.classList.add('chart-field-wide');
         this.source.onchange = () => sourceChanged(this.source.value);
         this.sourceName.className = 'hint chart-source-name';
         const heading = element('div'); heading.append(this.title, this.sourceName);
         header.append(heading, actions);
         head.append(chartField(this.action, 'Selection action', 'Inspect records without changing filters, or add selected values to filters.').root, sourceField.root, typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.binsField.root);
+        this.seriesControls.className = 'chart-series-controls';
+        this.seriesLegend.className = 'chart-series-legend'; this.seriesLegend.setAttribute('aria-label', 'Chart source legend');
+        this.addSeries.type = 'button';
+        this.addSeries.onclick = () => {
+            const source = this.sources.find(s => s.enabled && s.available && s.id !== this.root.dataset.sourceId && !this.spec.series?.some(m => m.sourceId === s.id));
+            if (!source) return;
+            const kind = this.fields.find(f => f.name === this.spec.x)?.kind, ykind = this.fields.find(f => f.name === this.spec.y)?.kind;
+            const x = source.workspace.fields.find(f => f.kind === kind)?.name ?? source.workspace.fields[0]?.name ?? '';
+            const y = source.workspace.fields.find(f => f.kind === ykind && f.name !== x)?.name ?? source.workspace.fields.find(f => f.kind === ykind)?.name;
+            (this.spec.series ??= []).push({ sourceId: source.id, x, y }); this.renderSeries(); changed();
+        };
+        head.append(this.seriesControls, this.addSeries);
         this.canvas.tabIndex = 0;
         this.canvas.setAttribute('role', 'img');
         this.note.className = 'hint';
@@ -396,7 +418,7 @@ class ChartView {
         legend.append(element('summary', 'Counts and keyboard selection'), this.list);
         this.plot.className = 'chart-plot';
         this.plot.append(this.canvas);
-        this.root.append(header, head, this.plot, this.note, legend);
+        this.root.append(header, head, this.plot, this.seriesLegend, this.note, legend);
         target.append(this.root);
         this.configure();
         this.type.onchange = () => { spec.type = this.type.value as ChartSpec['type']; this.configure(); changed(); };
@@ -461,7 +483,8 @@ class ChartView {
     }
     setFields(fields: Field[]) { this.fields = fields; this.configure(); }
     setSources(id: string, sources: ChartSource[]) {
-        const enabledSources = sources.filter(s => s.enabled);
+        this.sources = sources;
+        const enabledSources = sources.filter(s => s.enabled && !this.spec.series?.some(m => m.sourceId === s.id));
         this.source.replaceChildren(...enabledSources.map(s => option(s.id, s.name + (s.available ? '' : ' (not loaded)'))));
         this.source.disabled = !enabledSources.length;
         if (!enabledSources.some(s => s.id === id)) {
@@ -473,8 +496,37 @@ class ChartView {
         const source = sources.find(s => s.id === id);
         this.sourceName.textContent = source?.name ?? '';
         this.root.dataset.sourceId = id;
-        if (source && !source.available) this.suspend();
+        this.renderSeries();
+        if (source && !source.available || this.spec.series?.some(m => !sources.some(s => s.id === m.sourceId && s.enabled && s.available))) this.error('Load this source and every additional chart source to calculate charts.');
     }
+    private renderSeries() {
+        for (const option of this.source.options) option.disabled = !!this.spec.series?.some(s => s.sourceId === option.value) || !option.value;
+        this.seriesControls.replaceChildren();
+        for (const [i, mapping] of (this.spec.series ?? []).entries()) {
+            const row = element('div'); row.className = 'chart-series-row';
+            const source = element('select'), x = element('select'), y = element('select');
+            source.append(...this.sources.filter(s => s.enabled && (s.id === mapping.sourceId || s.id !== this.root.dataset.sourceId && !this.spec.series?.some(m => m.sourceId === s.id))).map(s => option(s.id, s.name)));
+            if (!this.sources.some(s => s.id === mapping.sourceId && s.enabled)) source.prepend(option(mapping.sourceId, 'Source unavailable'));
+            source.value = mapping.sourceId;
+            const fields = this.sources.find(s => s.id === mapping.sourceId)?.workspace.fields ?? [];
+            const allowed = fields.filter(f => this.spec.type === 'time' ? f.kind === 'date' : true);
+            x.append(...allowed.map(f => option(f.name))); x.value = mapping.x;
+            const yFields = fields.filter(f => this.spec.type === 'time' ? f.kind === 'number' : true);
+            y.append(...yFields.map(f => option(f.name))); y.value = mapping.y ?? '';
+            const sourceField = chartField(source, `Source ${i + 2}`, 'Uses this source’s applied filters.'), xField = chartField(x, `Source ${i + 2} X attribute`, 'Shared axis types must match.'), yField = chartField(y, `Source ${i + 2} Y attribute`, 'Shared axis types must match.');
+            yField.root.hidden = this.spec.type !== 'scatter' && (this.spec.type !== 'time' || (this.spec.aggregate ?? 'count') === 'count');
+            source.onchange = () => { mapping.sourceId = source.value; const fields = this.sources.find(s => s.id === source.value)!.workspace.fields; mapping.x = fields.find(f => f.kind === this.fields.find(f => f.name === this.spec.x)?.kind)?.name ?? ''; mapping.y = fields.find(f => f.kind === this.fields.find(f => f.name === this.spec.y)?.kind)?.name; this.renderSeries(); this.changed(); };
+            x.onchange = () => { mapping.x = x.value; this.changed(); }; y.onchange = () => { mapping.y = y.value; this.changed(); };
+            row.append(sourceField.root, xField.root, yField.root, button(`Remove source ${i + 2}`, () => { this.spec.series!.splice(i, 1); this.renderSeries(); this.changed(); }));
+            this.seriesControls.append(row);
+        }
+        this.addSeries.disabled = !this.sources.some(s => s.enabled && s.available && s.id !== this.root.dataset.sourceId && !this.spec.series?.some(m => m.sourceId === s.id));
+        this.seriesLegend.replaceChildren();
+        const mappings = [{ sourceId: this.root.dataset.sourceId }, ...(this.spec.series ?? [])];
+        mappings.forEach((m, i) => { const item = element('span'), swatch = element('span'); const mapping = i === 0 ? this.spec : this.spec.series![i - 1]; item.title = `X: ${mapping.x} · Y: ${this.spec.type === 'scatter' || this.spec.type === 'time' && this.spec.aggregate !== 'count' ? mapping.y : 'Point count'}`; swatch.className = 'chart-series-swatch'; swatch.style.background = seriesColors[i]; item.append(swatch, document.createTextNode(this.sources.find(s => s.id === m.sourceId)?.name ?? 'Unavailable source')); this.seriesLegend.append(item); });
+        this.seriesLegend.hidden = !this.spec.series?.length;
+    }
+    error(message: string) { this.suspend(); this.note.textContent = message; }
     private configure() {
         this.interaction?.reset();
         if (this.spec.type !== 'scatter')
@@ -485,12 +537,12 @@ class ChartView {
         this.canvas.hidden = false;
         this.list.replaceChildren();
         this.draw();
-        const allowed = this.fields.filter(f => this.spec.type === 'time' ? f.kind === 'date' : this.spec.type === 'scatter' ? ['number', 'date'].includes(f.kind) : true);
+        const allowed = this.fields.filter(f => this.spec.type === 'time' ? f.kind === 'date' : true);
         this.x.replaceChildren(...allowed.map(f => option(f.name)));
         if (!allowed.some(f => f.name === this.spec.x))
             this.spec.x = allowed[0]?.name ?? '';
         this.x.value = this.spec.x;
-        const numeric = this.fields.filter(f => this.spec.type === 'time' ? f.kind === 'number' : ['number', 'date'].includes(f.kind));
+        const numeric = this.fields.filter(f => this.spec.type === 'time' ? f.kind === 'number' : true);
         this.y.replaceChildren(...numeric.map(f => option(f.name)));
         if (!numeric.some(f => f.name === this.spec.y))
             this.spec.y = numeric.find(f => f.name !== this.spec.x)?.name ?? numeric[0]?.name;
@@ -507,15 +559,16 @@ class ChartView {
         const categorical = kind === 'string' || kind === 'boolean';
         this.xField.root.classList.toggle('chart-field-wide', categorical && !scatter && !time);
         this.xField.label.textContent = scatter ? 'X attribute' : time ? 'Time attribute' : 'Group by';
-        this.xField.hint.textContent = scatter ? 'Horizontal axis: number or date.' : time ? 'Date attribute on the horizontal axis.' : kind === 'string' ? 'Count points in each category; less frequent categories go into Other.' : kind === 'boolean' ? 'Count points in the false and true groups.' : 'Count points in each value range.';
+        this.xField.hint.textContent = scatter ? 'Horizontal axis: number, date or category.' : time ? 'Date attribute on the horizontal axis.' : kind === 'string' ? 'Count points in each category; less frequent categories go into Other.' : kind === 'boolean' ? 'Count points in the false and true groups.' : 'Count points in each value range.';
         this.yField.root.hidden = !scatter && (!time || (this.spec.aggregate ?? 'count') === 'count');
-        this.yField.hint.textContent = scatter ? 'Vertical axis: number or date.' : 'Numeric attribute used by the Y aggregation.';
+        this.yField.hint.textContent = scatter ? 'Vertical axis: number, date or category.' : 'Numeric attribute used by the Y aggregation.';
         this.aggregateField.root.hidden = !time;
         this.aggregateField.hint.textContent = (this.spec.aggregate ?? 'count') === 'count' ? 'Count points in each time interval.' : 'Calculate this measure of the Y attribute in each time interval.';
         this.binsField.root.hidden = categorical && !scatter && !time;
         this.binsField.root.classList.toggle('chart-field-wide', scatter);
         this.bins.replaceChildren(...(scatter ? [option('exact', 'No bins — individual points')] : []), ...[8, 16, 24, 32, 48, 64].map(n => option(String(n), scatter ? `${n} bins per axis` : time ? `${n} time intervals` : `${n} value ranges`)));
         this.bins.value = scatter && this.spec.binned === false ? 'exact' : String(this.spec.bins);
+        this.renderSeries();
         this.binsField.hint.textContent = scatter ? this.spec.binned === false ? 'Draw every observation as a point, without grouping.' : 'Group nearby points into cells; circle size shows the point count. More bins give finer detail.' : time ? 'Split the full time span into equal intervals. More intervals give finer detail.' : 'Split the full value range into equal bins. More bins give finer detail.';
     }
     update(result: ChartResult) {
@@ -546,7 +599,7 @@ class ChartView {
         if (!r?.raw)
             return;
         if (this.root.isConnected && !document.getElementById('analysis')?.hidden) {
-            this.raw ??= new RawScatter((expr, label) => this.select(expr, label, this.action.value === 'inspect'), () => this.root.dataset.sourceId ?? '');
+            this.raw ??= new RawScatter((expr, label, sourceId) => this.select(expr, label, this.action.value === 'inspect', sourceId), () => this.root.dataset.sourceId ?? '');
             if (!this.raw.container.isConnected)
                 this.canvas.after(this.raw.container);
             this.raw.update(r);
@@ -556,7 +609,11 @@ class ChartView {
             this.raw = undefined;
         }
     }
-    private description(i: number) { const r = this.result!, nx = r.x.labels.length; return `${r.x.field}: ${r.x.labels[i % nx]}${r.y ? ` · ${r.y.field}: ${r.y.labels[Math.floor(i / nx)]}` : ''} · ${(r.counts[i] ?? 0).toLocaleString()}${r.values ? ` · ${r.measure}: ${r.values[i]}` : ''}`; }
+    private description(i: number) {
+        const r = this.result!, nx = r.x.labels.length;
+        const details = r.series ? r.series.map(s => `${s.name}: ${s.result.counts[i]}${s.result.values ? ` · ${s.result.measure}: ${Number.isFinite(s.result.values[i]) ? s.result.values[i] : 'no values'}` : ''}`).join(' · ') : r.values ? `${r.measure}: ${r.values[i]}` : '';
+        return `${r.x.field}: ${r.x.labels[i % nx]}${r.y ? ` · ${r.y.field}: ${r.y.labels[Math.floor(i / nx)]}` : ''} · ${(r.counts[i] ?? 0).toLocaleString()}${details ? ' · ' + details : ''}${r.type === 'pie' ? ` · ${(100 * r.counts[i] / (r.counts.reduce((a, b) => a + b, 0) || 1)).toFixed(1)}%` : ''}`;
+    }
     private selectRectangle(a: Point, b: Point) {
         const r = this.result;
         if (!r)
@@ -582,7 +639,15 @@ class ChartView {
             children.push(interval(r.x, lo, hi));
             i++;
         }
-        this.select(children.length === 1 ? children[0] : { op: 'or', children }, `${r.x.field}: ${cells.length} segments`, this.action.value === 'inspect');
+        this.emit(children.length === 1 ? children[0] : { op: 'or', children }, `${r.x.field}: ${cells.length} segments`);
+    }
+    private emit(expr: Expression, label: string) {
+        const r = this.result;
+        if (!r?.series) { this.select(expr, label, this.action.value === 'inspect'); return; }
+        for (const series of r.series) {
+            const translate = (e: Expression): Expression => 'children' in e ? { ...e, children: e.children.map(translate) } : 'field' in e ? { ...e, field: e.field === r.x.field ? series.result.x.field : e.field === r.y?.field ? series.result.y!.field : e.field } : e;
+            this.select(translate(expr), label, this.action.value === 'inspect', series.sourceId);
+        }
     }
     private choose(a: number, b: number) {
         const r = this.result;
@@ -595,7 +660,11 @@ class ChartView {
             expr = { op: 'and', children: [expr, interval(r.y, loY, hiY)] };
             label += ` · ${r.y.field}: ${r.y.labels[loY]}${loY !== hiY ? ' … ' + r.y.labels[hiY] : ''}`;
         }
-        this.select(expr, label, this.action.value === 'inspect');
+        if (r.series) for (const series of r.series) {
+            let expression = interval(series.result.x, loX, hiX);
+            if (series.result.y) expression = { op: 'and', children: [expression, interval(series.result.y, Math.min(Math.floor(a / nx), Math.floor(b / nx)), Math.max(Math.floor(a / nx), Math.floor(b / nx)))] };
+            this.select(expression, label, this.action.value === 'inspect', series.sourceId);
+        } else this.emit(expr, label);
     }
     private cellAt(point: Point) {
         const r = this.result;
@@ -639,7 +708,7 @@ class ChartView {
         if (!r)
             return;
         this.hit = new Float32Array(0);
-        const plotted = r.values ?? r.counts, finite = Array.from(plotted).filter(Number.isFinite), low = r.values ? Math.min(0, ...finite) : 0;
+        const plotted = r.values ?? r.counts, datasets = r.series?.map(s => s.result) ?? [r], finite = datasets.flatMap(s => Array.from(s.values ?? s.counts).filter(Number.isFinite)), low = r.values ? Math.min(0, ...finite) : 0;
         const nx = r.x.labels.length, ny = r.y?.labels.length ?? 1, max = finite.reduce((a, b) => Math.max(a, b), 0), total = r.counts.reduce((a, b) => a + b, 0);
         if (!r.counts.some(v => v > 0)) {
             ctx.fillStyle = themeColor('muted');
@@ -658,14 +727,17 @@ class ChartView {
             ctx.translate(-v[0] * w, -(1 - v[3]) * h);
             let angle = -Math.PI / 2;
             for (let i = 0; i < r.counts.length; i++) {
-                const end = angle + r.counts[i] / total * Math.PI * 2;
+                const slices = r.series?.map(s => ({ count: s.result.counts[i], color: s.color })) ?? [{ count: r.counts[i], color: colors[i % colors.length] }];
+                for (const slice of slices) {
+                const end = angle + slice.count / total * Math.PI * 2;
                 ctx.beginPath();
                 ctx.moveTo(w / 2, h / 2);
                 ctx.arc(w / 2, h / 2, radius, angle, end);
                 ctx.closePath();
-                ctx.fillStyle = colors[i % colors.length];
+                ctx.fillStyle = slice.color;
                 ctx.fill();
                 angle = end;
+                }
             }
             ctx.beginPath();
             ctx.arc(w / 2, h / 2, radius * .51, 0, Math.PI * 2);
@@ -679,29 +751,31 @@ class ChartView {
         }
         const p = plotRect(canvas, r.y?.kind === 'date'), { left, right, top, bottom } = p, view = this.interaction.view;
         const dx = (right - left) / Math.max(nx, 1) / (view[2] - view[0]), dy = (bottom - top) / Math.max(ny, 1) / (view[3] - view[1]);
-        const xBounds = r.x.ranges ? [r.x.ranges[0], r.x.ranges.at(-1)!] : [0, nx], yBounds = r.y?.ranges ? [r.y.ranges[0], r.y.ranges.at(-1)!] : [low, max || 1];
+        const xBounds = r.x.ranges ? [r.x.ranges[0], r.x.ranges.at(-1)!] : [0, nx], yBounds = r.y?.ranges ? [r.y.ranges[0], r.y.ranges.at(-1)!] : r.y ? [0, ny] : [low, max || 1];
         const bounds: View = [xBounds[0], yBounds[0], xBounds[1], yBounds[1]];
-        drawAxes(ctx, p, view, bounds, r.x.ranges ? r.x.kind : 'category', r.y?.kind, r.x.field, r.y?.field ?? r.measure ?? 'Point count');
+        drawAxes(ctx, p, view, bounds, r.x.ranges ? r.x.kind : 'category', r.y && !r.y.ranges ? 'category' : r.y?.kind, r.x.field, r.y?.field ?? r.measure ?? 'Point count', r.x.ranges ? undefined : r.x.labels, r.y && !r.y.ranges ? r.y.labels : undefined);
         ctx.save();
         ctx.beginPath();
         ctx.rect(left, top, right - left, bottom - top);
         ctx.clip();
         const pointX = (i: number) => this.interaction.screen([(i + .5) / nx, 0])[0];
+        for (const [seriesIndex, dataset] of datasets.entries()) {
+        const plotted = dataset.values ?? dataset.counts, color = r.series?.[seriesIndex].color ?? themeColor('chart-point');
         let prevX = 0, prevY = 0;
         for (let i = 0; i < r.counts.length; i++) {
-            const xb = i % nx, yb = Math.floor(i / nx), x = pointX(xb), y = this.interaction.screen([0, r.y ? (yb + .5) / ny : (plotted[i] - low) / (max - low || 1)])[1];
+            const xb = i % nx, yb = Math.floor(i / nx), x = pointX(xb) + (r.type === 'scatter' && datasets.length > 1 ? (seriesIndex - (datasets.length - 1) / 2) * Math.min(4, dx / datasets.length) : 0), y = this.interaction.screen([0, r.y ? (yb + .5) / ny : (plotted[i] - low) / (max - low || 1)])[1];
             const lo = this.interaction.screen([xb / nx, r.y ? (yb + 1) / ny : view[3]]), hi = this.interaction.screen([(xb + 1) / nx, r.y ? yb / ny : view[1]]);
             this.hit.set([lo[0], lo[1], hi[0], hi[1]], i * 4);
-            ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : themeColor('chart-point');
+            ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : color;
             if (r.type === 'bar')
-                ctx.fillRect(this.hit[i * 4] + 1, y, Math.max(1, dx - 2), this.interaction.screen([0, 0])[1] - y);
+                ctx.fillRect(this.hit[i * 4] + seriesIndex * dx / datasets.length + 1, y, Math.max(1, dx / datasets.length - 2), this.interaction.screen([0, 0])[1] - y);
             else if (r.type === 'time') {
                 if (!Number.isFinite(plotted[i])) {
                     prevY = NaN;
                     continue;
                 }
                 if (i && Number.isFinite(prevY)) {
-                    ctx.strokeStyle = '#0d9188';
+                    ctx.strokeStyle = color;
                     ctx.lineWidth = 2;
                     ctx.beginPath();
                     ctx.moveTo(prevX, prevY);
@@ -714,26 +788,18 @@ class ChartView {
                 prevX = x;
                 prevY = y;
             }
-            else if (r.counts[i]) {
-                ctx.globalAlpha = .35 + .65 * Math.sqrt(r.counts[i] / max);
+            else if (dataset.counts[i]) {
+                ctx.globalAlpha = .35 + .65 * Math.sqrt(dataset.counts[i] / max);
                 ctx.beginPath();
-                ctx.arc(x, y, Math.max(1, Math.min(dx, dy) * .48 * Math.sqrt(r.counts[i] / max)), 0, Math.PI * 2);
+                ctx.arc(x, y, Math.max(1, Math.min(dx, dy) * .48 * Math.sqrt(dataset.counts[i] / max)), 0, Math.PI * 2);
                 ctx.fill();
                 ctx.globalAlpha = 1;
             }
         }
-        ctx.restore();
-        if (!r.x.ranges && !r.y) {
-            ctx.fillStyle = themeColor('muted');
-            ctx.font = '11px system-ui';
-            ctx.textAlign = 'center';
-            for (let i = 0; i < nx; i++) {
-                const x = pointX(i);
-                if (x >= left && x <= right && nx * (view[2] - view[0]) <= 10)
-                    ctx.fillText(r.x.labels[i], x, bottom + 18, Math.max(1, dx - 3));
-            }
         }
+        ctx.restore();
     }
+
     private restoreSize() { const dialog = this.dialog; if (!dialog)
         return; this.dialog = undefined; this.placeholder?.replaceWith(this.root); this.placeholder = undefined; dialog.close(); dialog.remove(); this.expand.textContent = 'Enlarge'; this.expand.setAttribute('aria-expanded', 'false'); this.expand.focus(); this.draw(); }
     private enlarge() {

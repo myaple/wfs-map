@@ -236,7 +236,16 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
         for chart in array(required(analysis, "charts")?, 12)? {
             let c = object(
                 chart,
-                &["id", "type", "x", "y", "bins", "binned", "aggregate"],
+                &[
+                    "id",
+                    "type",
+                    "x",
+                    "y",
+                    "bins",
+                    "binned",
+                    "aggregate",
+                    "series",
+                ],
             )?;
             for k in ["id", "x", "y"] {
                 if let Some(v) = c.get(k) {
@@ -248,6 +257,22 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                 Some("bar" | "pie" | "time" | "scatter")
             ) {
                 return Err("Invalid chart type");
+            }
+            if let Some(series) = c.get("series") {
+                let mut sources = std::collections::HashSet::from([id]);
+                for mapping in array(series, 7)? {
+                    let m = object(mapping, &["sourceId", "x", "y"])?;
+                    let source = required(mapping, "sourceId")?
+                        .as_str()
+                        .ok_or("Invalid chart source")?;
+                    if !ids.contains(source) || !sources.insert(source) {
+                        return Err("Invalid or duplicate chart source");
+                    }
+                    string(required(mapping, "x")?)?;
+                    if let Some(y) = m.get("y") {
+                        string(y)?;
+                    }
+                }
             }
             finite(required(chart, "bins")?)?;
             if let Some(v) = c.get("binned") {
@@ -283,6 +308,27 @@ mod tests {
         }
         let mut v = state();
         v["settings"]["sources"] = serde_json::json!([{"id":"csv1","name":"CSV","enabled":true,"config":{"type":"csv","csvText":"SECRET"}}]);
+        assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn chart_series_save_only_known_unique_source_mappings() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([
+            {"id":"a","name":"A","enabled":true,"config":{"type":"csv"}},
+            {"id":"b","name":"B","enabled":true,"config":{"type":"csv"}}
+        ]);
+        v["analyses"] = serde_json::json!([{
+            "id":"a","fields":[],"expression":{"op":"and","children":[]},
+            "charts":[{"id":"c","type":"scatter","x":"x","y":"y","bins":24,
+                "series":[{"sourceId":"b","x":"u","y":"v"}]}]
+        }]);
+        assert!(validate(&v).is_ok());
+        for source in ["a", "missing"] {
+            let mut bad = v.clone();
+            bad["analyses"][0]["charts"][0]["series"][0]["sourceId"] = source.into();
+            assert!(validate(&bad).is_err());
+        }
+        v["analyses"][0]["charts"][0]["series"][0]["rows"] = serde_json::json!([1, 2]);
         assert!(validate(&v).is_err());
     }
     #[test]

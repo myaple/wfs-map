@@ -1,5 +1,5 @@
 import { themeColor } from './theme.ts';
-import type { ChartResult, Expression } from './analysis.ts';
+import type { ChartResult, Expression, Axis } from './analysis.ts';
 import { ChartInteraction, plotRect, drawAxes, interpolate, tickText, type Point, type View } from './chart-plot.ts';
 // One contiguous GPU buffer; gestures update viewport uniforms, never point objects.
 export class RawScatter {
@@ -15,9 +15,9 @@ export class RawScatter {
     private observer: ResizeObserver;
     private onThemeChange = () => this.draw();
     private interaction: ChartInteraction;
-    private highlight?: number;
-    private onInspection = (e: Event) => { const ref = (e as CustomEvent).detail; this.highlight = ref?.sourceId === this.sourceId() ? ref.index : undefined; this.draw(); };
-    constructor(private select: (e: Expression, label: string) => void, private sourceId: () => string = () => '') {
+    private highlight?: { sourceId: string; index: number };
+    private onInspection = (e: Event) => { const ref = (e as CustomEvent).detail; this.highlight = ref ?? undefined; this.draw(); };
+    constructor(private select: (e: Expression, label: string, sourceId?: string) => void, private sourceId: () => string = () => '') {
         this.container.className = 'raw-scatter';
         this.axes.className = 'raw-scatter-axes';
         this.axes.setAttribute('aria-hidden', 'true');
@@ -51,7 +51,7 @@ export class RawScatter {
             }
             else if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                this.select({ op: 'row', index: rows[this.focus] }, `Observation ${rows[this.focus] + 1}`);
+                this.select({ op: 'row', index: rows[this.focus] }, `Observation ${rows[this.focus] + 1}`, this.member(this.focus)?.sourceId);
             }
         };
         this.canvas.addEventListener('webglcontextlost', e => e.preventDefault());
@@ -82,13 +82,21 @@ export class RawScatter {
             throw Error(gl.getProgramInfoLog(this.program)!);
         this.buffer = gl.createBuffer()!;
     }
+    private member(index: number) { return this.result?.raw?.series?.find(s => index >= s.start && index < s.end); }
     private brush(a: Point, b: Point) {
         const r = this.result;
         if (!r?.raw?.rows.length)
             return;
         const lo = this.interaction.data([Math.min(a[0], b[0]), Math.max(a[1], b[1])]), hi = this.interaction.data([Math.max(a[0], b[0]), Math.min(a[1], b[1])]), bounds = this.bounds();
         const str = (v: number, kind?: string, lower = false) => kind === 'date' ? new Date(lower ? Math.ceil(v) : Math.floor(v)).toISOString() : String(v);
-        this.select({ op: 'and', children: [{ field: r.x.field, op: 'gte', value: str(interpolate(bounds[0], bounds[2], lo[0]), r.x.kind, true) }, { field: r.x.field, op: 'lte', value: str(interpolate(bounds[0], bounds[2], hi[0]), r.x.kind) }, { field: r.y!.field, op: 'gte', value: str(interpolate(bounds[1], bounds[3], lo[1]), r.y!.kind, true) }, { field: r.y!.field, op: 'lte', value: str(interpolate(bounds[1], bounds[3], hi[1]), r.y!.kind) }] }, `${r.x.field} × ${r.y!.field} rectangle`);
+        const members = r.raw.series ?? [{ sourceId: this.sourceId(), x: r.x.field, y: r.y!.field }];
+        const axisSelection = (axis: Axis, field: string, lower: number, upper: number, min: number, max: number): Expression => {
+            if (axis.ranges) return { op: 'and', children: [{ field, op: 'gte', value: str(interpolate(min, max, lower), axis.kind, true) }, { field, op: 'lte', value: str(interpolate(min, max, upper), axis.kind) }] };
+            const indices = axis.labels.flatMap((_, i) => (i + .5) / axis.labels.length >= lower && (i + .5) / axis.labels.length <= upper ? [i] : []);
+            const translate = (e: Expression): Expression => 'children' in e ? { ...e, children: e.children.map(translate) } : 'field' in e ? { ...e, field } : e;
+            return { op: 'or', children: indices.map(i => translate(axis.rules[i])) };
+        };
+        for (const member of members) this.select({ op: 'and', children: [axisSelection(r.x, member.x, lo[0], hi[0], bounds[0], bounds[2]), axisSelection(r.y!, member.y, lo[1], hi[1], bounds[1], bounds[3])].flatMap(e => e.op === 'and' && 'children' in e ? e.children : [e]) }, `${member.x} × ${member.y} rectangle`, member.sourceId);
     }
     private pick(p: Point) {
         const r = this.result;
@@ -100,7 +108,7 @@ export class RawScatter {
         const k = (pixel[0] + pixel[1] * 256 + pixel[2] * 65536 + pixel[3] * 16777216) - 1;
         this.draw();
         if (k >= 0 && k < r.raw.rows.length)
-            this.select({ op: 'row', index: r.raw.rows[k] }, `Observation ${r.raw.rows[k] + 1}`);
+            this.select({ op: 'row', index: r.raw.rows[k] }, `Observation ${r.raw.rows[k] + 1}`, this.member(k)?.sourceId);
     }
     private bounds(): View {
         const b = this.result!.raw!.bounds;
@@ -151,10 +159,16 @@ export class RawScatter {
         gl.uniform3f(gl.getUniformLocation(this.program, 'pointColor'), ...([1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16) / 255) as [number, number, number]));
         gl.uniform1f(gl.getUniformLocation(this.program, 'size'), picking ? 6 * d : 2 * d);
         gl.disable(gl.DITHER);
-        gl.drawArrays(gl.POINTS, 0, this.result.raw.rows.length);
+        const members = this.result.raw.series;
+        if (members) for (const member of members) {
+            gl.uniform3f(gl.getUniformLocation(this.program, 'pointColor'), ...([1, 3, 5].map(i => parseInt(member.color.slice(i, i + 2), 16) / 255) as [number, number, number]));
+            gl.drawArrays(gl.POINTS, member.start, member.end - member.start);
+        } else gl.drawArrays(gl.POINTS, 0, this.result.raw.rows.length);
         if (!picking && this.highlight !== undefined) {
-            const position = this.result.raw.rows.indexOf(this.highlight);
-            if (position >= 0) { gl.uniform3f(gl.getUniformLocation(this.program, 'pointColor'), 1, .55, 0); gl.uniform1f(gl.getUniformLocation(this.program, 'size'), 10 * d); gl.drawArrays(gl.POINTS, position, 1); }
+            const range = members?.find(s => s.sourceId === this.highlight!.sourceId);
+            const position = members ? range ? this.result.raw.rows.subarray(range.start, range.end).indexOf(this.highlight.index) : -1 : this.highlight.sourceId === this.sourceId() ? this.result.raw.rows.indexOf(this.highlight.index) : -1;
+            const offset = position < 0 ? -1 : position + (range?.start ?? 0);
+            if (offset >= 0) { gl.uniform3f(gl.getUniformLocation(this.program, 'pointColor'), 1, .55, 0); gl.uniform1f(gl.getUniformLocation(this.program, 'size'), 10 * d); gl.drawArrays(gl.POINTS, offset, 1); }
         }
         gl.disable(gl.SCISSOR_TEST);
         if (!picking) {
@@ -162,7 +176,7 @@ export class RawScatter {
             this.axes.height = this.canvas.height;
             const ctx = this.axes.getContext('2d')!;
             ctx.scale(d, d);
-            drawAxes(ctx, p, view, this.bounds(), this.result.x.kind, this.result.y?.kind, this.result.x.field, this.result.y!.field);
+            drawAxes(ctx, p, view, this.bounds(), this.result.x.ranges ? this.result.x.kind : 'category', this.result.y?.ranges ? this.result.y.kind : 'category', this.result.x.field, this.result.y!.field, this.result.x.ranges ? undefined : this.result.x.labels, this.result.y?.ranges ? undefined : this.result.y?.labels);
             this.canvas.dataset.axisX = this.result.x.kind ?? 'number';
             this.canvas.dataset.axisY = this.result.y?.kind ?? 'number';
         }

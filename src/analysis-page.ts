@@ -1,3 +1,5 @@
+import { sharedDomain, combineSeries, seriesColors } from './multi-charts.ts';
+import type { ChartDomain, ChartResult, ChartSpec } from './analysis.ts';
 import { RecordsPage } from './records-page.ts';
 import type { RecordRef, RecordData } from './records.ts';
 import { MapLegend } from './map-legend.ts';
@@ -252,11 +254,25 @@ const chooser = document.createElement('dialog'); chooser.className = 'record-ch
 let choices: RecordRef[] = [], choiceOffset = 0;
 function inspectRecord(ref: RecordRef) {
     const s = sources.find(s => s.id === ref.sourceId && s.enabled && s.done && !s.filtering); if (!s) return;
+    inspectionBatch = undefined;
     inspection = ref; s.worker?.postMessage({ type: 'get', index: ref.index, request: s.request, token: ++inspectionToken });
 }
+let inspectionQueue: { source: Source; expression: Expression }[] = [];
+let inspectionBatch: { token: number; pending: Set<string>; refs: RecordRef[] } | undefined;
 function inspectExpression(s: Source, expression: Expression) {
     if ('index' in expression) { inspectRecord({ sourceId: s.id, index: expression.index }); return; }
-    s.worker?.postMessage({ type: 'inspectExpression', expression, token: ++inspectionToken });
+    if (!s.enabled || !s.done || s.filtering) return;
+    inspectionQueue.push({ source: s, expression });
+    if (inspectionQueue.length > 1) return;
+    // A shared bin emits one field-specific expression per source in the same turn.
+    // Collect them before requesting records, so slower sources are not discarded.
+    queueMicrotask(() => {
+        const queued = inspectionQueue; inspectionQueue = [];
+        if (!queued.length) return;
+        const token = ++inspectionToken;
+        inspectionBatch = { token, pending: new Set(queued.map(q => q.source.id)), refs: [] };
+        for (const q of queued) q.source.worker?.postMessage({ type: 'inspectExpression', expression: q.expression, token });
+    });
 }
 function chooseRecords(refs: RecordRef[]) {
     choices = refs; choiceOffset = 0;
@@ -279,6 +295,7 @@ function drawChooser() {
     for (const source of sources) { const indices = choices.slice(choiceOffset, choiceOffset + 30).filter(r => r.sourceId === source.id).map(r => r.index); if (indices.length) source.worker?.postMessage({ type: 'getMany', indices, token: inspectionToken }); }
 }
 function clearInspection() {
+    inspectionBatch = undefined; inspectionQueue = [];
     inspectionToken++; inspection = undefined; marker?.remove(); marker = undefined; popup?.remove(); if (chooser.open) chooser.close(); recordPage.clearSelection(); window.dispatchEvent(new CustomEvent('recordinspection', { detail: null }));
 }
 window.addEventListener('clearinspection', clearInspection);
@@ -505,6 +522,7 @@ async function performLoad(s: Source) {
             if (session !== s.request)
                 return;
             const m = e.data;
+            if (m.type === 'chartReply') { const reply = chartReplies.get(m.token); chartReplies.delete(m.token); if (m.error) reply?.reject(Error(m.error)); else reply?.resolve(m.result); return; }
             try {
                 if (m.type === 'init') {
                     s.total = m.total;
@@ -590,7 +608,11 @@ async function performLoad(s: Source) {
                     s.exportStatus = 'CSV export failed: ' + m.message;
                 }
                 recordPage.handle(s.id, m);
-                if (m.type === 'inspectionMatches' && m.token === inspectionToken) chooseRecords(Array.from(m.indices as Uint32Array, index => ({ sourceId: s.id, index })));
+                if (m.type === 'inspectionMatches' && m.token === inspectionToken && inspectionBatch && inspectionBatch.token === m.token) {
+                    inspectionBatch.refs = inspectionBatch.refs.concat(Array.from(m.indices as Uint32Array, index => ({ sourceId: s.id, index })));
+                    inspectionBatch.pending.delete(s.id);
+                    if (!inspectionBatch.pending.size) { const refs = inspectionBatch.refs; inspectionBatch = undefined; chooseRecords(refs); }
+                }
                 if (m.type === 'inspectionError' && m.token === inspectionToken) status(m.message, true);
                 if (m.type === 'metadataMany' && m.token === inspectionToken && chooser.open) for (const row of m.rows) {
                     const b = [...chooser.querySelectorAll<HTMLButtonElement>('[data-index]')].find(b => b.dataset.sourceId === s.id && Number(b.dataset.index) === row.index);
@@ -620,6 +642,34 @@ function fit() {
         return;
     map.fitBounds([[Math.min(...bounds.map(b => b[0])), Math.min(...bounds.map(b => b[1]))], [Math.max(...bounds.map(b => b[2])), Math.max(...bounds.map(b => b[3]))]], { padding: 35, duration: 0 });
 }
+const appliedExpressions = new WeakMap<Source, Expression>();
+let chartToken = 0, chartGeneration = 0;
+const chartReplies = new Map<number, { resolve: (value: any) => void; reject: (e: Error) => void }>();
+function chartRPC(s: Source, message: object): Promise<any> {
+    return new Promise((resolve, reject) => {
+        if (!s.worker || !s.enabled || !s.done) { reject(Error(`${s.name} is not loaded. Enable and load every chart source.`)); return; }
+        const token = ++chartToken;
+        const timer = setTimeout(() => { chartReplies.delete(token); reject(Error('Chart calculation timed out. Reload the chart sources.')); }, 120000);
+        chartReplies.set(token, { resolve: v => { clearTimeout(timer); resolve(v); }, reject: e => { clearTimeout(timer); reject(e); } });
+        s.worker.postMessage({ ...message, token });
+    });
+}
+async function refreshMultiCharts() {
+    const generation = ++chartGeneration;
+    for (const owner of sources) for (const spec of owner.workspace.specs.filter(c => c.series?.length)) {
+        owner.workspace.chartPending(spec.id);
+        void (async () => {
+            const mappings = [{ sourceId: owner.id, x: spec.x, y: spec.y }, ...spec.series!];
+            const members = mappings.map(m => { const s = sources.find(s => s.id === m.sourceId); if (!s?.enabled || !s.done) throw Error('Enable and load every chart source.'); return s; });
+            const x = sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.x }) as Promise<ChartDomain>)));
+            const usesY = spec.type === 'scatter' || spec.type === 'time' && (spec.aggregate ?? 'count') !== 'count';
+            const y = usesY ? sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.y }) as Promise<ChartDomain>))) : undefined;
+            const results: ChartResult[] = await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartSeries', spec: { ...spec, series: undefined, x: m.x, y: m.y }, domains: { x, y }, expression: appliedExpressions.get(members[i]) ?? all([]) })));
+            if (generation !== chartGeneration || !owner.workspace.specs.includes(spec) || members.some(s => !s.enabled || !s.done)) return;
+            owner.workspace.updateComparison(combineSeries(spec, results.map((result, i) => ({ sourceId: members[i].id, name: members[i].name, color: seriesColors[i], result }))));
+        })().catch(e => { if (generation === chartGeneration) owner.workspace.chartError(spec.id, (e as Error).message); });
+    }
+}
 function filter(rules?: Rule[] | Expression, s = filterSource()) {
     if (!s?.enabled || !s.done)
         return;
@@ -631,7 +681,9 @@ function filter(rules?: Rule[] | Expression, s = filterSource()) {
     s.workspace.pending();
     s.filterStatus = 'Updating selection and charts…';
     clearInspection();
-    s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, charts: s.workspace.specs.filter(c => c.x && (c.type !== 'scatter' || c.y)) });
+    appliedExpressions.set(s, structuredClone(expression));
+    refreshMultiCharts();
+    s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, charts: s.workspace.specs.filter(c => !c.series?.length && c.x && (c.type !== 'scatter' || c.y)) });
     state();
 }
 function showMetadata(data: any, source: Source) {
