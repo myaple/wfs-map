@@ -208,7 +208,7 @@ ctx.onmessage = (event: MessageEvent) => {
                 if (chart.y?.ranges)
                     transfers.push(chart.y.ranges.buffer);
             }
-            applied = result.indices; records?.reset(); recordsRevision++;
+            applied = result.indices?.slice() ?? null; records?.reset(); recordsRevision++;
             post({ type: 'filtered', request: m.request, ...result, elapsedMs: performance.now() - start }, transfers);
         }).catch(e => {
             if (r === revision)

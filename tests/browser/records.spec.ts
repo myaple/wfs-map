@@ -21,6 +21,9 @@ test('Records is a third page, virtualizes applied results, searches, sorts, exp
  await page.locator('.record-choices button').last().click(); await expect(page.locator('.record-inspector')).toContainText('Second');
  await page.locator('#analysisLink').click(); await expect(page.locator('.record-inspector')).toContainText('Second');
  await page.evaluate(()=>(window as any).__WFS_MAP__.filterSource('a',[{field:'quality',op:'gte',value:'90'}]));
- await page.locator('#recordsLink').click(); await expect(page.locator('#records [role=status]')).toContainText('applied matches');
+ await page.locator('#recordsLink').click(); await page.getByLabel('Search applied records').fill('');
+ await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
+ const matches = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected);
+ await expect(page.locator('#records > [role=status]')).toContainText(`${matches.toLocaleString()} table rows`);
  expect(errors).toEqual([]);
 });
