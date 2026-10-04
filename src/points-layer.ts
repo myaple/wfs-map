@@ -291,6 +291,25 @@ export class PointsLayer implements CustomLayerInterface {
         if (this.count)
             this.draw(false);
     }
+    // CPU spatial groups retain every coincident point, unlike an ID framebuffer.
+    pickAll(cssX: number, cssY: number): Uint32Array {
+        if (!this.visible || !this.count) return new Uint32Array();
+        const rect = this.map.getCanvas().getBoundingClientRect(), world = 512 * 2 ** this.map.getZoom();
+        const [cx, cy] = mercator(this.map.getCenter().lng, this.map.getCenter().lat);
+        const x = cx + (cssX - rect.width / 2) / world, y = cy + (cssY - rect.height / 2) / world;
+        const radius = Math.max(6, this.pointSize) / 2 + 3, margin = radius / world;
+        const selected = this.indices ? new Set(this.indices) : undefined, hits: number[] = [];
+        for (const chunk of this.chunks) for (let g = 0; g < chunk.groups.length; g += 6) {
+            const groups = chunk.groups;
+            if (groups[g + 2] > x + margin || groups[g + 4] < x - margin || groups[g + 3] > y + margin || groups[g + 5] < y - margin) continue;
+            for (let k = groups[g] - chunk.offset, end = k + groups[g + 1]; k < end; k++) {
+                const index = chunk.indices[k]; if (selected && !selected.has(index)) continue;
+                const i = (index - chunk.offset) * 4, p = chunk.positions;
+                if (Math.hypot((p[i] + p[i + 2] - x) * world, (p[i + 1] + p[i + 3] - y) * world) <= radius) hits.push(index);
+            }
+        }
+        return Uint32Array.from(hits);
+    }
     pick(cssX: number, cssY: number): number | null {
         if (!this.count)
             return null;

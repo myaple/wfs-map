@@ -15,7 +15,9 @@ export class RawScatter {
     private observer: ResizeObserver;
     private onThemeChange = () => this.draw();
     private interaction: ChartInteraction;
-    constructor(private select: (e: Expression, label: string) => void) {
+    private highlight?: number;
+    private onInspection = (e: Event) => { const ref = (e as CustomEvent).detail; this.highlight = ref?.sourceId === this.sourceId() ? ref.index : undefined; this.draw(); };
+    constructor(private select: (e: Expression, label: string) => void, private sourceId: () => string = () => '') {
         this.container.className = 'raw-scatter';
         this.axes.className = 'raw-scatter-axes';
         this.axes.setAttribute('aria-hidden', 'true');
@@ -35,7 +37,7 @@ export class RawScatter {
             const box = this.canvas.getBoundingClientRect(), t = this.interaction.data([e.clientX - box.left, e.clientY - box.top]), b = this.bounds();
             this.canvas.title = `${this.result.x.field}: ${tickText(interpolate(b[0], b[2], t[0]), this.result.x.kind, (b[2] - b[0]) * (this.interaction.view[2] - this.interaction.view[0])).join(' ')} · ${this.result.y!.field}: ${tickText(interpolate(b[1], b[3], t[1]), this.result.y?.kind, (b[3] - b[1]) * (this.interaction.view[3] - this.interaction.view[1])).join(' ')}`;
         });
-        window.addEventListener('themechange', this.onThemeChange);
+        window.addEventListener('themechange', this.onThemeChange); window.addEventListener('recordinspection', this.onInspection);
         this.observer = new ResizeObserver(() => this.draw());
         this.observer.observe(this.canvas);
         this.canvas.onkeydown = e => {
@@ -150,6 +152,10 @@ export class RawScatter {
         gl.uniform1f(gl.getUniformLocation(this.program, 'size'), picking ? 6 * d : 2 * d);
         gl.disable(gl.DITHER);
         gl.drawArrays(gl.POINTS, 0, this.result.raw.rows.length);
+        if (!picking && this.highlight !== undefined) {
+            const position = this.result.raw.rows.indexOf(this.highlight);
+            if (position >= 0) { gl.uniform3f(gl.getUniformLocation(this.program, 'pointColor'), 1, .55, 0); gl.uniform1f(gl.getUniformLocation(this.program, 'size'), 10 * d); gl.drawArrays(gl.POINTS, position, 1); }
+        }
         gl.disable(gl.SCISSOR_TEST);
         if (!picking) {
             this.axes.width = this.canvas.width;
@@ -161,5 +167,5 @@ export class RawScatter {
             this.canvas.dataset.axisY = this.result.y?.kind ?? 'number';
         }
     }
-    destroy() { window.removeEventListener('themechange', this.onThemeChange); this.observer.disconnect(); this.interaction.destroy(); this.gl.deleteBuffer(this.buffer); this.gl.deleteProgram(this.program); this.result = undefined; this.container.remove(); this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
+    destroy() { window.removeEventListener('recordinspection', this.onInspection); window.removeEventListener('themechange', this.onThemeChange); this.observer.disconnect(); this.interaction.destroy(); this.gl.deleteBuffer(this.buffer); this.gl.deleteProgram(this.program); this.result = undefined; this.container.remove(); this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
 }

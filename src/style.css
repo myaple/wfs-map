@@ -740,3 +740,28 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .map-dialog .map-legend { position: absolute; top: 10px; left: 10px; z-index: 2; width: min(290px, calc(100% - 64px)); max-height: calc(100% - 65px); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 2px 8px #0003; display: flex; flex-direction: column; }
 .map-dialog .map-legend-viewport { max-height: 330px; min-height: 0; }
 @media(max-width:600px) { .map-dialog .map-legend { width: min(230px, calc(100% - 64px)); } .map-dialog .map-legend-viewport { max-height: 180px; } }
+
+.records-page { padding: 20px; }
+.records-page .row { flex-wrap: wrap; margin-bottom: 12px; }
+.records-page input[type=search] { min-width: min(360px, 80vw); }
+.records-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; }
+.records-scroll { height: 520px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.records-table { border-collapse: collapse; width: 100%; white-space: nowrap; }
+.records-table thead { position: sticky; top: 0; z-index: 1; background: var(--surface); }
+.records-table th { text-align: left; }
+.records-table th button { border: 0; padding: 9px 12px; white-space: nowrap; }
+.records-table .record-row { height: 34px; cursor: pointer; }
+.records-table td { padding: 0 12px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--border); }
+.record-row:hover, .record-row[aria-selected=true] { background: var(--selected); outline: 1px solid var(--accent); }
+.null-value { font-style: italic; color: var(--muted); }
+.records-page details { position: relative; }
+.records-page details[open] { max-height: 280px; overflow: auto; padding: 8px; border: 1px solid var(--border); }
+.records-page details label { display: block; margin: 6px; }
+.record-inspector { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; max-height: 520px; overflow: auto; overflow-wrap: anywhere; }
+#analysis > .record-inspector { margin: 18px; max-height: 340px; }
+.record-inspector table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.record-inspector th, .record-inspector td { text-align: left; vertical-align: top; padding: 6px; border-bottom: 1px solid var(--border); }
+.record-inspector button, .record-inspector a { margin: 4px; }
+.record-chooser { width: min(650px, 90vw); max-height: 80vh; overflow: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; }
+.record-choices { display: grid; gap: 6px; margin: 12px 0; }
+@media(max-width: 850px) { .records-layout { grid-template-columns: 1fr; } }

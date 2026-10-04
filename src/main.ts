@@ -62,7 +62,7 @@ async function start() {
             await prepareAnalysis(doc, identity.user);
             await import('./analysis-page.ts');
         } catch (e) { root.replaceChildren(el('p', (e as Error).message)); const back = el('a', 'All analyses'); back.href = '/'; root.append(back); }
-    } else if (params.has('local') || params.has('autoload') || params.has('points') || params.has('url') || params.has('time') || location.hash === '#configuration' || location.hash === '#analysis') {
+    } else if (params.has('local') || params.has('autoload') || params.has('points') || params.has('url') || params.has('time') || location.hash === '#configuration' || location.hash === '#analysis' || location.hash === '#records') {
         await import('./analysis-page.ts');
     } else await selector();
 }
