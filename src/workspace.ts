@@ -1,3 +1,4 @@
+import { transform, axisBounds, type Scale } from './scales.ts';
 import { seriesColors } from './multi-charts.ts';
 import { themeColor } from './theme.ts';
 import { parseUTC, utcISO, utcInput } from './time.ts';
@@ -343,6 +344,10 @@ class ChartView {
     private type = element('select');
     private bins = element('select');
     private aggregate = element('select');
+    private xScale = element('select');
+    private yScale = element('select');
+    private xScaleField = chartField(this.xScale, 'X axis scale', 'Log10 requires positive numeric values.');
+    private yScaleField = chartField(this.yScale, 'Y axis scale', 'Log10 omits zero and negative values.');
     private xField = chartField(this.x, 'X attribute', '');
     private yField = chartField(this.y, 'Y attribute', '');
     private binsField = chartField(this.bins, 'Binning', '');
@@ -388,7 +393,7 @@ class ChartView {
         this.expand.setAttribute('aria-expanded', 'false');
         this.expand.onclick = () => this.enlarge();
         this.action.setAttribute('aria-label', 'Chart selection action'); this.action.append(option('filter', 'Filter on selection'), option('inspect', 'Inspect without filtering'));
-        actions.append(settings, this.expand, removeButton);
+        actions.append(button('Fit data', () => { this.interaction.reset(); this.raw?.fit(); }), settings, this.expand, removeButton);
         const typeField = chartField(this.type, 'Chart type', '');
         typeField.hint.hidden = true;
         typeField.root.classList.add('chart-field-wide');
@@ -398,7 +403,7 @@ class ChartView {
         this.sourceName.className = 'hint chart-source-name';
         const heading = element('div'); heading.append(this.title, this.sourceName);
         header.append(heading, actions);
-        head.append(chartField(this.action, 'Selection action', 'Inspect records without changing filters, or add selected values to filters.').root, sourceField.root, typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.binsField.root);
+        head.append(chartField(this.action, 'Selection action', 'Inspect records without changing filters, or add selected values to filters.').root, sourceField.root, typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.xScaleField.root, this.yScaleField.root, this.binsField.root);
         this.seriesControls.className = 'chart-series-controls';
         this.seriesLegend.className = 'chart-series-legend'; this.seriesLegend.setAttribute('aria-label', 'Chart source legend');
         this.addSeries.type = 'button';
@@ -420,10 +425,15 @@ class ChartView {
         this.plot.append(this.canvas);
         this.root.append(header, head, this.plot, this.seriesLegend, this.note, legend);
         target.append(this.root);
+        this.xScale.append(option('linear', 'Linear'), option('log10', 'Log10'));
+        this.yScale.append(option('linear', 'Linear'), option('log10', 'Log10'));
         this.configure();
         this.type.onchange = () => { spec.type = this.type.value as ChartSpec['type']; this.configure(); changed(); };
         this.x.onchange = () => { spec.x = this.x.value; this.refreshSettings(); changed(); };
-        this.y.onchange = () => { spec.y = this.y.value; changed(); };
+        this.y.onchange = () => { spec.y = this.y.value; this.refreshSettings(); changed(); };
+        for (const [control, key] of [[this.xScale, 'xScale'], [this.yScale, 'yScale']] as const) {
+            control.onchange = () => { spec[key] = control.value as Scale; this.interaction.reset(); this.result = undefined; this.raw?.destroy(); this.raw = undefined; this.refreshSettings(); changed(); };
+        }
         this.aggregate.onchange = () => { spec.aggregate = this.aggregate.value as ChartSpec['aggregate']; this.refreshSettings(); changed(); };
         this.bins.onchange = () => {
             const binned = this.bins.value !== 'exact';
@@ -564,6 +574,13 @@ class ChartView {
         this.yField.hint.textContent = scatter ? 'Vertical axis: number, date or category.' : 'Numeric attribute used by the Y aggregation.';
         this.aggregateField.root.hidden = !time;
         this.aggregateField.hint.textContent = (this.spec.aggregate ?? 'count') === 'count' ? 'Count points in each time interval.' : 'Calculate this measure of the Y attribute in each time interval.';
+        const pie = this.spec.type === 'pie';
+        this.xScaleField.root.hidden = this.yScaleField.root.hidden = pie;
+        this.xScale.disabled = kind !== 'number';
+        this.yScale.disabled = scatter && this.fields.find(f => f.name === this.spec.y)?.kind !== 'number';
+        if (this.xScale.disabled || pie) this.spec.xScale = 'linear';
+        if (this.yScale.disabled || pie) this.spec.yScale = 'linear';
+        this.xScale.value = this.spec.xScale ?? 'linear'; this.yScale.value = this.spec.yScale ?? 'linear';
         this.binsField.root.hidden = categorical && !scatter && !time;
         this.binsField.root.classList.toggle('chart-field-wide', scatter);
         this.bins.replaceChildren(...(scatter ? [option('exact', 'No bins — individual points')] : []), ...[8, 16, 24, 32, 48, 64].map(n => option(String(n), scatter ? `${n} bins per axis` : time ? `${n} time intervals` : `${n} value ranges`)));
@@ -574,6 +591,16 @@ class ChartView {
     update(result: ChartResult) {
         if (this.result && (this.result.x.field !== result.x.field || this.result.y?.field !== result.y?.field))
             this.interaction.reset();
+        const nx = result.x.labels.length, ny = result.y?.labels.length ?? 1;
+        let loX = nx, hiX = 0, loY = ny, hiY = 0;
+        result.counts.forEach((n, i) => { if (n) { const x = i % nx, y = Math.floor(i / nx); loX = Math.min(loX, x); hiX = Math.max(hiX, x + 1); loY = Math.min(loY, y); hiY = Math.max(hiY, y + 1); } });
+        const fit: View = [0, 0, 1, 1];
+        if (loX < hiX && result.type !== 'pie') {
+            const pad = .04 * (hiX - loX) / nx;
+            fit[0] = loX / nx - pad; fit[2] = hiX / nx + pad;
+            if (result.y && loY < hiY) { const padY = .04 * (hiY - loY) / ny; fit[1] = loY / ny - padY; fit[3] = hiY / ny + padY; }
+        }
+        this.interaction.setFit(fit);
         this.result = result;
         this.focus = Math.min(this.focus, Math.max(0, result.counts.length - 1));
         this.canvas.hidden = !!result.raw;
@@ -585,7 +612,7 @@ class ChartView {
             this.draw();
         }
         const total = result.raw?.rows.length ?? result.counts.reduce((a, b) => a + b, 0);
-        this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing · ${result.raw ? 'Individual observations. Left-drag to zoom; right-drag to select; double-click to reset.' : result.y ? 'Counted scatter bins. Left-drag to zoom; right-drag to select; double-click to reset.' : 'Click a segment to filter. Left-drag to zoom; right-drag to select; double-click to reset.'}`;
+        this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing${this.spec.xScale === 'log10' || this.spec.yScale === 'log10' ? ' · Log10 omits non-positive values' : ''} · ${result.raw ? 'Individual observations. Left-drag to zoom; right-drag to select; double-click to reset.' : result.y ? 'Counted scatter bins. Left-drag to zoom; right-drag to select; double-click to reset.' : 'Click a segment to filter. Left-drag to zoom; right-drag to select; double-click to reset.'}`;
         this.canvas.setAttribute('aria-label', `${result.type} chart of ${result.x.field}${result.y ? ' against ' + result.y.field : ''}. Arrow keys choose a bin; Enter filters it.`);
         this.list.replaceChildren();
         if (!result.y)
@@ -708,8 +735,8 @@ class ChartView {
         if (!r)
             return;
         this.hit = new Float32Array(0);
-        const plotted = r.values ?? r.counts, datasets = r.series?.map(s => s.result) ?? [r], finite = datasets.flatMap(s => Array.from(s.values ?? s.counts).filter(Number.isFinite)), low = r.values ? Math.min(0, ...finite) : 0;
-        const nx = r.x.labels.length, ny = r.y?.labels.length ?? 1, max = finite.reduce((a, b) => Math.max(a, b), 0), total = r.counts.reduce((a, b) => a + b, 0);
+        const datasets = r.series?.map(s => s.result) ?? [r], yScale = this.spec.yScale ?? 'linear', finite = datasets.flatMap(s => Array.from(s.values ?? s.counts).filter(v => Number.isFinite(v) && (yScale !== 'log10' || v > 0))), low = yScale === 'log10' || r.values ? Math.min(...finite) : 0;
+        const nx = r.x.labels.length, ny = r.y?.labels.length ?? 1, max = finite.length ? Math.max(...finite) : 1, total = r.counts.reduce((a, b) => a + b, 0);
         if (!r.counts.some(v => v > 0)) {
             ctx.fillStyle = themeColor('muted');
             ctx.font = '14px system-ui';
@@ -751,9 +778,13 @@ class ChartView {
         }
         const p = plotRect(canvas, r.y?.kind === 'date'), { left, right, top, bottom } = p, view = this.interaction.view;
         const dx = (right - left) / Math.max(nx, 1) / (view[2] - view[0]), dy = (bottom - top) / Math.max(ny, 1) / (view[3] - view[1]);
-        const xBounds = r.x.ranges ? [r.x.ranges[0], r.x.ranges.at(-1)!] : [0, nx], yBounds = r.y?.ranges ? [r.y.ranges[0], r.y.ranges.at(-1)!] : r.y ? [0, ny] : [low, max || 1];
+        const xBounds = r.x.ranges ? [r.x.ranges[0], r.x.ranges.at(-1)!] : [0, nx], yBounds = r.y?.ranges ? [r.y.ranges[0], r.y.ranges.at(-1)!] : r.y ? [0, ny] : axisBounds(Number.isFinite(low) ? low : 0, max || 1, yScale);
+        if (!r.y && yScale === 'linear' && yBounds[1] !== yBounds[0]) { const pad = (yBounds[1] - yBounds[0]) * .05; yBounds[1] += pad; if (r.values) yBounds[0] -= pad; }
+        else if (!r.y && yScale === 'log10' && yBounds[1] !== yBounds[0]) { yBounds[0] = Math.max(Number.MIN_VALUE, yBounds[0] / 1.1); yBounds[1] = Math.min(Number.MAX_VALUE, yBounds[1] * 1.1); }
         const bounds: View = [xBounds[0], yBounds[0], xBounds[1], yBounds[1]];
-        drawAxes(ctx, p, view, bounds, r.x.ranges ? r.x.kind : 'category', r.y && !r.y.ranges ? 'category' : r.y?.kind, r.x.field, r.y?.field ?? r.measure ?? 'Point count', r.x.ranges ? undefined : r.x.labels, r.y && !r.y.ranges ? r.y.labels : undefined);
+        drawAxes(ctx, p, view, bounds, r.x.ranges ? r.x.kind : 'category', r.y && !r.y.ranges ? 'category' : r.y?.kind, r.x.field + (r.x.scale === 'log10' ? ' (log10)' : ''), (r.y?.field ?? r.measure ?? 'Point count') + ((r.y?.scale ?? yScale) === 'log10' ? ' (log10)' : ''), r.x.ranges ? undefined : r.x.labels, r.y && !r.y.ranges ? r.y.labels : undefined, r.x.scale, r.y?.scale ?? yScale);
+        canvas.dataset.scaleX = r.x.scale ?? 'linear'; canvas.dataset.scaleY = r.y?.scale ?? yScale;
+        canvas.dataset.bounds = JSON.stringify(bounds);
         ctx.save();
         ctx.beginPath();
         ctx.rect(left, top, right - left, bottom - top);
@@ -763,12 +794,13 @@ class ChartView {
         const plotted = dataset.values ?? dataset.counts, color = r.series?.[seriesIndex].color ?? themeColor('chart-point');
         let prevX = 0, prevY = 0;
         for (let i = 0; i < r.counts.length; i++) {
-            const xb = i % nx, yb = Math.floor(i / nx), x = pointX(xb) + (r.type === 'scatter' && datasets.length > 1 ? (seriesIndex - (datasets.length - 1) / 2) * Math.min(4, dx / datasets.length) : 0), y = this.interaction.screen([0, r.y ? (yb + .5) / ny : (plotted[i] - low) / (max - low || 1)])[1];
+            const xb = i % nx, yb = Math.floor(i / nx), x = pointX(xb) + (r.type === 'scatter' && datasets.length > 1 ? (seriesIndex - (datasets.length - 1) / 2) * Math.min(4, dx / datasets.length) : 0), y = this.interaction.screen([0, r.y ? (yb + .5) / ny : (transform(plotted[i], yScale) - transform(yBounds[0], yScale)) / (transform(yBounds[1], yScale) - transform(yBounds[0], yScale) || 1)])[1];
             const lo = this.interaction.screen([xb / nx, r.y ? (yb + 1) / ny : view[3]]), hi = this.interaction.screen([(xb + 1) / nx, r.y ? yb / ny : view[1]]);
             this.hit.set([lo[0], lo[1], hi[0], hi[1]], i * 4);
             ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : color;
+            if (!r.y && !Number.isFinite(transform(plotted[i], yScale))) { prevY = NaN; continue; }
             if (r.type === 'bar')
-                ctx.fillRect(this.hit[i * 4] + seriesIndex * dx / datasets.length + 1, y, Math.max(1, dx / datasets.length - 2), this.interaction.screen([0, 0])[1] - y);
+                ctx.fillRect(this.hit[i * 4] + seriesIndex * dx / datasets.length + 1, y, Math.max(1, dx / datasets.length - 2), this.interaction.screen([0, yScale === 'log10' ? 0 : (0 - yBounds[0]) / (yBounds[1] - yBounds[0])])[1] - y);
             else if (r.type === 'time') {
                 if (!Number.isFinite(plotted[i])) {
                     prevY = NaN;

@@ -827,3 +827,14 @@ input::placeholder { color: var(--muted); opacity: 1; }
   .records-actions { width: 100%; }
   .records-column-options { left: 0; right: auto; grid-template-columns: 1fr; }
 }
+/* Reserve the visible plot area when chart settings and the timeline are open. */
+.chart-dialog > .chart-card { display:flex; flex-direction:column; overflow:hidden; }
+.chart-dialog .chart-header, .chart-dialog .chart-controls, .chart-dialog .chart-series-legend,
+.chart-dialog .chart-card > .hint, .chart-dialog .chart-card > details { flex:none; }
+.chart-dialog .chart-controls { max-height:min(32dvh,300px); overflow:auto; }
+.chart-dialog .chart-card > details { max-height:90px; overflow:auto; }
+.chart-dialog .chart-plot { flex:1; min-height:120px; }
+.chart-dialog .chart-card canvas { height:100%; }
+.chart-dialog .raw-scatter { height:100%; }
+.chart-dialog .raw-scatter canvas { height:calc(100% - 22px); }
+.chart-dialog .raw-scatter-labels { height:22px; box-sizing:border-box; }

@@ -1,6 +1,6 @@
 import { parseUTC, utcISO } from './time.ts';
 import { mercator, type Feature, type Field } from './data.ts';
-import type { Config } from './source-settings.ts';
+import { csvFieldTypes, type Config } from './source-settings.ts';
 import { validateTime, type QueryBounds } from './wfs-query.ts';
 
 export type CSVIssue = { reason: string; count: number; lines: number[] };
@@ -131,10 +131,12 @@ function inferRow(states: Inference[], row: string[]) {
         if (state.boolean && !/^(true|false)$/i.test(text)) state.boolean = false;
     });
 }
-function inferredFields(headers: string[], states: Inference[], time: string): Field[] {
+function inferredFields(headers: string[], states: Inference[], config: Config): Field[] {
+    const types = csvFieldTypes(config);
+    for (const name of Object.keys(types)) if (!headers.includes(name)) throw Error(`CSV type override column "${name}" was not found. Check the column types in Data sources.`);
     return headers.map((name, i) => {
         const s = states[i];
-        return { name, kind: name === time ? 'date' : s?.present && s.number ? 'number' : s?.present && s.boolean ? 'boolean' : 'string' };
+        return { name, kind: Object.hasOwn(types, name) ? types[name] : name === config.timeField ? 'date' : s?.present && s.number ? 'number' : s?.present && s.boolean ? 'boolean' : 'string' };
     });
 }
 function rowDecoder(fields: Field[], config: Config, bounds: QueryBounds, totalRows: number) {
@@ -178,7 +180,13 @@ function rowDecoder(fields: Field[], config: Config, bounds: QueryBounds, totalR
             else if (f.kind === 'date') {
                 if (!Number.isFinite(parseUTC(v))) throw Error(`Invalid ISO 8601 time in "${f.name}"`);
                 properties[f.name] = utcISO(v);
-            } else properties[f.name] = f.kind === 'number' ? Number(v) : f.kind === 'boolean' ? v.trim().toLowerCase() === 'true' : v;
+            } else if (f.kind === 'number') {
+                if (!numeric.test(v.trim()) || !Number.isFinite(Number(v))) throw Error(`Invalid number in "${f.name}"`);
+                properties[f.name] = Number(v);
+            } else if (f.kind === 'boolean') {
+                if (!/^(true|false)$/i.test(v.trim())) throw Error(`Expected true or false in "${f.name}"`);
+                properties[f.name] = v.trim().toLowerCase() === 'true';
+            } else properties[f.name] = v;
         });
         if (bounds.time) {
             const t = properties[config.timeField] === null ? NaN : parseUTC(String(properties[config.timeField]));
@@ -209,7 +217,7 @@ export function csvDataset(config: Config, bounds?: QueryBounds | null) {
     if (!config) throw Error('CSV source settings are missing. Configure the source and retry.');
     const parsed = parseCSV(config.csvText, config.delimiter), states: Inference[] = [];
     parsed.rows.forEach(row => inferRow(states, row));
-    const fields = inferredFields(parsed.headers, states, config.timeField), report = reportFor(parsed);
+    const fields = inferredFields(parsed.headers, states, config), report = reportFor(parsed);
     const decode = rowDecoder(fields, config, bounds ?? {}, report.total), features: Feature[] = [];
     parsed.rows.forEach((row, i) => { const feature = recordFeature(decode, report, row, parsed.rowLines[i]); if (feature) features.push(feature); });
     finishReport(report);
@@ -222,7 +230,7 @@ export async function ingestCSV(file: Blob, config: Config, bounds: QueryBounds,
     progress?: (phase: 'scan' | 'ingest', bytes: number, rows: number) => void) {
     const states: Inference[] = [];
     const scan = await streamCSV(file, config.delimiter, row => inferRow(states, row), (bytes, rows) => progress?.('scan', bytes, rows));
-    const fields = inferredFields(scan.headers, states, config.timeField), report = reportFor(scan);
+    const fields = inferredFields(scan.headers, states, config), report = reportFor(scan);
     const decode = rowDecoder(fields, config, bounds ?? {}, report.total);
     ready(fields, scan.validRows);
     let features: Feature[] = [];

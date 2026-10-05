@@ -124,10 +124,33 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                 "geometryMode",
                 "longitudeField",
                 "latitudeField",
+                "fieldTypes",
             ],
         )?;
         for value in c.values() {
             string(value)?;
+        }
+        if let Some(types) = c.get("fieldTypes") {
+            let types: Value =
+                serde_json::from_str(types.as_str().ok_or("Invalid CSV column types")?)
+                    .map_err(|_| "Invalid CSV column types")?;
+            let types = types.as_object().ok_or("Invalid CSV column types")?;
+            for kind in types.values() {
+                if !matches!(
+                    kind.as_str(),
+                    Some("string" | "number" | "boolean" | "date")
+                ) {
+                    return Err("Invalid CSV column type");
+                }
+            }
+            if let Some(time) = c.get("timeField").and_then(Value::as_str) {
+                if types
+                    .get(time)
+                    .is_some_and(|kind| kind.as_str() != Some("date"))
+                {
+                    return Err("Invalid CSV time column type");
+                }
+            }
         }
         if !matches!(
             config.get("type").and_then(Value::as_str),
@@ -145,7 +168,10 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
             }
         }
         if let Some(coloring) = o.get("coloring") {
-            let c = object(coloring, &["field", "bins", "low", "high", "categories"])?;
+            let c = object(
+                coloring,
+                &["field", "bins", "low", "high", "categories", "scale"],
+            )?;
             for k in ["field", "low", "high"] {
                 if let Some(v) = c.get(k) {
                     string(v)?;
@@ -153,6 +179,11 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
             }
             if let Some(v) = c.get("bins") {
                 finite(v)?;
+            }
+            if c.get("scale")
+                .is_some_and(|v| !matches!(v.as_str(), Some("linear" | "log10")))
+            {
+                return Err("Invalid colour bin scale");
             }
             if let Some(categories) = c.get("categories") {
                 let fields = categories
@@ -244,6 +275,8 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                     "bins",
                     "binned",
                     "aggregate",
+                    "xScale",
+                    "yScale",
                     "series",
                 ],
             )?;
@@ -278,6 +311,13 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
             if let Some(v) = c.get("binned") {
                 if v.as_bool().is_none() {
                     return Err("Invalid binning setting");
+                }
+            }
+            for key in ["xScale", "yScale"] {
+                if c.get(key)
+                    .is_some_and(|v| !matches!(v.as_str(), Some("linear" | "log10")))
+                {
+                    return Err("Invalid axis scale");
                 }
             }
             if let Some(v) = c.get("aggregate") {
@@ -330,6 +370,37 @@ mod tests {
         }
         v["analyses"][0]["charts"][0]["series"][0]["rows"] = serde_json::json!([1, 2]);
         assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn validates_colour_bin_scale() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"a","name":"A","enabled":true,"config":{"type":"csv"},"coloring":{"field":"value","bins":8,"low":"#112233","high":"#445566","scale":"log10"}}]);
+        assert!(validate(&v).is_ok());
+        v["settings"]["sources"][0]["coloring"]["scale"] = "invalid".into();
+        assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn validates_chart_axis_scales() {
+        let mut v = state();
+        v["settings"]["sources"] =
+            serde_json::json!([{"id":"a","name":"A","enabled":true,"config":{"type":"csv"}}]);
+        v["analyses"] = serde_json::json!([{"id":"a","fields":[],"expression":{"op":"and","children":[]},"charts":[{"id":"c","type":"scatter","x":"x","y":"y","bins":24,"xScale":"log10","yScale":"linear"}]}]);
+        assert!(validate(&v).is_ok());
+        for key in ["xScale", "yScale"] {
+            let mut bad = v.clone();
+            bad["analyses"][0]["charts"][0][key] = "invalid".into();
+            assert!(validate(&bad).is_err());
+        }
+    }
+    #[test]
+    fn validates_csv_column_type_overrides() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"csv","name":"CSV","enabled":true,"config":{"type":"csv","timeField":"t","fieldTypes":"{\"code\":\"string\",\"t\":\"date\"}"}}]);
+        assert!(validate(&v).is_ok());
+        for types in ["{", "[]", "{\"code\":\"bogus\"}", "{\"t\":\"string\"}"] {
+            v["settings"]["sources"][0]["config"]["fieldTypes"] = types.into();
+            assert!(validate(&v).is_err());
+        }
     }
     #[test]
     fn rejects_local_observation_indices_and_deep_filters() {

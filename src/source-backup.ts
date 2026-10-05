@@ -15,13 +15,16 @@ function validateSettings(input: unknown): asserts input is Settings {
     for (const source of input.sources) {
         if (!object(source) || typeof source.id !== 'string' || !source.id || source.id.length > 128 || ids.has(source.id)
             || typeof source.name !== 'string' || !source.name.trim() || source.name.length > 120 || typeof source.enabled !== 'boolean'
-            || !object(source.config) || configKeys.some(key => typeof source.config[key] !== 'string')) throw Error('Invalid or duplicate data source in backup.');
+            || !object(source.config) || configKeys.filter(k => k !== 'fieldTypes').some(key => typeof source.config[key] !== 'string')) throw Error('Invalid or duplicate data source in backup.');
+        if (source.config.fieldTypes === undefined) source.config.fieldTypes = '{}';
+        if (typeof source.config.fieldTypes !== 'string') throw Error('Invalid CSV column type overrides.');
         ids.add(source.id);
         if (source.color !== undefined && (!Array.isArray(source.color) || source.color.length !== 3 || source.color.some((v: unknown) => typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1))) throw Error('Invalid source colour.');
         const coloring = source.coloring;
         const hex = (v: unknown) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
         if (coloring !== undefined) {
             if (!object(coloring) || typeof coloring.field !== 'string' || !Number.isInteger(coloring.bins) || coloring.bins < 1 || coloring.bins > 256 || !hex(coloring.low) || !hex(coloring.high)) throw Error('Invalid point colouring settings.');
+            if (coloring.scale !== undefined && !['linear', 'log10'].includes(coloring.scale)) throw Error('Invalid colour bin scale.');
             if (coloring.categories !== undefined && (!object(coloring.categories) || Object.values(coloring.categories).some(values => !object(values) || Object.values(values).some(v => !hex(v))))) throw Error('Invalid category colours.');
         }
         if (source.config.type === 'csv' && ![',', ';', '\t'].includes(source.config.delimiter)) throw Error('Invalid CSV delimiter.');

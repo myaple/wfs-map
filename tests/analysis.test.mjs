@@ -104,3 +104,61 @@ test('discrete colours cover every unique string, preserve missing values, and r
   await assert.rejects(analyzer.colors('flag',8),/numeric field/);
   await assert.rejects(analyzer.colors('absent',8),/Unknown colour attribute/);
 });
+
+test('Log10 numeric bins preserve exact edge selection and omit non-positive rows on each axis', async () => {
+  const rows = [0, -10, null, .01, .1, 1, 10, 100, 1000].map((value, i) => ({ ...feature(i), properties: { value, y: value === null ? null : value * 2 } }));
+  const a = build(rows);
+  for (const binned of [true, false]) {
+    const { charts: [r] } = await a.run(all([]), [{ id: 'log', type: 'scatter', x: 'value', y: 'y', bins: 8, binned, xScale: 'log10', yScale: 'log10' }]);
+    assert.equal(r.missing, 3); assert.equal(r.x.scale, 'log10'); assert.equal(r.y.scale, 'log10');
+    if (r.raw) {
+      assert.deepEqual([...r.raw.rows], [3, 4, 5, 6, 7, 8]);
+      for (let i = 0; i < 6; i++) assert.ok(Math.abs(r.raw.positions[i * 2] - (i / 5 * 2 - 1)) < 1e-6);
+      assert.ok(Array.from(r.raw.positions).every(Number.isFinite));
+    } else {
+      assert.equal(r.counts.reduce((a, b) => a + b, 0), 6);
+      for (let i = 0; i < r.counts.length; i++) assert.equal((await a.run({ op: 'and', children: [r.x.rules[i % 8], r.y.rules[Math.floor(i / 8)]] }, [])).count, r.counts[i]);
+    }
+  }
+  await assert.rejects(a.run(all([]), [{ id: 'bad', type: 'bar', x: 'value', bins: 8, xScale: 'ln' }]), /Invalid axis scale/);
+  const text = build([{ ...feature(0), properties: { text: '1' } }]);
+  await assert.rejects(text.run(all([]), [{ id: 'bad', type: 'bar', x: 'text', bins: 8, xScale: 'log10' }]), /numeric attributes/);
+});
+
+test('Raw fitted extents follow filtered data with linear/log axes, constants and empty positive domains', async () => {
+  const a = build([1, 10, 100, 1000].map((value, i) => ({ ...feature(i), properties: { value, y: value } })));
+  for (const scale of ['linear', 'log10']) {
+    const spec = { id: 's', type: 'scatter', x: 'value', y: 'y', bins: 8, binned: false, xScale: scale, yScale: scale };
+    const { charts: [full] } = await a.run(all([]), [spec]);
+    const { charts: [subset] } = await a.run({ field: 'value', op: 'lte', value: '10' }, [spec]);
+    assert.deepEqual([...full.raw.bounds], [...subset.raw.bounds]);
+    assert.equal(subset.raw.rows.length, 2);
+    assert.ok(subset.raw.extent[2] < full.raw.extent[2]);
+  }
+  for (const value of [7, 0, -1]) {
+    const a = build([{ ...feature(0), properties: { value, y: value } }]);
+    const { charts: [r] } = await a.run(all([]), [{ id: 's', type: 'scatter', x: 'value', y: 'y', bins: 8, binned: false, xScale: 'log10', yScale: 'log10' }]);
+    assert.ok(Array.from(r.raw.bounds).every(Number.isFinite));
+    assert.equal(r.raw.rows.length, value > 0 ? 1 : 0);
+    if (value > 0) assert.ok(Array.from(r.raw.positions).every(v => Math.abs(v) < 1e-6));
+  }
+});
+
+test('Log10 colours use equal logarithmic bins, stable full-data domains and grey non-positive/missing values', async () => {
+  const rows = [.001, .01, .1, 1, 10, 100, 1000, 10000, 100000, 0, -1, null].map((value, i) => ({ ...feature(i), properties: { value } }));
+  const a = build(rows), log = await a.colors('value', 8, undefined, {}, 'log10');
+  assert.deepEqual([...log.codes], [0, 1, 2, 3, 4, 5, 6, 7, 7, 255, 255, 255]);
+  assert.equal(log.excluded, 2); assert.equal(log.axis.labels.length, 8);
+  const linear = await a.colors('value', 8); assert.notDeepEqual(log.codes, linear.codes);
+  await a.run({ field: 'value', op: 'lte', value: '10' }, []);
+  assert.deepEqual((await a.colors('value', 8, undefined, {}, 'log10')).codes, log.codes);
+  for (let i = 0; i < 8; i++) assert.equal((await a.run(log.axis.rules[i], [])).count, [...log.codes].filter(code => code === i).length);
+  await assert.rejects(a.colors('value', 8, () => true, {}, 'log10'), /Superseded/);
+  for (const values of [[0, -1, null], [7, 7, null], [Number.MIN_VALUE, 1, Number.MAX_VALUE]]) {
+    const a = build(values.map((value, i) => ({ ...feature(i), properties: { value } })));
+    const log = await a.colors('value', 8, undefined, {}, 'log10');
+    assert.equal(log.axis.labels.length, values[0] === 0 ? 0 : values[0] === 7 ? 1 : 8);
+    assert.ok([...log.codes].every(code => code === 255 || code < 8));
+    if (values[0] === 0) assert.deepEqual([...log.codes], [255, 255, 255]);
+  }
+});

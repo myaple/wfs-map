@@ -1,3 +1,4 @@
+import { transform, untransform, axisBounds, type Scale } from './scales.ts';
 import { formatUTC } from './time.ts';
 import { TimelineIndex, type TimelineSelection } from './timeline-data.ts';
 import { categoryColors, colorBytes } from './category-colors.ts';
@@ -17,7 +18,7 @@ export type Expression = Rule | {
     children: Expression[];
 };
 export type ChartSeries = { sourceId: string; x: string; y?: string };
-export type ChartDomain = { kind: string; min: number; max: number; labels?: string[] };
+export type ChartDomain = { kind: string; min: number; max: number; minPositive?: number; maxPositive?: number; labels?: string[] };
 export type ChartSpec = {
     id: string;
     type: 'bar' | 'pie' | 'time' | 'scatter';
@@ -25,11 +26,14 @@ export type ChartSpec = {
     y?: string;
     bins: number;
     binned?: boolean;
+    xScale?: Scale;
+    yScale?: Scale;
     series?: ChartSeries[];
     aggregate?: 'count' | 'sum' | 'mean' | 'min' | 'max';
 };
 export type Axis = {
     kind?: string;
+    scale?: Scale;
     field: string;
     labels: string[];
     ranges?: Float64Array;
@@ -51,6 +55,7 @@ export type ChartResult = {
         precise?: boolean;
         rows: Uint32Array;
         bounds: Float64Array;
+        extent?: Float64Array;
     };
 };
 const normalize = (v: number, lo: number, hi: number) => {
@@ -206,6 +211,8 @@ function evaluate(node: Node, values: (Float64Array | Int32Array)[], base: numbe
 type Profile = {
     min: number;
     max: number;
+    minPositive: number;
+    maxPositive: number;
     top?: number[];
 };
 type Prepared = {
@@ -234,7 +241,7 @@ export class Analyzer {
         if (cached)
             return cached;
         const c = this.store.columns[j], counts = c.field.kind === 'string' ? new Uint32Array(c.dictionary.length) : undefined;
-        let min = Infinity, max = -Infinity;
+        let min = Infinity, max = -Infinity, minPositive = Infinity, maxPositive = -Infinity;
         for (const chunk of this.store.chunks)
             for (let base = 0; base < chunk.length; base += BLOCK) {
                 const values = chunk.values[j], end = Math.min(base + BLOCK, chunk.length);
@@ -245,6 +252,7 @@ export class Analyzer {
                             counts[v]++;
                     }
                     else if (Number.isFinite(v)) {
+                        if (v > 0) { minPositive = Math.min(minPositive, v); maxPositive = Math.max(maxPositive, v); }
                         if (v < min)
                             min = v;
                         if (v > max)
@@ -272,7 +280,7 @@ export class Analyzer {
                         throw new Error('Superseded');
                 }
             }
-        const result = { min, max, top: counts ? top : undefined };
+        const result = { min, max, minPositive, maxPositive, top: counts ? top : undefined };
         this.profiles.set(j, result);
         return result;
     }
@@ -280,9 +288,9 @@ export class Analyzer {
         const j = this.store.fields.findIndex(f => f.name === name);
         if (j < 0) throw Error(`Unknown chart attribute ${name}`);
         const p = await this.profile(j, cancelled), c = this.store.columns[j];
-        return { kind: c.field.kind, min: p.min, max: p.max, ...(c.field.kind === 'string' ? { labels: p.top!.map(i => c.dictionary[i]) } : {}) };
+        return { kind: c.field.kind, min: p.min, max: p.max, minPositive: p.minPositive, maxPositive: p.maxPositive, ...(c.field.kind === 'string' ? { labels: p.top!.map(i => c.dictionary[i]) } : {}) };
     }
-    private async axis(name: string, bins: number, cancelled: () => boolean, domain?: ChartDomain): Promise<{
+    private async axis(name: string, bins: number, cancelled: () => boolean, domain?: ChartDomain, scale: Scale = 'linear'): Promise<{
         axis: Axis;
         column: number;
         bin: (v: number) => number;
@@ -290,7 +298,10 @@ export class Analyzer {
         const j = this.store.fields.findIndex(f => f.name === name);
         if (j < 0)
             throw new Error(`Unknown chart attribute ${name}`);
-        const c = this.store.columns[j], p = domain ?? await this.profile(j, cancelled);
+        const c = this.store.columns[j], profile = domain ?? await this.profile(j, cancelled);
+        if (!['linear', 'log10'].includes(scale)) throw Error('Invalid axis scale');
+        if (scale === 'log10' && c.field.kind !== 'number') throw Error('Log10 axes require numeric attributes');
+        const p = scale === 'log10' ? { ...profile, min: profile.minPositive ?? Infinity, max: profile.maxPositive ?? -Infinity } : profile;
         if (c.field.kind === 'string') {
             const labels = domain?.labels ? [...domain.labels] : (p as { top: number[] }).top.map(code => c.dictionary[code]);
             const lookup = new Map(labels.map((label, i) => [label, i]));
@@ -308,22 +319,22 @@ export class Analyzer {
         if (c.field.kind === 'boolean')
             return { column: j, axis: { field: name, labels: ['false', 'true'], rules: [{ field: name, op: 'eq', value: 'false' }, { field: name, op: 'eq', value: 'true' }] }, bin: v => Number.isFinite(v) ? v : -1 };
         if (!Number.isFinite(p.min))
-            return { column: j, axis: { field: name, labels: [], rules: [] }, bin: () => -1 };
-        const n = p.min === p.max ? 1 : bins, width = (p.max - p.min) / n;
+            return { column: j, axis: { field: name, labels: [], rules: [], scale, ...(scale === 'log10' ? { ranges: new Float64Array([1, 10]) } : {}) }, bin: () => -1 };
+        const n = p.min === p.max ? 1 : bins, lower = transform(p.min, scale), upper = transform(p.max, scale), width = (upper - lower) / n;
         const ranges = new Float64Array(n + 1), labels: string[] = [], rules: Expression[] = [];
         const str = (v: number) => c.field.kind === 'date' ? new Date(v).toISOString() : String(v);
         const label = (v: number) => c.field.kind === 'date' ? formatUTC(v) : Number(v.toPrecision(4)).toString();
-        const regular = Number.isFinite(width) && width > 0;
+        const regular = scale !== 'log10' && Number.isFinite(width) && width > 0;
         for (let i = 0; i <= n; i++) {
-            const edge = regular ? p.min + width * i : p.min * (1 - i / n) + p.max * (i / n);
-            ranges[i] = i === n ? p.max : c.field.kind === 'date' ? Math.ceil(edge) : edge;
+            const edge = scale === 'log10' ? untransform(lower * (1 - i / n) + upper * (i / n), scale) : regular ? p.min + width * i : p.min * (1 - i / n) + p.max * (i / n);
+            ranges[i] = i === 0 ? p.min : i === n ? p.max : c.field.kind === 'date' ? Math.ceil(edge) : edge;
         }
         for (let i = 0; i < n; i++) {
             labels.push(n === 1 ? label(p.min) : `${label(ranges[i])} – ${label(ranges[i + 1])}`);
             rules.push(group('and', [{ field: name, op: 'gte', value: str(ranges[i]) }, { field: name, op: i === n - 1 ? 'lte' : 'lt', value: str(ranges[i + 1]) }]));
         }
         const bin = (v: number) => {
-            if (!Number.isFinite(v))
+            if (!Number.isFinite(v) || scale === 'log10' && v <= 0)
                 return -1;
             if (n === 1)
                 return 0;
@@ -346,9 +357,9 @@ export class Analyzer {
                 index++;
             return index;
         };
-        return { column: j, axis: { field: name, labels, ranges, rules }, bin };
+        return { column: j, axis: { field: name, labels, ranges, rules, scale }, bin };
     }
-    async colors(name: string, bins: number, cancelled: () => boolean = () => false, overrides: Record<string, string> = {}) {
+    async colors(name: string, bins: number, cancelled: () => boolean = () => false, overrides: Record<string, string> = {}, scale: Scale = 'linear') {
         const j = this.store.fields.findIndex(f => f.name === name);
         if (j < 0) throw Error(`Unknown colour attribute ${name}`);
         const column = this.store.columns[j];
@@ -374,13 +385,15 @@ export class Analyzer {
         if (column.field.kind !== 'number') throw Error('Gradients require a numeric field');
         if (!Number.isInteger(bins) || bins < 2 || bins > 64)
             throw Error('Invalid colour bins');
-        const a = await this.axis(name, bins, cancelled), codes = new Uint8Array(this.store.length);
+        const a = await this.axis(name, bins, cancelled, undefined, scale), codes = new Uint8Array(this.store.length);
         codes.fill(255);
+        let excluded = 0;
         for (const chunk of this.store.chunks)
             for (let base = 0; base < chunk.length; base += BLOCK) {
                 const end = Math.min(base + BLOCK, chunk.length);
                 for (let i = base; i < end; i++) {
-                    const bin = a.bin(chunk.values[a.column][i]);
+                    const value = chunk.values[a.column][i], bin = a.bin(value);
+                    if (scale === 'log10' && Number.isFinite(value) && value <= 0) excluded++;
                     if (bin >= 0)
                         codes[chunk.offset + i] = bin;
                 }
@@ -388,7 +401,7 @@ export class Analyzer {
                 if (cancelled())
                     throw Error('Superseded');
             }
-        return { codes, axis: a.axis };
+        return { codes, axis: a.axis, excluded };
     }
     async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false, domains?: { x: ChartDomain; y?: ChartDomain }, timeline?: TimelineSelection) {
         if (specs.length > 12)
@@ -405,7 +418,8 @@ export class Analyzer {
                 throw new Error('Time series requires a date attribute');
             if (s.type === 'scatter' && (!s.y || !field || !this.store.fields.some(f => f.name === s.y)))
                 throw new Error('Scatter axes require known attributes');
-            const x = await this.axis(s.x, s.bins, cancelled, domains?.x), y = s.type === 'scatter' ? await this.axis(s.y!, s.bins, cancelled, domains?.y) : undefined;
+            const x = await this.axis(s.x, s.bins, cancelled, domains?.x, s.type === 'pie' ? 'linear' : s.xScale), y = s.type === 'scatter' ? await this.axis(s.y!, s.bins, cancelled, domains?.y, s.yScale) : undefined;
+            if (s.yScale && !['linear', 'log10'].includes(s.yScale)) throw Error('Invalid axis scale');
             x.axis.kind = field?.kind;
             if (y)
                 y.axis.kind = this.store.fields[y.column].kind;
@@ -422,7 +436,10 @@ export class Analyzer {
             if (s.binned === false && s.type === 'scatter') {
                 const xp = domains?.x ?? await this.profile(x.column, cancelled), yp = domains?.y ?? await this.profile(y!.column, cancelled);
                 const precise = field?.kind === 'date' || this.store.fields[y!.column].kind === 'date';
-                result.raw = { precise, positions: new Float32Array(this.store.length * (precise ? 4 : 2)), rows: new Uint32Array(this.store.length), bounds: new Float64Array([x.axis.ranges ? xp.min : 0, y!.axis.ranges ? yp.min : 0, x.axis.ranges ? xp.max : x.axis.labels.length, y!.axis.ranges ? yp.max : y!.axis.labels.length]) };
+                result.raw = { precise, positions: new Float32Array(this.store.length * (precise ? 4 : 2)), rows: new Uint32Array(this.store.length), bounds: new Float64Array([0, 0, 1, 1]), extent: new Float64Array([Infinity, Infinity, -Infinity, -Infinity]) };
+                const xb = x.axis.ranges ? axisBounds(s.xScale === 'log10' ? xp.minPositive ?? Infinity : xp.min, s.xScale === 'log10' ? xp.maxPositive ?? -Infinity : xp.max, s.xScale, field?.kind === 'date') : [0, x.axis.labels.length];
+                const yb = y!.axis.ranges ? axisBounds(s.yScale === 'log10' ? yp.minPositive ?? Infinity : yp.min, s.yScale === 'log10' ? yp.maxPositive ?? -Infinity : yp.max, s.yScale, y!.axis.kind === 'date') : [0, y!.axis.labels.length];
+                result.raw.bounds.set([xb[0], yb[0], xb[1], yb[1]]);
                 result.counts = new Uint32Array(0);
             }
             prepared.push({ result, xi: x.column, yi: y?.column ?? -1, xbin: x.bin, ybin: y?.bin, spec: s, measure, rawCount: 0 });
@@ -456,12 +473,15 @@ export class Analyzer {
                         if (mask[i]) {
                             const r = chart.result, v = x[base + i], yv = y?.[base + i], mv = chart.measure >= 0 ? chunk.values[chart.measure][base + i] : 0;
                             if (r.raw) {
-                                if (!Number.isFinite(v) || !Number.isFinite(yv!) || !r.x.ranges && chart.xbin(v) < 0 || !r.y!.ranges && chart.ybin!(yv!) < 0) {
+                                if (chart.xbin(v) < 0 || chart.ybin!(yv!) < 0) {
                                     r.missing++;
                                     continue;
                                 }
                                 const k = chart.rawCount++, b = r.raw.bounds;
-                                const xn = normalize(r.x.ranges ? v : chart.xbin(v) + .5, b[0], b[2]), yn = normalize(r.y!.ranges ? yv! : chart.ybin!(yv!) + .5, b[1], b[3]);
+                                const xn = normalize(r.x.ranges ? transform(v, r.x.scale) : chart.xbin(v) + .5, transform(b[0], r.x.scale), transform(b[2], r.x.scale)), yn = normalize(r.y!.ranges ? transform(yv!, r.y!.scale) : chart.ybin!(yv!) + .5, transform(b[1], r.y!.scale), transform(b[3], r.y!.scale));
+                                const extent = r.raw.extent!;
+                                extent[0] = Math.min(extent[0], (xn + 1) / 2); extent[2] = Math.max(extent[2], (xn + 1) / 2);
+                                extent[1] = Math.min(extent[1], (yn + 1) / 2); extent[3] = Math.max(extent[3], (yn + 1) / 2);
                                 if (r.raw.precise) {
                                     const hx = Math.fround(xn), hy = Math.fround(yn);
                                     r.raw.positions[k * 4] = hx;

@@ -21,13 +21,13 @@ export function configurationState(settings: Settings, query: AnalysisState['que
                 id: s.id, name: s.name, enabled: s.enabled,
                 config: Object.fromEntries(configKeys.filter(k => k !== 'csvText').map(k => [k, s.config[k]])) as Settings['sources'][number]['config'],
                 ...(s.color ? { color: [...s.color] as [number, number, number] } : {}),
-                ...(s.coloring ? { coloring: { field: s.coloring.field, bins: s.coloring.bins, low: s.coloring.low, high: s.coloring.high, ...(s.coloring.categories ? { categories: structuredClone(s.coloring.categories) } : {}) } } : {})
+                ...(s.coloring ? { coloring: { ...(s.coloring.scale ? { scale: s.coloring.scale } : {}), field: s.coloring.field, bins: s.coloring.bins, low: s.coloring.low, high: s.coloring.high, ...(s.coloring.categories ? { categories: structuredClone(s.coloring.categories) } : {}) } } : {})
             })),
             background: { url: settings.background.url, attribution: settings.background.attribution, enabled: settings.background.enabled },
             ...(settings.map ? { map: { center: [...settings.map.center] as [number, number], zoom: settings.map.zoom, pointSize: settings.map.pointSize } } : {})
         },
         query: { choice: query.choice, bounds: structuredClone(query.bounds) },
-        analyses: analyses.map(s => ({ id: s.id, fields: s.fields.map(f => ({ name: f.name, kind: f.kind })), expression: shareExpression(s.expression), charts: s.charts.map(c => ({ id: c.id, type: c.type, x: c.x, ...(c.y !== undefined ? { y: c.y } : {}), bins: c.bins, ...(c.binned !== undefined ? { binned: c.binned } : {}), ...(c.aggregate ? { aggregate: c.aggregate } : {}), ...(c.series?.length ? { series: c.series.map(s => ({ sourceId: s.sourceId, x: s.x, ...(s.y !== undefined ? { y: s.y } : {}) })) } : {}) })) }))
+        analyses: analyses.map(s => ({ id: s.id, fields: s.fields.map(f => ({ name: f.name, kind: f.kind })), expression: shareExpression(s.expression), charts: s.charts.map(c => ({ id: c.id, type: c.type, x: c.x, ...(c.y !== undefined ? { y: c.y } : {}), bins: c.bins, ...(c.xScale ? { xScale: c.xScale } : {}), ...(c.yScale ? { yScale: c.yScale } : {}), ...(c.binned !== undefined ? { binned: c.binned } : {}), ...(c.aggregate ? { aggregate: c.aggregate } : {}), ...(c.series?.length ? { series: c.series.map(s => ({ sourceId: s.sourceId, x: s.x, ...(s.y !== undefined ? { y: s.y } : {}) })) } : {}) })) }))
     };
 }
 export function localSettings(state: AnalysisState): Settings {

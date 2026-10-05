@@ -26,7 +26,7 @@ test('binned charts left-drag zoom locally, right-drag select, double-click rese
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].filterRequest)).toBe(before);
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     await canvas.dblclick({ position: { x: 140, y: 100 } });
-    await expect(canvas).toHaveAttribute('data-view', '[0,0,1,1]');
+    await expect(canvas).toHaveAttribute('data-view', (await canvas.getAttribute('data-fit'))!);
     await page.waitForTimeout(650);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].filterRequest)).toBe(before);
     await drag(page, canvas, 'right');
@@ -35,11 +35,12 @@ test('binned charts left-drag zoom locally, right-drag select, double-click rese
     await page.locator('#reset').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     const bar = page.locator('.chart-card').first().locator('canvas');
+    const barFit = (await bar.getAttribute('data-view'))!;
     await drag(page, bar, 'left');
     await expect(bar).not.toHaveAttribute('data-view', '[0,0,1,1]');
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     await bar.dblclick({ position: { x: 140, y: 100 } });
-    await expect(bar).toHaveAttribute('data-view', '[0,0,1,1]');
+    await expect(bar).toHaveAttribute('data-view', barFit);
 });
 test('raw date axes are readable, fill the plot, zoom independently and retain correct rectangle predicates', async ({ page }) => {
     await ready(page);
@@ -69,7 +70,7 @@ test('raw date axes are readable, fill the plot, zoom independently and retain c
     expect(rules[0].value).toMatch(/^202[4-6]-\d{2}-\d{2}T/);
     await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
     await canvas.dblclick({ position: { x: 140, y: 100 } });
-    await expect(canvas).toHaveAttribute('data-view', '[0,0,1,1]');
+    await expect(canvas).toHaveAttribute('data-view', (await canvas.getAttribute('data-fit'))!);
 });
 test('every chart enlarges and restores, retaining zoom and selection; Escape also restores', async ({ page }) => {
     await ready(page);
@@ -85,7 +86,9 @@ test('every chart enlarges and restores, retaining zoom and selection; Escape al
         await expect(page.getByRole('dialog')).toBeVisible();
         const enlarged = page.getByRole('dialog').locator('.chart-card');
         const canvas = enlarged.locator('canvas:not(.raw-scatter-axes):visible');
-        expect((await canvas.boundingBox())!.height).toBeGreaterThan(300);
+        const plot = (await canvas.boundingBox())!, timeline = (await page.getByRole('dialog').locator(':scope > .timeline').boundingBox())!;
+        expect(plot.height).toBeGreaterThan(120);
+        expect(plot.y + plot.height).toBeLessThanOrEqual(timeline.y);
         await enlarged.getByRole('button', { name: 'Return to normal size' }).click();
         await expect(page.getByRole('dialog')).toHaveCount(0);
     }
@@ -116,11 +119,12 @@ test('pie and time charts share zoom/select gestures; removing an enlarged chart
     await page.locator('#reset').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     const time = page.locator('.chart-card').nth(1).locator('canvas');
+    const timeFit = (await time.getAttribute('data-view'))!;
     await drag(page, time, 'left');
     await expect(time).not.toHaveAttribute('data-view', '[0,0,1,1]');
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     await time.dblclick({ position: { x: 140, y: 100 } });
-    await expect(time).toHaveAttribute('data-view', '[0,0,1,1]');
+    await expect(time).toHaveAttribute('data-view', timeFit);
     await drag(page, time, 'right');
     await expect(page.locator('#rules .selection')).toHaveCount(1);
     await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');

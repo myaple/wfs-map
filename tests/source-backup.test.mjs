@@ -11,7 +11,7 @@ const csv = '\uFEFFlon;lat;name;notes\r\n-1;54;"a;b";"first\nsecond ""quote"" ca
 const settings = () => ({
     sources: [
         { id: 'csv-one', name: 'Points', enabled: true, color: [0.1, 0.2, 0.3],
-            coloring: { field: 'name', bins: 24, low: '#112233', high: '#445566', categories: { name: { 'a;b': '#abcdef', other: '#123456' } } },
+            coloring: { scale: 'log10', field: 'name', bins: 24, low: '#112233', high: '#445566', categories: { name: { 'a;b': '#abcdef', other: '#123456' } } },
             config: { ...defaultConfig, type: 'csv', csvRef: 'local-ref', fileName: 'shared.csv', delimiter: ';', longitudeField: 'lon', latitudeField: 'lat' } },
         { id: 'disabled-csv', name: 'Disabled file', enabled: false,
             config: { ...defaultConfig, type: 'csv', csvText: 'geom\tvalue\nPOINT (-2 53)\t99\n', fileName: 'wkt.tsv', delimiter: '\t', geometryMode: 'wkt', geometryField: 'geom' } },
@@ -78,6 +78,7 @@ test('unsupported, incomplete and invalid manifests are rejected', async () => {
         [m => m.settings.sources[1].id = 'csv-one', /more than once|duplicate/],
         [m => m.settings.sources[2].config.url = 'javascript:alert(1)', /HTTP/],
         [m => m.settings.map.zoom = 99, /map view/],
+        [m => m.settings.sources[0].coloring.scale = 'invalid', /colour bin scale/],
         [m => m.settings.sources[0].color = ['bad', 0, 0], /colour/],
         [m => m.settings.sources[0].config.csvRef = 'browser-local', /local CSV/],
         [m => m.csvFiles['wfs-one'] = 'csv/source-1.csv', /unexpected/],

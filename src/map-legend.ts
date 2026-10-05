@@ -66,7 +66,7 @@ export class MapLegend {
                 label = offset < s.colorCategories.length ? s.colorCategories[offset] || '(empty string)' : 'Missing value';
                 color = offset < s.colorCategories.length ? group.palette!.get(s.colorCategories[offset]) : '#808080';
             } else if (s.colorLabels) {
-                label = offset < s.colorLabels.length ? s.colorLabels[offset] : 'Missing value';
+                label = offset < s.colorLabels.length ? s.colorLabels[offset] : s.coloring.scale === 'log10' ? 'Missing / non-positive value' : 'Missing value';
                 color = offset < s.colorLabels.length ? rgb(s.layer.palette.subarray(offset * 3, offset * 3 + 3)) : '#808080';
             } else label = s.colorLegend || 'Updating colours…';
             const row = document.createElement('div'); row.className = 'map-legend-row'; row.dataset.source = s.id;

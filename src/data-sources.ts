@@ -4,7 +4,7 @@ import { readCSVText, readCSVBlob, stageCSVFile, discardStagedCSVFiles, saveSett
 import { csvHeaders } from './csv.ts';
 import { createBackup, readBackup } from './source-backup.ts';
 import { wfsURL, xmlDocument } from './data.ts';
-import { configKeys, defaultConfig, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
+import { configKeys, defaultConfig, csvFieldTypes, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const input = (id: string) => $<HTMLInputElement>(id);
 export class DataSources {
@@ -17,6 +17,7 @@ export class DataSources {
     private csvBlob?: Blob;
     private csvHeaderNames: string[] = [];
     private csvRef = '';
+    private fieldTypes: ReturnType<typeof csvFieldTypes> = {};
     private saving = false;
     private fileName = '';
     private fileRevision = 0;
@@ -60,6 +61,7 @@ export class DataSources {
             <div id="csvXY" class="settings-fields"><label for="longitudeField">Longitude column</label><select id="longitudeField" required></select><label for="latitudeField">Latitude column</label><select id="latitudeField" required></select></div>
             <div id="csvPoint" class="settings-fields" hidden><label for="csvGeometry">Geometry column</label><select id="csvGeometry"></select></div>
             <label for="csvTime">Time attribute (optional)</label><select id="csvTime"></select><p class="hint">ISO 8601 dates/times, using a 24-hour clock. Times without a timezone are assumed UTC; explicit offsets are converted to UTC. Use All time when no time column is selected. Coordinates must be longitude/latitude in WGS84; only points are supported.</p>
+            <details id="csvTypes"><summary>Column types</summary><p class="hint">Automatic infers each column from the whole file. Text / category preserves numeric codes and leading zeros. Invalid values for an explicit type are reported as rejected rows. The selected time attribute must be Date / time or Automatic.</p><div id="csvTypeList" class="settings-fields"></div></details>
             <p class="hint">The imported file is saved in this browser with its settings. Available storage depends on your browser and device; a save error leaves your existing saved sources intact.</p>
           </fieldset>
           <p id="sourceError" class="error" role="alert" hidden></p>
@@ -202,7 +204,8 @@ export class DataSources {
     private open(config: Config = defaultConfig, name = '', source?: SavedSource) {
         this.editing = source;
         this.fileRevision++;
-        for (const key of configKeys) if (!['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField'].includes(key)) input(key).value = config[key];
+        for (const key of configKeys) if (!['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'fieldTypes'].includes(key)) input(key).value = config[key];
+        this.fieldTypes = csvFieldTypes(config);
         this.csvRef = config.csvRef; this.csvText = config.csvText; this.fileName = config.fileName;
         this.csvBlob = undefined; this.csvHeaderNames = [];
         input('csvFile').value = '';
@@ -298,6 +301,17 @@ export class DataSources {
                 select.value = headers.find(h => pattern.test(h)) ?? '';
             }
         }
+        if (headers.length) this.fieldTypes = Object.fromEntries(Object.entries(this.fieldTypes).filter(([name]) => headers.includes(name)));
+        const list = $('csvTypeList'); list.replaceChildren();
+        headers.forEach((name, i) => {
+            const label = document.createElement('label'), select = document.createElement('select');
+            select.id = `csv-type-${i}`; label.htmlFor = select.id; label.textContent = name;
+            select.setAttribute('aria-label', `Type for ${name}`);
+            select.append(...[['', 'Automatic'], ['string', 'Text / category'], ['number', 'Number'], ['boolean', 'Boolean'], ['date', 'Date / time (UTC)']].map(([value, text]) => new Option(text, value)));
+            select.value = Object.hasOwn(this.fieldTypes, name) ? this.fieldTypes[name] : '';
+            select.onchange = () => { if (select.value) Object.defineProperty(this.fieldTypes, name, { value: select.value, enumerable: true, configurable: true, writable: true }); else delete this.fieldTypes[name]; };
+            list.append(label, select);
+        });
         $('csvFileStatus').textContent = this.fileName ? restoring ? `Reading ${this.fileName}…` : `${this.fileName} · ${headers.length} columns · Rows are validated during import.` : 'Choose a file to populate its columns.';
     }
     private showError(e: unknown) { $('sourceError').textContent = (e as Error).message; $('sourceError').hidden = false; }
@@ -321,7 +335,7 @@ export class DataSources {
             if (this.editing?.config.type === 'csv') {
                 const mapped = ['longitudeField', 'latitudeField', 'geometryField', 'timeField'] as const;
                 const savedFields = currentAnalysis?.state.analyses.find(s => s.id === this.editing!.id)?.fields.map(f => f.name) ?? [];
-                const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields])].filter(k => k && !headers.includes(k));
+                const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields, ...Object.keys(this.fieldTypes)])].filter(k => k && !headers.includes(k));
                 if (missing.length) throw Error('The chosen CSV is missing configured columns: ' + missing.join(', '));
             }
             this.csvText = ''; this.csvBlob = file; this.csvHeaderNames = headers; this.csvRef = createUUID(); this.fileName = file.name;
@@ -330,8 +344,8 @@ export class DataSources {
         finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
     }
     private config(): Config {
-        const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
-        if (config.type === 'csv') Object.assign(config, { csvText: this.csvText, csvRef: this.csvRef, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value });
+        const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'fieldTypes'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
+        if (config.type === 'csv') Object.assign(config, { csvText: this.csvText, csvRef: this.csvRef, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value, fieldTypes: JSON.stringify(this.fieldTypes) });
         return config;
     }
     private updateSource() {
