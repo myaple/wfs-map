@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 async function setup(page: Page) {
     await page.goto('/?time=all&points=16&autoload=1');
@@ -28,6 +28,7 @@ test('all charts stay visible and each source selector repopulates axes, aggrega
     await chart.getByLabel('Y attribute', { exact: true }).selectOption('temperature');
     await page.waitForFunction(id => (window as any).__WFS_MAP__.sources[1].workspace.results.some((r: any) => r.id === id && r.measure?.includes('temperature')), chartId, { timeout: 10000 });
     await chart.getByRole('button', { name: 'Return to normal size', exact: true }).click();
+    await openFilters(page);
     await page.locator('#filterSource').selectOption(ids[1]); await page.locator('#filterSource').selectOption(ids[0]);
     await expect(page.locator('.chart-card')).toHaveCount(6);
     await expect(chart.getByLabel('Time attribute', { exact: true })).toHaveValue('day');

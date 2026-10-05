@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 const ready = async (page: any) => { await page.goto('/?time=all&points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
@@ -127,6 +127,7 @@ test('time Y mean and scatter mode are configurable; raw scatter clicks select o
     await page.mouse.click(b.x + 68 + (b.width - 86) * (pos[0] + 1) / 2, b.y + b.height - 64 - (b.height - 82) * (pos[1] + 1) / 2);
     await expect(page.locator('#filterStatus')).toContainText('1 matches');
     await expect(page.locator('#rules')).toContainText('Observation');
+    await openFilters(page);
     await page.locator('#reset').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     await canvas.scrollIntoViewIfNeeded();
@@ -186,6 +187,7 @@ test('sources retain independent colour attributes and geographic selections acr
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].workspace.results.length === 3);
     await navigate(page, 'analysis');
     const ids = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.id));
+    await openFilters(page);
     await page.locator('#filterSource').selectOption(ids[1]); await page.locator('#colorSource').selectOption(ids[1]);
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('');
     await page.getByLabel('Point colour attribute').selectOption('value');
@@ -204,6 +206,7 @@ test('sources retain independent colour attributes and geographic selections acr
     await page.reload();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done && s.layer.colorCodes));
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('quality');
+    await openFilters(page);
     await page.locator('#filterSource').selectOption(ids[1]); await page.locator('#colorSource').selectOption(ids[1]);
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('value');
 });

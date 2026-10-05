@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { categoryColors, colorBytes } from '../../src/category-colors.ts';
 
@@ -19,6 +19,7 @@ test('text colours are editable, stable, per-source and saved; gradients and sol
     expect(rgb.codes.slice(0, 3)).toEqual(colorBytes(categoryColors(['sensor','vehicle','station','event']).get('sensor')!));
     await page.getByLabel('Colour for sensor', { exact: true }).fill('#00ff00');
     await page.waitForFunction(() => { const l = (window as any).__WFS_MAP__.sources[0].layer; return l.colorCodes[0] === 0 && l.colorCodes[1] === 255 && l.colorCodes[2] === 0; });
+    await openFilters(page);
     await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click(); await page.getByLabel('Attribute', { exact: true }).selectOption('category');
     await page.getByLabel('Filter value', { exact: true }).fill('sensor'); await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('16 matches');
@@ -88,6 +89,7 @@ test('Log10 colour bins recompute codes, keep full-data ranges and persist indep
     await expect(page.locator('#mapLegend')).toContainText('Missing / non-positive value');
     const log = await codes();
     await page.locator('#colorLow').fill('#ff0000'); expect(await codes()).toEqual(log);
+    await openFilters(page);
     await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await page.getByLabel('Attribute', { exact: true }).selectOption('value'); await page.getByLabel('Operator').selectOption('lte');
     await page.getByLabel('Filter value').fill('10'); await page.locator('#apply').click();

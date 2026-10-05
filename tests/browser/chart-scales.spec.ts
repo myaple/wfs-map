@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { emptyState } from '../../src/analysis-state.ts';
 
@@ -31,6 +31,7 @@ test('Independent Log10 axes, fitted filtering, brush membership, enlargement an
     await expect(chart).toContainText('4 plotted · 1 missing');
     const readView = () => plot.getAttribute('data-view').then(v => JSON.parse(v!));
     const initial = await readView();
+    await openFilters(page);
     await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await page.getByLabel('Attribute', { exact: true }).selectOption('x'); await page.getByLabel('Operator').selectOption('lte');
     await page.getByLabel('Filter value').fill('10'); await page.locator('#apply').click();
@@ -55,9 +56,11 @@ test('Independent Log10 axes, fitted filtering, brush membership, enlargement an
     await page.mouse.move(b.x + 69, b.y + 19); await page.mouse.down({ button: 'right' });
     await page.mouse.move(b.x + b.width - 19, b.y + b.height - 65); await page.mouse.up({ button: 'right' });
     await page.locator('#apply').click(); await expect(page.locator('#filterStatus')).toContainText('2 matches');
+    await navigate(page, 'configuration');
     await page.getByRole('button', { name: 'Save analysis', exact: true }).click();
     await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
+    await navigate(page, 'analysis');
     await expect(page.locator('.raw-scatter > canvas').first()).toHaveAttribute('data-scale-x', 'log10');
     expect(errors).toEqual([]);
 });

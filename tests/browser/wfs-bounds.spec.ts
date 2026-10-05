@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 const now = new Date('2026-10-02T12:00:00Z');
@@ -19,6 +19,7 @@ test('default 24 hours bounds every source, hits and page; ordinary filters make
   page.on('request', r => { const u = new URL(r.url()); if (u.searchParams.get('request') === 'GetFeature') requests.push(u); });
   await page.goto('/?autoload=1'); await ready(page);
   await expect(page.getByLabel('Time window', { exact: true })).toHaveValue('24');
+  await openFilters(page);
   await page.locator('.filter-panel summary').click();
   await expect(page.getByLabel('Time window', { exact: true })).toBeVisible();
   await page.locator('.filter-panel summary').click();
@@ -53,6 +54,7 @@ test('map area reloads every source with time AND BBOX and clearing restores the
   await page.mouse.down({ button: 'right' });
   await page.mouse.move(b.x + b.width * .75, b.y + b.height * .75, { steps: 4 });
   await page.mouse.up({ button: 'right' });
+  await openFilters(page);
   await expect(page.locator('#clearArea')).toBeVisible(); await ready(page);
   const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox);
   const expected = ['uk', 'dense'].map(distribution => Array.from({ length: 8192 }, (_, i) => feature(i, distribution)).filter(f => {
@@ -72,6 +74,7 @@ test('custom UTC ranges validate before requesting and an empty result retains i
   const requests: string[] = []; page.on('request', r => requests.push(r.url()));
   await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ op: 'row', index: 0 }, 'Observation 1'));
   await expect(page.locator('#filterStatus')).toContainText('1 matches');
+  await openFilters(page);
   await page.getByLabel('Time window', { exact: true }).selectOption('custom');
   await page.getByLabel('Start (UTC)', { exact: true }).fill('2030-01-02T00:00');
   await page.getByLabel('End (UTC)', { exact: true }).fill('2030-01-01T00:00');
@@ -112,6 +115,7 @@ test('superseded schema requests cannot clear or overwrite the replacement query
   });
   await page.goto('/?autoload=1');
   await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0].loading);
+  await openFilters(page);
   await page.getByLabel('Time window', { exact: true }).selectOption('6');
   release(); await ready(page);
   const state = await page.evaluate(() => { const h = (window as any).__WFS_MAP__; return { bounds: h.queryBounds, metrics: h.metrics, error: h.sources[0].error }; });

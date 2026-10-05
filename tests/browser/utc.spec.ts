@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 
 test.use({ timezoneId: 'America/New_York', locale: 'en-US' });
@@ -17,6 +17,7 @@ test('CSV uploads, filter entry, metadata, and custom ranges stay UTC in a 12-ho
     await page.evaluate(() => (window as any).__WFS_MAP__.getPoint(1));
     await expect(page.locator('.metadata')).toContainText('2026-03-08 02:30:00 UTC');
     await page.locator('.maplibregl-popup-close-button').click();
+    await openFilters(page);
     await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await page.getByLabel('Attribute', { exact: true }).selectOption('when');
     await page.getByLabel('Filter value').fill('2026-03-08 02:30:00');

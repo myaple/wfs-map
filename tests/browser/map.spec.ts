@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 test('loads genuine WFS pages, filters and double-clicks the correct GPU ID',async({page})=>{
@@ -121,6 +121,7 @@ test('enlarged map right-drag still bounds WFS requests and retains its area aft
   expect(expected).toBeGreaterThan(0); expect(expected).toBeLessThan(1024);
   await expect(page.locator('#hud')).toHaveText(`Loaded ${expected.toLocaleString()} points`);
   await page.keyboard.press('Escape');
+  await openFilters(page);
   await expect(page.locator('#clearArea')).toBeVisible();
   expect(await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox)).toEqual(bounds);
 });

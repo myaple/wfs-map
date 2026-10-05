@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 test('CSV imports alongside WFS, configures fields, filters, colours, and persists its file', async ({ page }) => {
     const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
@@ -16,6 +16,7 @@ test('CSV imports alongside WFS, configures fields, filters, colours, and persis
     await navigate(page, 'analysis');
     await expect(page.locator('#hud')).toHaveText('Loaded 18 points');
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
+    await openFilters(page);
     await page.locator('#filterSource').selectOption(id);
     await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await page.getByLabel('Attribute', { exact: true }).selectOption('temp');
@@ -29,6 +30,7 @@ test('CSV imports alongside WFS, configures fields, filters, colours, and persis
     await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure CSV stations', exact: true }).click();
     await expect(page.locator('#type')).toHaveValue('csv'); await expect(page.locator('#csvTime')).toHaveValue('observed'); await expect(page.locator('#csvFileStatus')).toContainText('stations.csv');
     await page.locator('#cancelSource').click(); await navigate(page, 'analysis');
+    await openFilters(page);
     await page.locator('#timeWindow').selectOption('custom'); await page.locator('#timeStart').fill('2026-10-02T00:00'); await page.locator('#timeEnd').fill('2026-10-03T00:00'); await page.locator('#applyTime').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.done && (window as any).__WFS_MAP__?.sources[1].loaded === 1);
     expect(errors).toEqual([]);

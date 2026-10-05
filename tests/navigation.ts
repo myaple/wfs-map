@@ -5,3 +5,12 @@ export async function navigate(page: Page, target: 'analysis' | 'records' | 'con
  await page.locator(group).click();
  await page.locator(link).click();
 }
+
+export async function openFilters(page: Page) {
+ const toggle = page.locator('#toggleFilters');
+ if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+}
+export async function openTimeline(page: Page) {
+ const toggle = page.locator('#toggleTimeline');
+ if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+}

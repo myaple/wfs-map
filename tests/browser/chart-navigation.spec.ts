@@ -1,3 +1,4 @@
+import { openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 const ready = async (page: any) => { await page.goto('/?time=all&points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
 const drag = async (page: any, canvas: any, button: 'left' | 'right', lo = [.2, .25], hi = [.8, .8]) => { await canvas.scrollIntoViewIfNeeded(); const b = (await canvas.boundingBox())!; await page.mouse.move(b.x + 68 + (b.width - 86) * lo[0], b.y + 18 + (b.height - 82) * lo[1]); await page.mouse.down({ button }); await page.mouse.move(b.x + 68 + (b.width - 86) * hi[0], b.y + 18 + (b.height - 82) * hi[1], { steps: 5 }); await page.mouse.up({ button }); };
@@ -32,6 +33,7 @@ test('binned charts left-drag zoom locally, right-drag select, double-click rese
     await drag(page, canvas, 'right');
     await expect(page.locator('#rules .selection')).toHaveCount(1);
     await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
+    await openFilters(page);
     await page.locator('#reset').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     const bar = page.locator('.chart-card').first().locator('canvas');
@@ -116,6 +118,7 @@ test('pie and time charts share zoom/select gestures; removing an enlarged chart
     await expect(page.locator('#filterStatus')).toContainText('2,048 matches');
     await expect(page.locator('#rules .selection > .group-head').getByLabel('Group logic')).toHaveValue('or');
     await expect(page.locator('#rules .selection .rule')).toHaveCount(2);
+    await openFilters(page);
     await page.locator('#reset').click();
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
     const time = page.locator('.chart-card').nth(1).locator('canvas');

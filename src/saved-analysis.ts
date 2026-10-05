@@ -23,14 +23,13 @@ export function rememberBindings(settings: Settings) {
     }
     localStorage.setItem(settingsKey + ':bindings', JSON.stringify(bindings));
 }
-export function mountAnalysisControls(snapshot: () => AnalysisState) {
+export function mountAnalysisControls(snapshot: () => AnalysisState, host: HTMLElement) {
     const doc = currentAnalysis;
-    if (!doc) return;
     const bar = document.createElement('section'); bar.className = 'saved-analysis-bar';
     const back = document.createElement('a'); back.href = '/'; back.textContent = 'All analyses';
-    const name = document.createElement('input'); name.value = doc.name; name.maxLength = 120; name.setAttribute('aria-label', 'Analysis name'); name.readOnly = doc.readOnly;
-    document.title = `${doc.name} · WFS analysis`;
-    const status = document.createElement('span'); status.setAttribute('role', 'status'); status.className = 'hint'; status.textContent = doc.readOnly ? 'Shared setup · changes stay local until you save a copy' : 'Configuration saved remotely · CSV contents stay on this workstation';
+    const name = document.createElement('input'); name.value = doc?.name ?? 'Untitled analysis'; name.maxLength = 120; name.setAttribute('aria-label', 'Analysis name'); name.readOnly = doc?.readOnly ?? false;
+    if (doc) document.title = `${doc.name} · WFS analysis`;
+    const status = document.createElement('span'); status.setAttribute('role', 'status'); status.className = 'hint'; status.textContent = doc?.readOnly ? 'Shared setup · changes stay local until you save a copy' : doc ? 'Save your configuration remotely to resume or share it. CSV contents stay on this workstation.' : 'Save a remote analysis to resume or share this setup. CSV contents stay on this workstation.';
     const link = document.createElement('input'); link.readOnly = true; link.hidden = true; link.setAttribute('aria-label', 'Shared analysis link');
     let busy = false;
     const buttons: HTMLButtonElement[] = [];
@@ -44,6 +43,13 @@ export function mountAnalysisControls(snapshot: () => AnalysisState) {
     };
     const save = async () => { const state = snapshot(); rememberBindings(state.settings); currentAnalysis = await saveAnalysis(currentAnalysis!, name.value.trim(), state); document.title = `${currentAnalysis.name} · WFS analysis`; status.textContent = 'Analysis configuration saved'; };
     bar.append(back, name);
+    if (!doc) {
+        bar.append(action('Save analysis remotely', async () => {
+            const saved = await createAnalysis(name.value.trim(), snapshot());
+            location.href = '/?analysis=' + encodeURIComponent(saved.id) + '#configuration';
+        }));
+        bar.append(status); host.append(bar); return;
+    }
     if (!doc.readOnly) bar.append(action('Save analysis', save));
     bar.append(action('Save a copy', async () => {
         const state = snapshot(); rememberBindings(state.settings);
@@ -61,5 +67,5 @@ export function mountAnalysisControls(snapshot: () => AnalysisState) {
         bar.append(action('Stop sharing', async () => { await api(`/analyses/${doc.id}/share`, 'DELETE'); link.hidden = true; status.textContent = 'Share link revoked'; }));
     }
     bar.append(link, status);
-    document.querySelector('.topbar')!.after(bar);
+    host.append(bar);
 }

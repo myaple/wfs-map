@@ -1,3 +1,4 @@
+import { openFilters } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { parseCSV } from '../../src/csv.ts';
@@ -35,6 +36,7 @@ test('CSV downloads isolate sources and export the applied AND/OR and chart sele
     const filtered = await download(page);
     const expected = Array.from({ length: 32 }, (_, i) => feature(i)).filter((f, i) => i === 3 || f.properties.category === 'sensor' && Number(f.properties.quality) >= 50);
     expect(filtered.rows.map(r => r[0])).toEqual(expected.map(f => f.id));
+    await openFilters(page);
     await page.locator('#filterSource').selectOption('b');
     await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'eq', value: 'sensor' }, 'Sensors'));
     await expect(page.locator('#filterStatus')).toContainText('Second · 4 matches');
@@ -54,6 +56,7 @@ test('CSV source export combines time, map-area bounds and local filters, retain
         { id: 'csv', name: 'CSV stations', enabled: true, config: { ...config, type: 'csv', longitudeField: 'lon', latitudeField: 'lat', timeField: 'observed', csvText: 'lon,lat,observed,temp,station\n-1,54,2026-10-01T12:00:00Z,7,north\n-2,53,2026-10-02T12:00:00Z,9,south\n-10,50,2026-10-02T12:00:00Z,12,outside' } },
     ] })), defaultConfig);
     await page.goto('/?time=all'); await expect(page.locator('#exportCSV')).toBeEnabled();
+    await openFilters(page);
     await page.locator('#timeWindow').selectOption('custom');
     await page.locator('#timeStart').fill('2026-10-02T00:00'); await page.locator('#timeEnd').fill('2026-10-03T00:00'); await page.locator('#applyTime').click();
     await expect(page.locator('#csvExportStatus')).toHaveText('2 matching points');

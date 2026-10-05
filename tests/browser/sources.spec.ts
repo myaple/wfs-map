@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 async function second(page: any, points = '2048') {
@@ -24,6 +24,7 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     await page.evaluate(() => { const h = (window as any).__WFS_MAP__; h.filter([{ field: 'category', op: 'eq', value: 'sensor' }]); });
     await expect(page.locator('#filterStatus')).toContainText('256 matches');
     const ids = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.id));
+    await openFilters(page);
     await page.locator('#filterSource').selectOption(ids[1]);
     await expect(page.locator(`.chart-card[data-source-id="${ids[1]}"]`).first().getByLabel('Chart type')).toHaveValue('bar');
     await expect(page.locator('.chart-card')).toHaveCount(6);
@@ -115,6 +116,7 @@ test('sources with different schemas expose only their own fields and counts', a
     expect(offsets).toEqual([0, 2]);
     await navigate(page, 'analysis');
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
+    await openFilters(page);
     await page.locator('#filterSource').selectOption(id);
     await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await expect(page.getByLabel('Attribute', {exact:true}).locator('option')).toHaveText(['temperature (number)', 'name (string)']);
