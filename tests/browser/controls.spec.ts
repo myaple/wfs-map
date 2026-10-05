@@ -52,7 +52,9 @@ test('labeled chart settings expose only relevant controls and use one scatter b
     await time.getByLabel('Y aggregation').selectOption('count');
     await expect(time.getByLabel('Y attribute', { exact: true })).toBeHidden();
     await expect(time.locator('.chart-field').filter({ hasText: 'Y attribute' })).toBeHidden();
-    await expect(scatter.locator('.chart-controls select:visible')).toHaveCount(6);
+    await expect(scatter.locator('.chart-controls select:visible')).toHaveCount(8);
+    await expect(scatter.getByLabel('X axis scale', { exact: true })).toBeEnabled();
+    await expect(scatter.getByLabel('Y axis scale', { exact: true })).toBeEnabled();
     const binning = scatter.getByLabel('Binning', { exact: true });
     await expect(binning.locator('option[value=exact]')).toHaveText('No bins — individual points');
     await binning.selectOption('exact');
