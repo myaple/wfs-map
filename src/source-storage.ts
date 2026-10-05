@@ -5,6 +5,7 @@ export let fileUser: string | undefined;
 const stagedFiles = new Map<string, Blob>();
 const fileKey = (reference: string, user = fileUser) => JSON.stringify([user ?? null, reference]);
 export function stageCSVFile(reference: string, file: Blob) { stagedFiles.set(fileKey(reference), file); }
+export function unstageCSVFile(reference: string) { stagedFiles.delete(fileKey(reference)); }
 export function discardStagedCSVFiles(keep: Iterable<string>) {
     const keys = new Set([...keep].map(reference => fileKey(reference)));
     for (const key of stagedFiles.keys()) if (!keys.has(key)) stagedFiles.delete(key);

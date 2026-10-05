@@ -846,3 +846,18 @@ input::placeholder { color: var(--muted); opacity: 1; }
 @media (max-width: 700px) { .server-filter-row { grid-template-columns: 1fr 1fr; } }
 
 .server-filter-panel button.primary:hover:not(:disabled) { background: var(--accent-strong); }
+/* Materialized joins stay on Records; wide previews scroll within the panel. */
+.derived-datasets { min-width: 0; margin: 12px 0; }
+.derived-datasets > summary { font-weight: 600; cursor: pointer; }
+.derived-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.derived-controls > div { min-width: 0; }
+.derived-controls label { display: block; margin-bottom: 4px; }
+.derived-controls select, .derived-controls input:not([type=checkbox]) { width: 100%; min-width: 0; }
+.derived-controls .join-column-choices { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.join-column-list { max-height: 240px; overflow: auto; padding: 8px 0; }
+.join-column-list label { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.join-sample { max-width: 100%; overflow: auto; margin-top: 12px; }
+.join-sample table { border-collapse: collapse; white-space: nowrap; font-size: 12px; }
+.join-sample th, .join-sample td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+@media (max-width: 800px) { .derived-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .derived-controls, .derived-controls .join-column-choices { grid-template-columns: minmax(0, 1fr); } }

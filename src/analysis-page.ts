@@ -5,6 +5,8 @@ import { Timeline } from './timeline.ts';
 import type { TimelineExtent } from './timeline-data.ts';
 import type { ChartDomain, ChartResult, ChartSpec } from './analysis.ts';
 import { RecordsPage } from './records-page.ts';
+import { DerivedDatasetPanel } from './derived-dataset-panel.ts';
+import type { JoinOptions, JoinResult } from './derived-datasets.ts';
 import type { RecordRef, RecordData } from './records.ts';
 import { MapLegend } from './map-legend.ts';
 import { mountThemeToggle, themeColor } from './theme.ts';
@@ -299,6 +301,32 @@ $<HTMLInputElement>('basemap').checked = background.enabled && !!background.url;
 const style: StyleSpecification = { version: 8, sources: { grid: { type: 'geojson', data: { type: 'FeatureCollection', features: gridFeatures } }, osm: { type: 'raster', tiles: background.url ? [background.url] : [], tileSize: 256, attribution: background.attribution, maxzoom: 19 } }, layers: [{ id: 'background', type: 'background', paint: { 'background-color': themeColor('map-background') } }, { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: background.enabled && background.url ? 'visible' : 'none' } }, { id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': themeColor('map-grid'), 'line-width': .5 } }] };
 const map = new maplibregl.Map({ container: 'map', style, center: mapSettings.center, zoom: mapSettings.zoom, maxZoom: 22, minZoom: 1, maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false, renderWorldCopies: false, pixelRatio: Math.min(devicePixelRatio, 2), canvasContextAttributes: { antialias: false }, attributionControl: { compact: true } });
 const recordPage = new RecordsPage(() => sources, (id, message) => sources.find(s => s.id === id)?.worker?.postMessage(message), inspectRecord, switchFilters);
+const derivedPanel = new DerivedDatasetPanel(() => sources, runJoin, (source, blob) => sourceSettings.addDerivedSource(source, blob, snapshot()));
+recordPage.timelineHost.after(derivedPanel.root);
+function runJoin(leftId: string, rightId: string, options: JoinOptions, save: boolean, signal: AbortSignal, progress: (message: string) => void): Promise<JoinResult> {
+    const left = sources.find(s => s.id === leftId), right = sources.find(s => s.id === rightId);
+    if (!left?.enabled || !right?.enabled || !left.done || !right.done || left.filtering || right.filtering || !left.worker || !right.worker || leftId === rightId) return Promise.reject(Error('Load two different enabled sources and wait for filters before joining.'));
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(new URL('./derived-worker.ts', import.meta.url), { type: 'module' }), l = new MessageChannel(), r = new MessageChannel();
+        // A source worker may fail before returning its snapshot. Bound that
+        // wait; the actual join remains cancellable without a time limit.
+        const timer = setTimeout(() => finish(Error('Could not read the source snapshots. Reload both sources and retry.')), 120000);
+        const finish = (error?: Error, result?: JoinResult) => {
+            clearTimeout(timer); signal.removeEventListener('abort', abort); worker.terminate();
+            for (const channel of [l, r]) { channel.port1.close(); channel.port2.close(); }
+            if (error) reject(error); else resolve(result!);
+        };
+        const abort = () => finish(Error('Join cancelled.'));
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) { abort(); return; }
+        worker.onmessage = event => { const m = event.data; if (m.progress) { clearTimeout(timer); progress(m.progress); } else finish(m.error ? Error(m.error) : undefined, m.result); };
+        worker.onerror = event => finish(Error(event.message));
+        worker.onmessageerror = () => finish(Error('Could not read the joined dataset. Retry with fewer input rows.'));
+        worker.postMessage({ leftPort: l.port1, rightPort: r.port1, options, save, timeField: left.config.timeField }, [l.port1, r.port1]);
+        left.worker!.postMessage({ type: 'joinSnapshot', port: l.port2, scope: options.scope }, [l.port2]);
+        right.worker!.postMessage({ type: 'joinSnapshot', port: r.port2, scope: options.scope }, [r.port2]);
+    });
+}
 let inspectionToken = 0, inspection: RecordRef | undefined, marker: maplibregl.Marker | undefined;
 const chooser = document.createElement('dialog'); chooser.className = 'record-chooser'; chooser.setAttribute('aria-label', 'Choose overlapping record'); document.body.append(chooser);
 let choices: RecordRef[] = [], choiceOffset = 0;
@@ -415,6 +443,7 @@ function enabled(id: string, on: boolean) { $<HTMLButtonElement>(id).disabled = 
 function state() {
     timeline.update(sources.filter(s => s.enabled && s.done).map(s => ({ name: s.name, extent: s.timeline, loaded: s.loaded })));
     recordPage.refresh();
+    derivedPanel.refresh();
     const s = filterSource(), enabledSources = sources.filter(s => s.enabled);
     enabled('load', mapReady && enabledSources.some(s => !s.loading));
     enabled('cancel', sources.some(s => s.loading || s.loaded > 0));
@@ -473,6 +502,7 @@ async function describe(s: Source | undefined, config: Config): Promise<{ fields
     finally { clearTimeout(timeout); if (s?.abort === controller) s.abort = undefined; }
 }
 function clearSource(s: Source) {
+    derivedPanel.invalidateSource(s.id);
     if (inspection?.sourceId === s.id || choices.some(r => r.sourceId === s.id)) clearInspection();
     const layerIndex = layerOrder.indexOf(s);
     if (layerIndex >= 0)
