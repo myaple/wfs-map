@@ -801,7 +801,7 @@ class ChartView {
     }
 
     private restoreSize() { const dialog = this.dialog; if (!dialog)
-        return; this.dialog = undefined; this.placeholder?.replaceWith(this.root); this.placeholder = undefined; dialog.close(); dialog.remove(); this.expand.textContent = 'Enlarge'; this.expand.setAttribute('aria-expanded', 'false'); this.expand.focus(); this.draw(); }
+        return; this.dialog = undefined; window.dispatchEvent(new CustomEvent('timelinehost')); this.placeholder?.replaceWith(this.root); this.placeholder = undefined; dialog.close(); dialog.remove(); this.expand.textContent = 'Enlarge'; this.expand.setAttribute('aria-expanded', 'false'); this.expand.focus(); this.draw(); }
     private enlarge() {
         if (this.dialog) {
             this.restoreSize();
@@ -815,6 +815,7 @@ class ChartView {
         dialog.setAttribute('aria-label', 'Enlarged attribute chart');
         document.body.append(dialog);
         dialog.append(this.root);
+        window.dispatchEvent(new CustomEvent('timelinehost', { detail: dialog }));
         this.expand.textContent = 'Return to normal size';
         this.expand.setAttribute('aria-expanded', 'true');
         dialog.addEventListener('close', () => { if (this.dialog === dialog)
