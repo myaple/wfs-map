@@ -1,5 +1,5 @@
 import { readCSVText } from './source-storage.ts';
-import { csvDataset } from './csv.ts';
+import { csvDataset, csvImportSummary } from './csv.ts';
 import type { Config as SourceConfig } from './source-settings.ts';
 import type { QueryBounds } from './wfs-query.ts';
 import { Analyzer, all } from './analysis.ts';
@@ -136,7 +136,7 @@ async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: str
         await new Promise(resolve => setTimeout(resolve, 0));
     }
     store.finish(); analyzer = new Analyzer(store);
-    post({ type: 'done', loaded: total, total, timeline: timelineExtent(config.timeField), bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false, warning: latitudeClampWarning(clamped) });
+    post({ type: 'done', loaded: total, total, timeline: timelineExtent(config.timeField), bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false, csvReport: dataset.report, warning: [csvImportSummary(dataset.report), latitudeClampWarning(clamped)].filter(Boolean).join('\n') });
 }
 function timelineExtent(configured?: string) {
     if (!store || !analyzer) return;

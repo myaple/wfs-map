@@ -276,7 +276,8 @@ export class DataSources {
         $<HTMLSelectElement>('csvGeometry').required = !xy;
     }
     private csvColumns(config?: Config) {
-        const headers = this.csvText ? parseCSV(this.csvText, input('delimiter').value).headers : [];
+        const parsed = this.csvText ? parseCSV(this.csvText, input('delimiter').value) : undefined;
+        const headers = parsed?.headers ?? [];
         const restoring = !this.csvText && !!this.csvRef;
         for (const id of ['longitudeField', 'latitudeField', 'csvGeometry', 'csvTime']) {
             const select = $<HTMLSelectElement>(id), previous = config ? config[id === 'csvGeometry' ? 'geometryField' : id === 'csvTime' ? 'timeField' : id as 'longitudeField' | 'latitudeField'] : select.value;
@@ -291,7 +292,8 @@ export class DataSources {
                 select.value = headers.find(h => pattern.test(h)) ?? '';
             }
         }
-        $('csvFileStatus').textContent = this.fileName ? restoring ? `Reading ${this.fileName}…` : `${this.fileName} · ${headers.length} columns` : 'Choose a file to populate its columns.';
+        const rejected = parsed?.issues.reduce((n, issue) => n + issue.count, 0) ?? 0;
+        $('csvFileStatus').textContent = this.fileName ? restoring ? `Reading ${this.fileName}…` : `${this.fileName} · ${headers.length} columns${rejected ? ` · ${rejected} malformed row(s) will be skipped; details appear after import.` : ''}` : 'Choose a file to populate its columns.';
     }
     private showError(e: unknown) { $('sourceError').textContent = (e as Error).message; $('sourceError').hidden = false; }
     private async readCSV() {

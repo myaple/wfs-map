@@ -18,7 +18,7 @@ test('CSV export round-trips every attribute, precision, quoting and nulls acros
     assert.deepEqual(rows[0], ['first', '-1.1234567890123', '54.1234567890123', '東京, café', '42', 'first\r\nsecond "quote"', '2026-10-01T12:34:56.789Z', 'true']);
     assert.equal(rows[1].at(-1), 'false'); assert.equal(rows[2].at(-1), '');
     assert.deepEqual(parseCSV(await (await exportCSV(store, new Uint32Array([1, 2]))).text()).rows, rows.slice(1));
-    assert.deepEqual(parseCSV(await (await exportCSV(store, new Uint32Array())).text()), { headers, rows: [] });
+    assert.deepEqual(parseCSV(await (await exportCSV(store, new Uint32Array())).text()), { headers, rows: [], rowLines: [], totalRows: 0, issues: [] });
 });
 
 test('CSV export supports geometry-only data, batches large selections and cancels stale work', async () => {

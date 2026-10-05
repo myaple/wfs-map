@@ -42,3 +42,62 @@ test('CSV validates files and supports a configured WKT geometry column', async 
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     await page.locator('#analysisLink').click(); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
 });
+
+test('CSV import skips invalid rows, reports reasons and retains valid records and null metadata', async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
+    await page.locator('#sourceName').fill('Mixed CSV'); await page.locator('#type').selectOption('csv');
+    await page.locator('#csvFile').setInputFiles({ name: 'mixed.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,t,note\n-1,54,2026-10-01,"first\nsecond"\n,54,2026-10-01,missing\n-1,54,bad,time\n-1,54\n-2,53,,') });
+    await expect(page.locator('#csvFileStatus')).toContainText('1 malformed row');
+    await page.locator('#csvTime').selectOption('t');
+    await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
+    await page.locator('#analysisLink').click();
+    await expect(page.locator('#hud')).toHaveText('Loaded 2 points');
+    const source = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0]);
+    expect(source.metrics.csvReport).toMatchObject({ total: 5, imported: 2, rejected: 3, filtered: 0 });
+    expect(source.status).toContain('3 rows not processed'); expect(source.status).toContain('CSV line 4');
+    expect(source.status).toContain('Missing longitude'); expect(source.status).toContain('Invalid ISO 8601');
+    await expect(page.locator('#status')).toContainText('3 rows not processed');
+    await page.locator('#recordsLink').click();
+    await expect(page.locator('.record-row')).toHaveCount(2);
+    await page.locator('#analysisLink').click();
+    await page.evaluate(() => (window as any).__WFS_MAP__.getPoint(1));
+    await expect(page.locator('.metadata')).toContainText('csv.7');
+    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].metrics.csvReport.rejected)).toBe(3);
+    expect(errors).toEqual([]);
+});
+
+test('CSV with all blank times or headers only loads safely without timeline or page errors', async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
+    await page.locator('#sourceName').fill('Blank times'); await page.locator('#type').selectOption('csv');
+    await page.locator('#csvFile').setInputFiles({ name: 'blank.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,t,empty\n-1,54,,\n-2,53,,') });
+    await page.locator('#csvTime').selectOption('t');
+    await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(2);
+    await page.locator('#analysisLink').click();
+    await expect(page.getByLabel('Use time window')).toBeDisabled();
+    await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure Blank times', exact: true }).click();
+    await page.locator('#csvFile').setInputFiles({ name: 'empty.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,t,empty') });
+    await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done && (window as any).__WFS_MAP__.sources[0].loaded === 0);
+    expect(errors).toEqual([]);
+});
+
+test('CSV rejects all invalid rows with complete counts and no misleading partial-load claim', async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
+    await page.locator('#sourceName').fill('Invalid'); await page.locator('#type').selectOption('csv');
+    await page.locator('#csvFile').setInputFiles({ name: 'invalid.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat\n,54\n-1,\nno,54') });
+    await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.error);
+    await page.locator('#analysisLink').click();
+    await expect(page.locator('#status')).toContainText('0 of 3');
+    await expect(page.locator('#status')).toContainText('3 rows not processed');
+    await expect(page.locator('#status')).toContainText('No points were imported');
+    await expect(page.locator('#status')).not.toContainText('Partial points are visible');
+    expect(errors).toEqual([]);
+});

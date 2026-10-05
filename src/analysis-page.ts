@@ -600,7 +600,7 @@ async function performLoad(s: Source) {
                     resolve();
                 }
                 if (m.type === 'error') {
-                    fail('Load failed: ' + m.message + '\nPartial points are visible; this source’s filters are disabled.');
+                    fail('Load failed: ' + m.message + (s.loaded ? '\nPartial points are visible; this source’s filters are disabled.' : '\nNo points were imported.'));
                     return;
                 }
                 if (m.type === 'filtered' && m.request === s.filterRequest) {
