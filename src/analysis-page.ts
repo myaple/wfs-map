@@ -2,6 +2,7 @@ import { ServerFilterPanel } from './server-filter-panel.ts';
 import { validateServerFilters, type ServerFilter } from './server-filters.ts';
 import { sharedDomain, combineSeries, seriesColors } from './multi-charts.ts';
 import { Timeline } from './timeline.ts';
+import { mountWorkspacePanels } from './workspace-panels.ts';
 import type { TimelineExtent } from './timeline-data.ts';
 import type { ChartDomain, ChartResult, ChartSpec } from './analysis.ts';
 import { RecordsPage } from './records-page.ts';
@@ -42,17 +43,12 @@ $('app').innerHTML = `
 
 <div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
-<details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
+<details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section><div id="timelineHost" hidden></div>`;
 mountThemeToggle(document.querySelector('.topbar')!);
 const updateNavigation = mountPageNavigation($('workspaceNavigation'));
 const derivedPage = document.createElement('section'); derivedPage.id = 'derived'; derivedPage.className = 'derived-page'; derivedPage.hidden = true;
 const derivedHeading = document.createElement('h2'); derivedHeading.textContent = 'Derived datasets';
-const derivedFilters = document.createElement('details'); derivedFilters.id = 'derivedFilters'; derivedFilters.className = 'page-filters';
-const derivedFilterTitle = document.createElement('summary'); derivedFilterTitle.textContent = 'Filters';
-const derivedControls = document.createElement('div'); derivedControls.className = 'analysis-controls';
-derivedFilters.append(derivedFilterTitle, derivedControls);
-const derivedTimelineHost = document.createElement('div'); derivedTimelineHost.hidden = true;
-derivedPage.append(derivedHeading, derivedFilters, derivedTimelineHost); $('app').append(derivedPage);
+derivedPage.append(derivedHeading); $('app').append(derivedPage);
 const mapLegend = new MapLegend($('mapLegend'));
 type Source = {
     id: string;
@@ -111,13 +107,9 @@ let mapSettings: MapSettings = settings.map ?? { center: [-3, 54], zoom: 5, poin
 let preserveMapView = !!settings.map;
 $<HTMLInputElement>('size').value = String(mapSettings.pointSize);
 const sources: Source[] = [];
-const analysisGrid = document.querySelector<HTMLElement>('.analysis-grid')!;
 const queryPanel = document.querySelector<HTMLElement>('.query-panel')!;
 const filterPanel = document.querySelector<HTMLElement>('.filter-panel')!;
-const queryAnchor = document.createComment('analysis query position');
-const filterAnchor = document.createComment('analysis filter position');
-queryPanel.before(queryAnchor); filterPanel.before(filterAnchor);
-const timeline = new Timeline(analysisGrid, () => {
+const timeline = new Timeline($('timelineHost'), () => {
     clearInspection();
     for (const s of sources) if (s.enabled && s.done && s.timeline?.valid) {
         s.timelinePending = true;
@@ -279,17 +271,7 @@ function route() {
     $('configuration').hidden = !config;
     $('analysis').hidden = config || records || derived;
     derivedPage.hidden = !derived;
-    if (records) {
-        recordPage.analysisControls.append(queryPanel, filterPanel);
-        timeline.setHost(recordPage.timelineHost);
-        switchFilters(recordPage.sourceId);
-    } else if (derived) {
-        derivedControls.append(queryPanel, filterPanel);
-        timeline.setHost(derivedTimelineHost);
-    } else {
-        queryAnchor.after(queryPanel); filterAnchor.after(filterPanel);
-        timeline.setHost(analysisGrid);
-    }
+    if (records) switchFilters(recordPage.sourceId);
     for (const s of sources)
         s.workspace.visibilityChanged();
     updateNavigation(config ? 'configuration' : derived ? 'derived' : records ? 'records' : 'analysis');
@@ -312,6 +294,10 @@ $<HTMLInputElement>('basemap').checked = background.enabled && !!background.url;
 const style: StyleSpecification = { version: 8, sources: { grid: { type: 'geojson', data: { type: 'FeatureCollection', features: gridFeatures } }, osm: { type: 'raster', tiles: background.url ? [background.url] : [], tileSize: 256, attribution: background.attribution, maxzoom: 19 } }, layers: [{ id: 'background', type: 'background', paint: { 'background-color': themeColor('map-background') } }, { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: background.enabled && background.url ? 'visible' : 'none' } }, { id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': themeColor('map-grid'), 'line-width': .5 } }] };
 const map = new maplibregl.Map({ container: 'map', style, center: mapSettings.center, zoom: mapSettings.zoom, maxZoom: 22, minZoom: 1, maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false, renderWorldCopies: false, pixelRatio: Math.min(devicePixelRatio, 2), canvasContextAttributes: { antialias: false }, attributionControl: { compact: true } });
 const recordPage = new RecordsPage(() => sources, (id, message) => sources.find(s => s.id === id)?.worker?.postMessage(message), inspectRecord, switchFilters);
+mountWorkspacePanels($('app'), queryPanel, filterPanel, timeline.root, () => {
+    for (const s of sources) s.workspace.visibilityChanged();
+    map.resize();
+});
 const derivedPanel = new DerivedDatasetPanel(() => sources, runJoin, (source, blob) => sourceSettings.addDerivedSource(source, blob, snapshot()));
 derivedPage.append(derivedPanel.root);
 function runJoin(leftId: string, rightId: string, options: JoinOptions, save: boolean, signal: AbortSignal, progress: (message: string) => void): Promise<JoinResult> {
@@ -1033,10 +1019,11 @@ showQueryBounds();
 map.on('load', showQueryBounds);
 
 function savedState() {
+    sourceSettings.assertSaved();
     const analyses: SourceAnalysis[] = sources.map(s => {
         const saved = savedAnalyses.get(s.id);
         return saved && !s.workspace.fields.length ? saved : { id: s.id, fields: s.workspace.fields, expression: s.workspace.expression(), charts: s.workspace.specs };
     });
     return configurationState(snapshot(), { choice: value('timeWindow'), bounds: queryBounds }, analyses);
 }
-mountAnalysisControls(savedState);
+mountAnalysisControls(savedState, $('remoteAnalysisControls'));

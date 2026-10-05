@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 
@@ -18,6 +18,7 @@ test('analysis automatically loads enabled sources and scopes filters, colours a
     for (const id of ['filterSource', 'colorSource', 'chartSource', 'exportSource']) {
         await expect(page.locator(`#${id} option`)).toHaveText(['First', 'Second']);
     }
+    await openFilters(page);
     await page.locator('#filterSource').selectOption('b');
     await expect(page.locator('#filterOwner')).toContainText('Filters for Second');
     await expect(page.locator('#rules')).toHaveAttribute('aria-label', 'Filters for Second');
@@ -73,6 +74,7 @@ test('pickers fall back when selected sources are disabled and recover from no e
     ] })), defaultConfig);
     await page.goto('/?time=all');
     await expect(page.locator('#apply')).toBeEnabled();
+    await openFilters(page);
     const pickers = ['filterSource', 'colorSource', 'chartSource', 'exportSource'];
     for (const id of pickers) {
         await expect(page.locator(`#${id} option`)).toHaveText(['First', 'Second']);

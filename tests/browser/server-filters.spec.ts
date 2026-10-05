@@ -1,3 +1,4 @@
+import { openFilters } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 const ready = (page: Page) => page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done && !s.loading && !s.filtering));
@@ -14,6 +15,7 @@ test('collapsed per-source editor reloads only its WFS source, persists rules, a
     await page.goto('/?time=all&autoload=1'); await ready(page);
     await expect(page.locator('#advancedServerFilters')).not.toHaveAttribute('open');
     await expect(page.getByLabel('Server filter data source')).toBeHidden();
+    await openFilters(page);
     await page.getByText('Advanced server filters', { exact: true }).click();
     await page.getByRole('button', { name: 'Add server rule', exact: true }).click();
     await page.getByLabel('Server rule 1 field', { exact: true }).selectOption('category');
@@ -35,6 +37,7 @@ test('collapsed per-source editor reloads only its WFS source, persists rules, a
     await page.screenshot({ path: 'test-results/server-filters-desktop.png', fullPage: true });
     await page.reload(); await ready(page);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.loaded))).toEqual([128, 512]);
+    await openFilters(page);
     await page.getByText('Advanced server filters', { exact: true }).click();
     await page.getByRole('button', { name: 'Clear and reload source', exact: true }).click();
     await expect.poll(() => page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(512); await ready(page);
@@ -42,6 +45,7 @@ test('collapsed per-source editor reloads only its WFS source, persists rules, a
 test('CSV source rules pare ingestion and reload from original CSV while respecting text overrides and UTC dates', async ({ page }) => {
     const csv = { id: 'CSV', name: 'CSV', enabled: true, config: { ...defaultConfig, type: 'csv', longitudeField: 'lon', latitudeField: 'lat', timeField: 't', fieldTypes: '{"code":"string"}', csvText: 'lon,lat,code,value,t\n-1,54,001,1,2026-01-01T00:00:00Z\n-2,55,002,2,2026-01-01T01:00:00Z\n-3,56,001,3,2026-01-02T00:00:00Z' } };
     await seed(page, [csv]); await page.goto('/?time=all&autoload=1'); await ready(page);
+    await openFilters(page);
     await page.getByText('Advanced server filters', { exact: true }).click();
     await page.getByRole('button', { name: 'Add server rule', exact: true }).click();
     await page.getByLabel('Server rule 1 field', { exact: true }).selectOption('code');
@@ -65,6 +69,7 @@ test('field discovery is available before feature loading and unavailable saved 
     await page.goto('/?time=all&autoload=1');
     await expect(page.locator('#status')).toContainText('missing or its type changed');
     expect(featureRequests).toBe(0);
+    await openFilters(page);
     await page.getByText('Advanced server filters', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Read available fields', exact: true })).toBeEnabled();
     await expect.poll(() => page.getByLabel('Server rule 1 field', { exact: true }).locator('option').count()).toBeGreaterThan(1);
@@ -78,6 +83,7 @@ test('empty load retains its schema, validates edits, and clearing restores data
     await seed(page, [{ ...wfs('First'), serverFilters: [{ field: 'value', kind: 'number', op: 'gt', value: '999' }] }]);
     await page.goto('/?time=all&autoload=1'); await ready(page);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(0);
+    await openFilters(page);
     await page.getByText('Advanced server filters', { exact: true }).click();
     await page.getByLabel('Server rule 1 value', { exact: true }).fill('');
     await page.getByRole('button', { name: 'Apply and reload source', exact: true }).click();

@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters, openTimeline } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 import { readFile } from 'node:fs/promises';
@@ -14,11 +14,11 @@ test('Records shares filters and timeline with Analysis, composes table search a
  await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done && !s.filtering));
  const status = page.locator('#records > [role=status]');
  await expect(status).toContainText('4 table rows');
- await expect(page.locator('#recordsFilters')).not.toHaveAttribute('open', '');
- await page.locator('#recordsFilters > summary').click();
- await expect(page.locator('#records .query-panel')).toBeVisible();
- await expect(page.locator('#records .filter-panel')).toBeVisible();
- await expect(page.locator('#records > .timeline')).toBeVisible();
+ await expect(page.locator('#toggleFilters')).toHaveAttribute('aria-expanded', 'false');
+ await openFilters(page); await openTimeline(page);
+ await expect(page.locator('#workspaceFilters .query-panel')).toBeVisible();
+ await expect(page.locator('#workspaceFilters .filter-panel')).toBeVisible();
+ await expect(page.locator('#app > .timeline')).toBeVisible();
  await expect(page.locator('#filterSource')).toHaveValue('csv');
  let requests = 0; page.on('request', r => { if (/GetFeature|DescribeFeatureType/i.test(r.url())) requests++; });
  await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
@@ -40,8 +40,8 @@ test('Records shares filters and timeline with Analysis, composes table search a
  await rule.getByLabel('Filter value', { exact: true }).fill('3');
  await page.getByRole('button', { name: 'Collapse filter group', exact: true }).click();
  await navigate(page, 'analysis');
- await expect(page.locator('#analysis > .timeline')).toBeVisible();
- await expect(page.locator('#analysis .filter-panel')).toBeVisible();
+ await expect(page.locator('#app > .timeline')).toBeVisible();
+ await expect(page.locator('#workspaceFilters .filter-panel')).toBeVisible();
  await expect(rule.getByLabel('Filter value', { exact: true })).toHaveValue('3');
  await expect(page.getByRole('button', { name: 'Expand filter group', exact: true })).toBeVisible();
  await expect(page.getByLabel('Use time window')).toBeChecked();
@@ -55,10 +55,10 @@ test('Records shares filters and timeline with Analysis, composes table search a
  await page.locator('#recordsSource').selectOption('wfs'); await expect(page.locator('#filterSource')).toHaveValue('wfs');
  await page.locator('#recordsSource').selectOption('csv'); await expect(page.locator('#filterSource')).toHaveValue('csv');
  await expect(rule.getByLabel('Filter value', { exact: true })).toHaveValue('3');
- await navigate(page, 'configuration'); await expect(page.locator('.timeline')).toBeHidden();
+ await navigate(page, 'configuration'); await expect(page.locator('.timeline')).toBeVisible();
  await navigate(page, 'records');
  await page.setViewportSize({ width: 375, height: 700 });
- for (const selector of ['#records > .timeline', '#records .filter-panel', '#records .query-panel']) {
+ for (const selector of ['#app > .timeline', '#workspaceFilters .filter-panel', '#workspaceFilters .query-panel']) {
   expect(await page.locator(selector).evaluate(e => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && e.scrollWidth <= e.clientWidth; })).toBe(true);
  }
  await page.locator('#reset').click(); await expect(status).toContainText('4 table rows');

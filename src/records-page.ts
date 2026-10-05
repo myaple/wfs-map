@@ -5,9 +5,6 @@ export type RecordsSource = { id: string; name: string; enabled: boolean; done: 
 export class RecordsPage {
     readonly root = el('section');
     readonly inspector = el('aside');
-    readonly analysisControls = el('div');
-    readonly filters = el('details');
-    readonly timelineHost = el('div');
     get sourceId() { return this.source.value; }
     private source = el('select'); private search = el('input'); private status = el('p');
     private columns = el('details'); private scroll = el('div'); private table = el('table'); private body = el('tbody');
@@ -38,11 +35,7 @@ export class RecordsPage {
         this.scroll.className = 'records-scroll'; this.scroll.tabIndex = 0; this.scroll.setAttribute('aria-label', 'Records table. Arrow keys navigate; Enter inspects.');
         this.table.className = 'records-table'; this.table.append(el('thead'), this.body); this.scroll.append(this.table);
         this.inspector.className = 'record-inspector'; this.inspector.setAttribute('aria-label', 'Record inspector');
-        this.analysisControls.className = 'analysis-controls records-analysis-controls';
-        this.filters.id = 'recordsFilters'; this.filters.className = 'page-filters';
-        this.filters.append(el('summary', 'Filters'), this.analysisControls);
-        this.timelineHost.hidden = true;
-        layout.append(this.scroll, this.inspector); this.root.append(el('h2', 'Records'), el('p', 'Browse applied results. Filters and the timeline are shared with Dashboard. Inspection highlights records without changing filters. Search narrows this table and its export.'), this.filters, this.timelineHost, controls, this.status, layout);
+        layout.append(this.scroll, this.inspector); this.root.append(el('h2', 'Records'), el('p', 'Browse applied results. The bottom Filters and Timeline panels are shared across pages. Inspection highlights records without changing filters. Search narrows this table and its export.'), controls, this.status, layout);
         document.getElementById('app')!.append(this.root);
         this.source.onchange = () => { this.version = ''; this.reset(); this.refresh(); this.sourceChanged(this.source.value); };
         let timer: ReturnType<typeof setTimeout>;

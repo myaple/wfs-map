@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters, openTimeline } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 import { feature } from '../../server/demo.ts';
@@ -10,6 +10,7 @@ async function ready(page: Page) {
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.filter((s: any) => s.enabled).every((s: any) => s.done && !s.filtering && !s.timelinePending));
 }
 async function range(page: Page, start: string, end: string) {
+    await openTimeline(page);
     await page.getByLabel('Timeline start (UTC)', {exact:true}).fill(start);
     await page.getByLabel('Timeline end (UTC)', {exact:true}).fill(end);
     await page.getByRole('button', {name:'Set window',exact:true}).click();
@@ -26,6 +27,7 @@ async function seed(page: Page) {
         {id:'disabled',name:'Disabled',enabled:false,config:{...config,type:'csv',longitudeField:'lon',latitudeField:'lat',timeField:'day',csvText:'lon,lat,day\n-1,54,2040-01-01'}}
     ]})),defaultConfig);
     await page.goto('/?time=all#analysis'); await ready(page);
+    await openTimeline(page);
     await expect(page.locator('.timeline-status')).toContainText('2 timed sources');
 }
 
@@ -39,6 +41,7 @@ test('timeline composes applied filters across WFS/CSV, updates charts and expor
     await page.evaluate(()=>(window as any).__WFS_MAP__.filterSource('wfs',{op:'or',children:[{field:'category',op:'eq',value:'sensor'},{field:'category',op:'eq',value:'vehicle'}]}));
     await ready(page);
     // Leave an unapplied editor draft: scrubbing must retain the applied OR predicate.
+    await openFilters(page);
     await page.locator('#rules > .filter-group > .group-head').getByRole('button',{name:'+ Rule',exact:true}).click();
     await page.locator('#rules .rule').last().getByLabel('Attribute',{exact:true}).selectOption('category');
     await page.locator('#rules .rule').last().getByLabel('Filter value',{exact:true}).fill('absent');
@@ -79,14 +82,14 @@ test('resize and move with pointer and keyboard; timeline stays usable at the bo
     const handle=page.getByRole('slider',{name:'Timeline end handle',exact:true}),box=(await handle.boundingBox())!;
     await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x-100,box.y+box.height/2,{steps:20});await page.mouse.up();await ready(page);
     expect(Number(await handle.getAttribute('aria-valuenow'))-Number(await start.getAttribute('aria-valuenow'))).toBeLessThan(duration);
-    await page.keyboard.press('Escape');await expect(page.locator('#analysis > .timeline')).toBeVisible();
+    await page.keyboard.press('Escape');await expect(page.locator('#app > .timeline')).toBeVisible();
     expect(await page.evaluate(()=>(window as any).__WFS_MAP__.map.getCenter().toArray())).toEqual(before);
     await page.locator('.chart-card').first().getByRole('button',{name:'Enlarge',exact:true}).click();
     await expect(page.locator('.chart-dialog > .timeline')).toBeVisible();
     await page.setViewportSize({width:375,height:700});
     expect(await page.locator('.chart-dialog > .timeline').evaluate(e=>{const r=e.getBoundingClientRect();return r.bottom<=innerHeight&&r.right<=innerWidth&&e.scrollWidth<=e.clientWidth;})).toBe(true);
     await page.getByRole('button',{name:'Show all loaded times',exact:true}).click();await expect.poll(()=>selected(page)).toEqual([4096,4,1]);
-    await page.keyboard.press('Escape');await expect(page.locator('#analysis > .timeline')).toBeVisible();
+    await page.keyboard.press('Escape');await expect(page.locator('#app > .timeline')).toBeVisible();
 });
 
 test('multi-source chart shares the timeline; rapid drag settles on the latest window without a request backlog',async({page})=>{
@@ -120,6 +123,7 @@ test('multi-source chart shares the timeline; rapid drag settles on the latest w
     expect(result.request-countBefore).toBeLessThanOrEqual(81);
     expect(result.queue.maximum).toBeLessThanOrEqual(1);expect(result.queue.pending).toBe(0);
     await expect(chart.locator('.hint').last()).toContainText(`${(result.selected[0]+result.selected[1]).toLocaleString()} plotted`);
+    await openTimeline(page);
     await page.getByLabel('Timeline start (UTC)',{exact:true}).fill('invalid');await page.getByRole('button',{name:'Set window',exact:true}).click();
     await expect(page.locator('.timeline-error')).toBeVisible();expect(await selected(page)).toEqual([...result.selected,1]);
 });
@@ -127,6 +131,7 @@ test('multi-source chart shares the timeline; rapid drag settles on the latest w
 test('timeline is unavailable for untimed/empty sources and resets when data is cleared',async({page})=>{
     await page.goto('/#analysis');await expect(page.getByLabel('Use time window')).toBeDisabled();
     await page.goto('/?time=all&points=32&autoload=1');await ready(page);
+    await openTimeline(page);
     await page.getByLabel('Use time window').check();await expect(page.getByLabel('Use time window')).toBeChecked();
     await page.locator('#cancel').click();await expect(page.getByLabel('Use time window')).toBeDisabled();await expect(page.getByLabel('Use time window')).not.toBeChecked();
 });
@@ -139,9 +144,9 @@ test('an enlarged timeline returns to Records when the page changes behind its d
     await page.evaluate(() => { location.hash = '#records'; });
     await expect(page.locator('.map-dialog > .timeline')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.locator('#records > .timeline')).toBeVisible();
+    await expect(page.locator('#app > .timeline')).toBeVisible();
     await expect(page.getByLabel('Use time window')).toBeChecked();
     await navigate(page, 'analysis');
-    await expect(page.locator('#analysis > .timeline')).toBeVisible();
+    await expect(page.locator('#app > .timeline')).toBeVisible();
     await expect(page.locator('.timeline')).toHaveCount(1);
 });

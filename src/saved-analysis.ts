@@ -23,14 +23,18 @@ export function rememberBindings(settings: Settings) {
     }
     localStorage.setItem(settingsKey + ':bindings', JSON.stringify(bindings));
 }
-export function mountAnalysisControls(snapshot: () => AnalysisState) {
+export function mountAnalysisControls(snapshot: () => AnalysisState, host: HTMLElement) {
     const doc = currentAnalysis;
-    if (!doc) return;
     const bar = document.createElement('section'); bar.className = 'saved-analysis-bar';
     const back = document.createElement('a'); back.href = '/'; back.textContent = 'All analyses';
+    if (!doc) {
+        const hint = document.createElement('p'); hint.className = 'hint';
+        hint.textContent = 'Open or create a named analysis from All analyses to save remotely and share its setup.';
+        bar.append(back, hint); host.append(bar); return;
+    }
     const name = document.createElement('input'); name.value = doc.name; name.maxLength = 120; name.setAttribute('aria-label', 'Analysis name'); name.readOnly = doc.readOnly;
     document.title = `${doc.name} · WFS analysis`;
-    const status = document.createElement('span'); status.setAttribute('role', 'status'); status.className = 'hint'; status.textContent = doc.readOnly ? 'Shared setup · changes stay local until you save a copy' : 'Configuration saved remotely · CSV contents stay on this workstation';
+    const status = document.createElement('span'); status.setAttribute('role', 'status'); status.className = 'hint'; status.textContent = doc.readOnly ? 'Shared setup · changes stay local until you save a copy' : 'Save your configuration remotely to resume or share it. CSV contents stay on this workstation.';
     const link = document.createElement('input'); link.readOnly = true; link.hidden = true; link.setAttribute('aria-label', 'Shared analysis link');
     let busy = false;
     const buttons: HTMLButtonElement[] = [];
@@ -61,5 +65,5 @@ export function mountAnalysisControls(snapshot: () => AnalysisState) {
         bar.append(action('Stop sharing', async () => { await api(`/analyses/${doc.id}/share`, 'DELETE'); link.hidden = true; status.textContent = 'Share link revoked'; }));
     }
     bar.append(link, status);
-    document.querySelector('.topbar')!.after(bar);
+    host.append(bar);
 }

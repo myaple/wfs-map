@@ -1,4 +1,4 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { emptyState, configurationState, type AnalysisDocument } from '../../src/analysis-state.ts';
@@ -30,7 +30,7 @@ async function attach(page: Page, text: string) {
     await navigate(page, 'analysis');
 }
 const save = async (page: Page) => {
-    await page.getByRole('button', { name: 'Save analysis', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Save analysis', exact: true }).click();
     await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
 };
 
@@ -84,6 +84,7 @@ test('real browser tabs restore independent WFS analyses, map views and filters 
         await expect(page.locator('#hud')).toHaveText('Loaded 7 points');
         await expect(other.locator('#hud')).toHaveText('Loaded 11 points');
         await expect(page.locator('#apply')).toBeEnabled();
+        await openFilters(page);
         await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
         await page.getByLabel('Attribute', { exact: true }).selectOption('id');
         await page.getByLabel('Operator', { exact: true }).selectOption('gte');
@@ -103,7 +104,7 @@ test('real browser tabs restore independent WFS analyses, map views and filters 
         await expect(stale.locator('#filterStatus')).toContainText('4 matches');
         await page.getByLabel('Analysis name', { exact: true }).fill('Updated alpha');
         await save(page);
-        await stale.getByRole('button', { name: 'Save analysis', exact: true }).click();
+        await navigate(stale, 'configuration'); await stale.getByRole('button', { name: 'Save analysis', exact: true }).click();
         await expect(stale.locator('.saved-analysis-bar')).toContainText('newer version');
         expect((await (await request.get('/api/analyses/' + alpha.id)).json()).name).toBe('Updated alpha');
         await other.reload();
@@ -125,7 +126,7 @@ test('CSV files stay local and isolated across users in one browser; shared atta
         await attach(page, 'lon,lat,value,secret\n-1,54,7,ALICE_PRIVATE_ROW\n-2,53,9,ALICE_PRIVATE_ROW');
         await expect(page.locator('#hud')).toHaveText('Loaded 2 points');
         await save(page);
-        await page.getByRole('button', { name: 'Share', exact: true }).click();
+        await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Share', exact: true }).click();
         await expect(page.getByLabel('Shared analysis link')).toBeVisible();
         const sharedURL = new URL(await page.getByLabel('Shared analysis link').inputValue());
         const owner = await (await request.get('/api/analyses/' + doc.id, { headers: headers() })).json();
@@ -138,7 +139,7 @@ test('CSV files stay local and isolated across users in one browser; shared atta
         await expect(page.locator('#status')).toContainText('file is missing');
         await expect(page.getByRole('button', { name: 'Save analysis', exact: true })).toHaveCount(0);
         // A copy also cannot pick up the owner's cached reference.
-        await page.getByRole('button', { name: 'Save a copy', exact: true }).click();
+        await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Save a copy', exact: true }).click();
         await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue(doc.name + ' (copy)');
         copyID = new URL(page.url()).searchParams.get('analysis')!;
         await expect(page.locator('#status')).toContainText('file is missing');
@@ -148,7 +149,7 @@ test('CSV files stay local and isolated across users in one browser; shared atta
         await page.reload();
         await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
         await remove(request, copyID, 'bob'); copyID = undefined;
-        await page.getByRole('button', { name: 'Save a copy', exact: true }).click();
+        await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Save a copy', exact: true }).click();
         await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue(doc.name + ' (copy)');
         copyID = new URL(page.url()).searchParams.get('analysis')!;
         await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
@@ -181,11 +182,13 @@ test('Save, Share and Save a copy refuse row selections without changing existin
         }, expr);
         await expect(page.locator('#filterStatus')).toContainText('1 matches');
         for (const label of ['Save analysis', 'Share', 'Save a copy']) {
+            await navigate(page, 'configuration');
             await page.getByRole('button', { name: label, exact: true }).click();
             await expect(page.locator('.saved-analysis-bar')).toContainText('Individual-observation selections cannot be saved');
             expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[0])).toEqual(expr);
             expect((await (await request.get('/api/analyses/' + doc.id)).json()).revision).toBe(1);
         }
+        await openFilters(page);
         await page.locator('#rules .selection > .group-head').getByRole('button', { name: '×', exact: true }).click();
         const portable = { op: 'and', children: [{ field: 'id', op: 'gte', value: '3' }, { op: 'or', children: [{ field: 'id', op: 'eq', value: '4' }, { field: 'id', op: 'eq', value: '5' }] }] };
         await page.evaluate(expression => (window as any).__WFS_MAP__.workspace.select(expression, 'Portable nested filter'), portable);

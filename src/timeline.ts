@@ -20,6 +20,14 @@ export class Timeline {
 <form class="timeline-controls"><label>From (UTC)<input class="timeline-start" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-label="Timeline start (UTC)"></label><span aria-hidden="true">→</span><label>To (UTC)<input class="timeline-end" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-label="Timeline end (UTC)"></label><button type="submit">Set window</button><span class="timeline-duration hint"></span></form>
 <div class="timeline-track" aria-label="Time extent"><div class="timeline-selection"><button type="button" class="timeline-handle" data-edge="start" role="slider" aria-label="Timeline start handle" aria-orientation="horizontal"></button><button type="button" class="timeline-window" role="slider" aria-label="Move time window" aria-orientation="horizontal"><span aria-hidden="true">↔</span></button><button type="button" class="timeline-handle" data-edge="end" role="slider" aria-label="Timeline end handle" aria-orientation="horizontal"></button></div></div>
 <div class="timeline-axis hint"><span></span><span></span></div><p class="timeline-help hint">Drag the window to move through time; drag either edge to resize. Arrow keys move or resize; Shift moves faster.</p><p class="timeline-status hint"></p><p class="timeline-error error" role="alert" hidden></p>`;
+        const body = document.createElement('div'); body.className = 'timeline-body'; body.id = 'timelineBody'; body.hidden = true;
+        body.append(...this.root.children);
+        const bar = document.createElement('div'); bar.className = 'timeline-bar';
+        const collapse = document.createElement('button'); collapse.id = 'toggleTimeline'; collapse.type = 'button';
+        collapse.textContent = 'Timeline'; collapse.setAttribute('aria-expanded', 'false'); collapse.setAttribute('aria-controls', body.id);
+        const summary = document.createElement('span'); summary.className = 'timeline-summary hint'; summary.setAttribute('role', 'status');
+        collapse.onclick = () => { body.hidden = !body.hidden; collapse.setAttribute('aria-expanded', String(!body.hidden)); };
+        bar.append(collapse, summary); this.root.append(bar, body);
         host.before(this.anchor, this.root);
         this.track = this.root.querySelector('.timeline-track')!;
         this.selection = this.root.querySelector('.timeline-selection')!;
@@ -78,11 +86,6 @@ export class Timeline {
         });
         this.paint();
     }
-    setHost(host: HTMLElement) {
-        host.before(this.anchor);
-        // Keep the live control in an enlarged view until its dialog closes.
-        if (!this.root.closest('dialog')) this.anchor.after(this.root);
-    }
     update(sources: { name: string; extent?: TimelineExtent; loaded: number }[]) {
         const signature = JSON.stringify(sources);
         if (signature === this.signature) return;
@@ -106,7 +109,8 @@ export class Timeline {
         const extent = this.extent, window = this.window ?? extent;
         this.toggle.checked = !!this.window;
         this.root.classList.toggle('timeline-active', !!this.window);
-        for (const control of this.root.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')) control.disabled = !extent;
+        for (const control of this.root.querySelectorAll<HTMLInputElement | HTMLButtonElement>('.timeline-body input, .timeline-body button')) control.disabled = !extent;
+        this.root.querySelector('.timeline-summary')!.textContent = this.window ? `${formatUTC(this.window.start)} to ${formatUTC(this.window.end)}` : extent ? 'All loaded times · UTC' : 'Load timed data to use the timeline';
         const span = extent ? extent.end - extent.start : 0;
         this.selection.style.left = `${window && extent && span ? (window.start - extent.start) / span * 100 : 0}%`;
         this.selection.style.right = `${window && extent && span ? (extent.end - window.end) / span * 100 : 0}%`;

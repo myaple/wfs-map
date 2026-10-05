@@ -1,7 +1,7 @@
-import { navigate } from '../navigation.ts';
+import { navigate, openFilters } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
-const ready = async (page: any) => { await page.goto('/?time=all&points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts?.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
+const ready = async (page: any) => { await page.goto('/?time=all&points=4096&autoload=1'); await openFilters(page); await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts?.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
 test('filter groups collapse independently and retain applied rules and chart selections', async ({ page }) => {
     await ready(page);
     await expect(page.locator('.filter-actions button')).toHaveText(['Apply filters', 'Clear filters']);

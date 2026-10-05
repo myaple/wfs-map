@@ -41,7 +41,7 @@ test('landing selector creates named analyses and opens the configured data sour
     await expect(page.getByRole('heading', { name: 'My analyses' })).toBeVisible();
     await page.getByRole('link', { name: 'Data sources', exact: true }).click();
     await expect(page.locator('#configuration')).toBeVisible(); await expect(page.locator('#sourceList')).toContainText('Source alpha');
-    await page.getByRole('link', { name: 'All analyses', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByRole('link', { name: 'All analyses', exact: true }).click();
     await page.getByLabel('New analysis name').fill('Morning review'); await page.getByRole('button', { name: 'Create analysis' }).click();
     await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue('Morning review');
     expect(db.docs.get('created-1')?.state.settings.sources).toHaveLength(0);
@@ -50,14 +50,14 @@ test('different tabs keep separate analyses and saves detect concurrent edits of
     const db = await service(context, [document('alpha', 7), document('beta', 11)]);
     const other = await context.newPage(); await page.goto('/?analysis=alpha'); await other.goto('/?analysis=beta');
     await expect(page.locator('#hud')).toHaveText('Loaded 7 points'); await expect(other.locator('#hud')).toHaveText('Loaded 11 points');
-    await page.getByLabel('Analysis name', { exact: true }).fill('Changed alpha'); await page.getByRole('button', { name: 'Save analysis', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByLabel('Analysis name', { exact: true }).fill('Changed alpha'); await page.getByRole('button', { name: 'Save analysis', exact: true }).click();
     await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
     await expect(other.getByLabel('Analysis name', { exact: true })).toHaveValue('Analysis beta');
     await other.reload(); await expect(other.locator('#hud')).toHaveText('Loaded 11 points');
     expect(db.docs.get('beta')?.state.settings.sources[0].name).toBe('Source beta');
     const stale = await context.newPage(); await stale.goto('/?analysis=alpha'); await expect(stale.locator('#hud')).toHaveText('Loaded 7 points');
-    await page.getByRole('button', { name: 'Save analysis', exact: true }).click(); await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
-    await stale.getByRole('button', { name: 'Save analysis', exact: true }).click(); await expect(stale.locator('.saved-analysis-bar')).toContainText('newer version');
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Save analysis', exact: true }).click(); await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
+    await navigate(stale, 'configuration'); await stale.getByRole('button', { name: 'Save analysis', exact: true }).click(); await expect(stale.locator('.saved-analysis-bar')).toContainText('newer version');
 });
 test('CSV attachment and saved filters/charts round-trip locally without sending rows to the server', async ({ context, page }) => {
     const doc = document('csv'); doc.state.settings.sources = [{ id: 'csv-source', name: 'Local stations', enabled: true, config: { ...defaultConfig, type: 'csv', csvRef: 'remote-reference', fileName: 'stations.csv', longitudeField: 'lon', latitudeField: 'lat' } }];
@@ -71,9 +71,9 @@ test('CSV attachment and saved filters/charts round-trip locally without sending
     await expect(page.locator('#csvFileStatus')).toContainText('4 columns'); await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await navigate(page, 'analysis'); await expect(page.locator('#filterStatus')).toContainText('1 matches');
     await expect(page.locator('.chart-card')).toHaveCount(1);
-    await page.getByRole('button', { name: 'Save analysis', exact: true }).click(); await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Save analysis', exact: true }).click(); await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
     await page.reload(); await expect(page.locator('#filterStatus')).toContainText('1 matches'); await expect(page.locator('.chart-card')).toHaveCount(1);
-    await page.getByRole('button', { name: 'Share', exact: true }).click(); await expect(page.getByLabel('Shared analysis link')).toBeVisible();
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Share', exact: true }).click(); await expect(page.getByLabel('Shared analysis link')).toBeVisible();
     expect(db.payloads.length).toBeGreaterThan(0);
     for (const payload of db.payloads) { expect(payload).not.toContain('SENSITIVE_ROW'); expect(payload).not.toContain('csvText'); expect(payload).not.toContain('metrics'); expect(payload).not.toContain('results'); }
 });
@@ -87,5 +87,25 @@ test('a shared setup can attach a local CSV and retain that binding on reload be
     await navigate(page, 'analysis'); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
     await page.reload(); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
     expect(db.docs.get('shared')?.state.settings.sources[0].config.csvRef).toBe('remote-reference');
-    await page.getByRole('button', { name: 'Save a copy', exact: true }).click(); await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue('Analysis shared (copy)'); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Save a copy', exact: true }).click(); await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue('Analysis shared (copy)'); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
+});
+
+test('local and remote saves share one Configuration card and remote saving rejects unapplied source changes', async ({ context, page }) => {
+ const db=await service(context,[document('save-layout')]); await page.goto('/?analysis=save-layout');
+ await expect(page.locator('.topbar .saved-analysis-bar')).toHaveCount(0);
+ await expect(page.getByRole('link',{name:'All analyses',exact:true})).toBeHidden();
+ await expect(page.getByRole('button',{name:'Save analysis',exact:true})).toBeHidden();
+ await navigate(page,'configuration');
+ await expect(page.locator('#analysisSave')).toContainText('Save locally'); await expect(page.locator('#analysisSave')).toContainText('Save remotely & share');
+ await expect(page.locator('#analysisSave #saveSettings')).toBeVisible();
+ await expect(page.locator('#analysisSave .saved-analysis-bar')).toBeVisible();
+ await page.getByRole('button',{name:'Configure Source save-layout',exact:true}).click();
+ await page.locator('#sourceName').fill('Revised source'); await page.locator('#updateSource').click();
+ await page.getByRole('button',{name:'Save analysis',exact:true}).click();
+ await expect(page.locator('.saved-analysis-bar')).toContainText('Save or discard your local source changes');
+ expect(db.payloads).toHaveLength(0);
+ await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toContainText('Saved in this browser');
+ await page.getByRole('button',{name:'Save analysis',exact:true}).click();
+ await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
+ expect(db.docs.get('save-layout')?.state.settings.sources[0].name).toBe('Revised source');
 });
