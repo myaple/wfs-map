@@ -115,3 +115,18 @@ test('timeline is unavailable for untimed/empty sources and resets when data is 
     await page.getByLabel('Use time window').check();await expect(page.getByLabel('Use time window')).toBeChecked();
     await page.locator('#cancel').click();await expect(page.getByLabel('Use time window')).toBeDisabled();await expect(page.getByLabel('Use time window')).not.toBeChecked();
 });
+
+test('an enlarged timeline returns to Records when the page changes behind its dialog', async ({ page }) => {
+    await seed(page);
+    await range(page, '2025-01-01', '2025-01-03'); await ready(page);
+    await page.locator('#enlargeMap').click();
+    await expect(page.locator('.map-dialog > .timeline')).toBeVisible();
+    await page.evaluate(() => { location.hash = '#records'; });
+    await expect(page.locator('.map-dialog > .timeline')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#records > .timeline')).toBeVisible();
+    await expect(page.getByLabel('Use time window')).toBeChecked();
+    await page.locator('#analysisLink').click();
+    await expect(page.locator('#analysis > .timeline')).toBeVisible();
+    await expect(page.locator('.timeline')).toHaveCount(1);
+});

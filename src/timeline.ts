@@ -78,6 +78,11 @@ export class Timeline {
         });
         this.paint();
     }
+    setHost(host: HTMLElement) {
+        host.before(this.anchor);
+        // Keep the live control in an enlarged view until its dialog closes.
+        if (!this.root.closest('dialog')) this.anchor.after(this.root);
+    }
     update(sources: { name: string; extent?: TimelineExtent; loaded: number }[]) {
         const signature = JSON.stringify(sources);
         if (signature === this.signature) return;

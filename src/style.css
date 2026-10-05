@@ -777,6 +777,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
 @media(max-width:600px) { .map-dialog .map-legend { width: min(230px, calc(100% - 64px)); } .map-dialog .map-legend-viewport { max-height: 180px; } }
 
 .records-page { padding: 20px; }
+.records-analysis-controls { margin-top: 16px; }
+.records-analysis-controls .query-panel { min-width: 0; }
 .records-toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin: 18px 0 12px; }
 .records-source-control, .records-search-control { display: grid; gap: 6px; min-width: 0; }
 .records-source-control { flex: 0 1 220px; }

@@ -95,7 +95,13 @@ let mapSettings: MapSettings = settings.map ?? { center: [-3, 54], zoom: 5, poin
 let preserveMapView = !!settings.map;
 $<HTMLInputElement>('size').value = String(mapSettings.pointSize);
 const sources: Source[] = [];
-const timeline = new Timeline(document.querySelector<HTMLElement>('.analysis-grid')!, () => {
+const analysisGrid = document.querySelector<HTMLElement>('.analysis-grid')!;
+const queryPanel = document.querySelector<HTMLElement>('.query-panel')!;
+const filterPanel = document.querySelector<HTMLElement>('.filter-panel')!;
+const queryAnchor = document.createComment('analysis query position');
+const filterAnchor = document.createComment('analysis filter position');
+queryPanel.before(queryAnchor); filterPanel.before(filterAnchor);
+const timeline = new Timeline(analysisGrid, () => {
     clearInspection();
     for (const s of sources) if (s.enabled && s.done && s.timeline?.valid) {
         s.timelinePending = true;
@@ -236,6 +242,14 @@ function route() {
     recordPage.root.hidden = !records;
     $('configuration').hidden = !config;
     $('analysis').hidden = config || records;
+    if (records) {
+        recordPage.analysisControls.append(queryPanel, filterPanel);
+        timeline.setHost(recordPage.timelineHost);
+        switchFilters(recordPage.sourceId);
+    } else {
+        queryAnchor.after(queryPanel); filterAnchor.after(filterPanel);
+        timeline.setHost(analysisGrid);
+    }
     for (const s of sources)
         s.workspace.visibilityChanged();
     $('configLink').classList.toggle('current', config);
@@ -260,7 +274,7 @@ for (let y = -80; y <= 80; y += 10)
 $<HTMLInputElement>('basemap').checked = background.enabled && !!background.url;
 const style: StyleSpecification = { version: 8, sources: { grid: { type: 'geojson', data: { type: 'FeatureCollection', features: gridFeatures } }, osm: { type: 'raster', tiles: background.url ? [background.url] : [], tileSize: 256, attribution: background.attribution, maxzoom: 19 } }, layers: [{ id: 'background', type: 'background', paint: { 'background-color': themeColor('map-background') } }, { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: background.enabled && background.url ? 'visible' : 'none' } }, { id: 'grid', type: 'line', source: 'grid', paint: { 'line-color': themeColor('map-grid'), 'line-width': .5 } }] };
 const map = new maplibregl.Map({ container: 'map', style, center: mapSettings.center, zoom: mapSettings.zoom, maxZoom: 22, minZoom: 1, maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false, renderWorldCopies: false, pixelRatio: Math.min(devicePixelRatio, 2), canvasContextAttributes: { antialias: false }, attributionControl: { compact: true } });
-const recordPage = new RecordsPage(() => sources, (id, message) => sources.find(s => s.id === id)?.worker?.postMessage(message), inspectRecord);
+const recordPage = new RecordsPage(() => sources, (id, message) => sources.find(s => s.id === id)?.worker?.postMessage(message), inspectRecord, switchFilters);
 let inspectionToken = 0, inspection: RecordRef | undefined, marker: maplibregl.Marker | undefined;
 const chooser = document.createElement('dialog'); chooser.className = 'record-chooser'; chooser.setAttribute('aria-label', 'Choose overlapping record'); document.body.append(chooser);
 let choices: RecordRef[] = [], choiceOffset = 0;
