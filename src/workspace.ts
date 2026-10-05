@@ -357,6 +357,7 @@ class ChartView {
     private plot = element('div');
     private interaction: ChartInteraction;
     private expand = element('button', 'Enlarge');
+    private help = element('p');
     private dialog?: HTMLDialogElement;
     private placeholder?: Comment;
     private focus = 0;
@@ -389,6 +390,12 @@ class ChartView {
         settings.setAttribute('aria-expanded', 'false');
         const removeButton = button('×', remove);
         removeButton.setAttribute('aria-label', 'Remove chart');
+        removeButton.title = 'Remove chart';
+        removeButton.className = 'chart-icon';
+        this.expand.className = 'chart-icon';
+        this.expand.textContent = '⤢';
+        this.expand.setAttribute('aria-label', 'Enlarge');
+        this.expand.title = 'Enlarge';
         this.expand.setAttribute('aria-haspopup', 'dialog');
         this.expand.setAttribute('aria-expanded', 'false');
         this.expand.onclick = () => this.enlarge();
@@ -420,7 +427,8 @@ class ChartView {
         this.canvas.setAttribute('role', 'img');
         this.note.className = 'hint';
         const legend = element('details');
-        legend.append(element('summary', 'Counts and keyboard selection'), this.list);
+        this.help.className = 'chart-help';
+        legend.append(element('summary', 'Counts and keyboard selection'), this.help, this.list);
         this.plot.className = 'chart-plot';
         this.plot.append(this.canvas);
         this.root.append(header, head, this.plot, this.seriesLegend, this.note, legend);
@@ -449,7 +457,7 @@ class ChartView {
             this.refreshSettings();
             changed();
         };
-        this.interaction = new ChartInteraction(this.canvas, this.plot, () => this.result?.type === 'pie' ? { left: 0, right: this.canvas.clientWidth, top: 0, bottom: this.canvas.clientHeight, width: this.canvas.clientWidth, height: this.canvas.clientHeight } : plotRect(this.canvas, this.result?.y?.kind === 'date'), () => this.draw(), (a, b) => this.selectRectangle(a, b), p => {
+        this.interaction = new ChartInteraction(this.canvas, this.plot, () => this.result?.type === 'pie' ? { left: 0, right: this.canvas.clientWidth, top: 0, bottom: this.canvas.clientHeight, width: this.canvas.clientWidth, height: this.canvas.clientHeight } : plotRect(this.canvas, this.result?.y?.kind === 'date', this.result?.x?.kind === 'date'), () => this.draw(), (a, b) => this.selectRectangle(a, b), p => {
             const cell = this.cellAt(p);
             if (cell >= 0)
                 this.choose(cell, cell);
@@ -505,6 +513,7 @@ class ChartView {
         this.source.value = enabledSources.some(s => s.id === id) ? id : '';
         const source = sources.find(s => s.id === id);
         this.sourceName.textContent = source?.name ?? '';
+        this.sourceName.title = this.sourceName.textContent;
         this.root.dataset.sourceId = id;
         this.renderSeries();
         if (source && !source.available || this.spec.series?.some(m => !sources.some(s => s.id === m.sourceId && s.enabled && s.available))) this.error('Load this source and every additional chart source to calculate charts.');
@@ -612,7 +621,8 @@ class ChartView {
             this.draw();
         }
         const total = result.raw?.rows.length ?? result.counts.reduce((a, b) => a + b, 0);
-        this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing${this.spec.xScale === 'log10' || this.spec.yScale === 'log10' ? ' · Log10 omits non-positive values' : ''} · ${result.raw ? 'Individual observations. Left-drag to zoom; right-drag to select; double-click to reset.' : result.y ? 'Counted scatter bins. Left-drag to zoom; right-drag to select; double-click to reset.' : 'Click a segment to filter. Left-drag to zoom; right-drag to select; double-click to reset.'}`;
+        this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing${this.spec.xScale === 'log10' || this.spec.yScale === 'log10' ? ' · Log10 omits non-positive values' : ''}`;
+        this.help.textContent = `${result.raw ? 'Individual observations.' : result.y ? 'Counted scatter bins.' : 'Click a segment to filter.'} Left-drag to zoom; right-drag to select; double-click to reset.`;
         this.canvas.setAttribute('aria-label', `${result.type} chart of ${result.x.field}${result.y ? ' against ' + result.y.field : ''}. Arrow keys choose a bin; Enter filters it.`);
         this.list.replaceChildren();
         if (!result.y)
@@ -776,7 +786,8 @@ class ChartView {
             ctx.restore();
             return;
         }
-        const p = plotRect(canvas, r.y?.kind === 'date'), { left, right, top, bottom } = p, view = this.interaction.view;
+        const p = plotRect(canvas, r.y?.kind === 'date', r.x.kind === 'date'), { left, right, top, bottom } = p, view = this.interaction.view;
+        canvas.dataset.plotRect = JSON.stringify(p);
         const dx = (right - left) / Math.max(nx, 1) / (view[2] - view[0]), dy = (bottom - top) / Math.max(ny, 1) / (view[3] - view[1]);
         const xBounds = r.x.ranges ? [r.x.ranges[0], r.x.ranges.at(-1)!] : [0, nx], yBounds = r.y?.ranges ? [r.y.ranges[0], r.y.ranges.at(-1)!] : r.y ? [0, ny] : axisBounds(Number.isFinite(low) ? low : 0, max || 1, yScale);
         if (!r.y && yScale === 'linear' && yBounds[1] !== yBounds[0]) { const pad = (yBounds[1] - yBounds[0]) * .05; yBounds[1] += pad; if (r.values) yBounds[0] -= pad; }
@@ -833,7 +844,7 @@ class ChartView {
     }
 
     private restoreSize() { const dialog = this.dialog; if (!dialog)
-        return; this.dialog = undefined; window.dispatchEvent(new CustomEvent('timelinehost')); this.placeholder?.replaceWith(this.root); this.placeholder = undefined; dialog.close(); dialog.remove(); this.expand.textContent = 'Enlarge'; this.expand.setAttribute('aria-expanded', 'false'); this.expand.focus(); this.draw(); }
+        return; this.dialog = undefined; window.dispatchEvent(new CustomEvent('timelinehost')); this.placeholder?.replaceWith(this.root); this.placeholder = undefined; dialog.close(); dialog.remove(); this.expand.textContent = '⤢'; this.expand.setAttribute('aria-label', 'Enlarge'); this.expand.title = 'Enlarge'; this.expand.setAttribute('aria-expanded', 'false'); this.expand.focus(); this.draw(); }
     private enlarge() {
         if (this.dialog) {
             this.restoreSize();
@@ -848,7 +859,9 @@ class ChartView {
         document.body.append(dialog);
         dialog.append(this.root);
         window.dispatchEvent(new CustomEvent('timelinehost', { detail: dialog }));
-        this.expand.textContent = 'Return to normal size';
+        this.expand.textContent = '⤡';
+        this.expand.setAttribute('aria-label', 'Return to normal size');
+        this.expand.title = 'Return to normal size';
         this.expand.setAttribute('aria-expanded', 'true');
         dialog.addEventListener('close', () => { if (this.dialog === dialog)
             this.restoreSize(); });
