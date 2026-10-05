@@ -131,13 +131,25 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
             string(value)?;
         }
         if let Some(types) = c.get("fieldTypes") {
-            let types: Value = serde_json::from_str(types.as_str().ok_or("Invalid CSV column types")?).map_err(|_| "Invalid CSV column types")?;
+            let types: Value =
+                serde_json::from_str(types.as_str().ok_or("Invalid CSV column types")?)
+                    .map_err(|_| "Invalid CSV column types")?;
             let types = types.as_object().ok_or("Invalid CSV column types")?;
             for kind in types.values() {
-                if !matches!(kind.as_str(), Some("string" | "number" | "boolean" | "date")) { return Err("Invalid CSV column type"); }
+                if !matches!(
+                    kind.as_str(),
+                    Some("string" | "number" | "boolean" | "date")
+                ) {
+                    return Err("Invalid CSV column type");
+                }
             }
             if let Some(time) = c.get("timeField").and_then(Value::as_str) {
-                if types.get(time).is_some_and(|kind| kind.as_str() != Some("date")) { return Err("Invalid CSV time column type"); }
+                if types
+                    .get(time)
+                    .is_some_and(|kind| kind.as_str() != Some("date"))
+                {
+                    return Err("Invalid CSV time column type");
+                }
             }
         }
         if !matches!(
