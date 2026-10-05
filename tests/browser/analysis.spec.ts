@@ -73,7 +73,9 @@ test('all chart types configure from schema and scatter drag produces an exact A
     const first = page.locator('.chart-card').first();
     await first.getByLabel('Chart type').selectOption('pie');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[0].type === 'pie');
-    const canvas = first.locator('canvas'), box = (await canvas.boundingBox())!;
+    const canvas = first.locator('canvas');
+    await canvas.scrollIntoViewIfNeeded();
+    const box = (await canvas.boundingBox())!;
     await page.mouse.click(box.x + box.width / 2 + 60, box.y + 120);
     await expect(page.locator('#filterStatus')).toContainText('1,024 matches');
     await page.locator('#reset').click();
@@ -87,7 +89,7 @@ test('all chart types configure from schema and scatter drag produces an exact A
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(b.x + 68 + dx * 2.5, b.y + b.height - 64 - dy * 2.5);
     await page.mouse.up({ button: 'right' });
-    await page.waitForFunction(() => document.getElementById('filterStatus')?.textContent?.includes('matches'));
+    await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
     const result = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results[2]);
     const bounds = await page.evaluate(() => { const r = (window as any).__WFS_MAP__.workspace.results[2]; return { x: r.x.ranges.slice(0, 4), y: r.y.ranges.slice(0, 4), xf: r.x.field, yf: r.y.field, count: (window as any).__WFS_MAP__.metrics.filterCount }; });
     const expected = Array.from({ length: 4096 }, (_, i) => feature(i)).filter(f => { const p = f.properties as any; return p[bounds.xf] >= bounds.x[0] && p[bounds.xf] < bounds.x[3] && p[bounds.yf] >= bounds.y[0] && p[bounds.yf] < bounds.y[3]; }).length;
