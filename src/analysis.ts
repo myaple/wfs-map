@@ -1,4 +1,5 @@
 import { formatUTC } from './time.ts';
+import { TimelineIndex, type TimelineSelection } from './timeline-data.ts';
 import { categoryColors, colorBytes } from './category-colors.ts';
 import { numericValue, type Rule } from './data.ts';
 import type { Store } from './store.ts';
@@ -218,6 +219,13 @@ type Prepared = {
     rawCount: number;
 };
 export class Analyzer {
+    private timelines = new Map<string, TimelineIndex>();
+    private timelineFilter?: { key: string; masks: Uint8Array[] };
+    timeline(field: string): TimelineIndex {
+        let index = this.timelines.get(field);
+        if (!index) { index = new TimelineIndex(this.store, field); this.timelines.set(field, index); }
+        return index;
+    }
     private profiles = new Map<number, Profile>();
     private store: Store;
     constructor(store: Store) { this.store = store; }
@@ -382,10 +390,13 @@ export class Analyzer {
             }
         return { codes, axis: a.axis };
     }
-    async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false, domains?: { x: ChartDomain; y?: ChartDomain }) {
+    async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false, domains?: { x: ChartDomain; y?: ChartDomain }, timeline?: TimelineSelection) {
         if (specs.length > 12)
             throw new Error('Up to 12 charts are supported');
-        const root = await compile(this.store, expression, cancelled), prepared: Prepared[] = [];
+        const key = timeline ? JSON.stringify(expression) : '';
+        const cached = timeline && this.timelineFilter?.key === key ? this.timelineFilter : undefined;
+        const masks: Uint8Array[] = [], timeMask = timeline ? new Uint8Array(BLOCK) : undefined;
+        const root = cached ? undefined : await compile(this.store, expression, cancelled), prepared: Prepared[] = [];
         for (const s of specs) {
             if (!['bar', 'pie', 'time', 'scatter'].includes(s.type) || !Number.isInteger(s.bins) || s.bins < 2 || s.bins > 64)
                 throw new Error('Invalid chart configuration');
@@ -416,12 +427,23 @@ export class Analyzer {
             }
             prepared.push({ result, xi: x.column, yi: y?.column ?? -1, xbin: x.bin, ybin: y?.bin, spec: s, measure, rawCount: 0 });
         }
-        const unfiltered = 'children' in expression && expression.op === 'and' && !expression.children.length;
+        if (timeline && (!Number.isFinite(timeline.start) || !Number.isFinite(timeline.end) || timeline.start > timeline.end)) throw Error('Invalid timeline window');
+        const time = timeline ? this.timeline(timeline.field) : undefined;
+        const unfiltered = !time && 'children' in expression && expression.op === 'and' && !expression.children.length;
         const indices = unfiltered ? null : new Uint32Array(this.store.length);
-        let count = 0;
-        for (const chunk of this.store.chunks)
+        let count = 0, block = 0;
+        for (const [chunkIndex, chunk] of this.store.chunks.entries())
             for (let base = 0; base < chunk.length; base += BLOCK) {
-                const n = Math.min(BLOCK, chunk.length - base), mask = evaluate(root, chunk.values, base, n, chunk.lon, chunk.lat, chunk.offset);
+                const n = Math.min(BLOCK, chunk.length - base);
+                const mask = cached ? timeMask! : evaluate(root!, chunk.values, base, n, chunk.lon, chunk.lat, chunk.offset);
+                // Cache only the applied dataset predicate. Time never changes this mask.
+                if (cached) mask.set(cached.masks[block]);
+                else if (timeline) masks.push(mask.slice(0, n));
+                block++;
+                if (time && timeline) {
+                    const stamps = time.values[chunkIndex];
+                    for (let i = 0; i < n; i++) mask[i] &= Number(stamps[base + i] >= timeline.start && stamps[base + i] <= timeline.end);
+                }
                 for (let i = 0; i < n; i++)
                     if (mask[i]) {
                         if (indices)
@@ -481,7 +503,7 @@ export class Analyzer {
                 for (let i = 0; i < r.values.length; i++)
                     r.values[i] = !r.counts[i] ? NaN : chart.spec.aggregate === 'mean' ? r.values[i] / r.counts[i] : r.values[i];
         }
+        if (timeline && !cached) this.timelineFilter = { key, masks };
         return { indices: indices?.subarray(0, count) ?? null, count, charts: prepared.map(p => p.result) };
     }
 }
-

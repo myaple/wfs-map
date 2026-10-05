@@ -300,7 +300,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
 .map-dialog .map-panel {
   position: static;
   border: 0;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -560,6 +561,40 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,ca
 .chart-dialog::backdrop{background:#132c46aa}
 .chart-dialog .chart-card{border:0;padding:20px}
 .chart-dialog .chart-card canvas{height:clamp(300px,65dvh,750px)}
+
+.timeline { margin: 0 0 16px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.timeline-heading, .timeline-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.timeline-heading > label { margin-left: auto; font-size: 12px; }
+.timeline-controls { margin: 8px 0 12px; font-size: 12px; }
+.timeline-controls label { display: flex; align-items: center; gap: 8px; }
+.timeline-controls input { width: 205px; font-variant-numeric: tabular-nums; font-size: 12px; }
+.timeline-track { position: relative; height: 34px; margin: 20px 18px 0; background: var(--control-surface); border: 1px solid var(--input-border); border-radius: 5px; touch-action: none; cursor: crosshair; }
+.timeline-selection { position: absolute; top: 0; bottom: 0; background: var(--selected); border: 1px solid var(--accent); border-radius: 4px; cursor: grab; }
+.timeline-active .timeline-selection { background: color-mix(in srgb, var(--accent) 25%, var(--surface)); }
+.timeline-selection button { position: absolute; top: -1px; bottom: -1px; min-height: 34px; padding: 0; border-radius: 4px; touch-action: none; }
+.timeline-selection .timeline-window { top: -15px; bottom: auto; left: 50%; transform: translateX(-50%); width: 32px; min-height: 20px; height: 20px; background: var(--surface); border: 1px solid var(--accent); cursor: grab; z-index: 2; }
+.timeline-window:active { cursor: grabbing; }
+.timeline-handle { width: 18px; z-index: 1; background: var(--accent); border: 1px solid var(--accent-strong); cursor: ew-resize; }
+.timeline-handle::after { content: ''; position: absolute; width: 2px; height: 12px; background: var(--surface); top: 10px; left: 7px; }
+.timeline-handle[data-edge=start] { left: -10px; }
+.timeline-handle[data-edge=end] { right: -10px; }
+.timeline-selection button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+.timeline-axis { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.timeline-help, .timeline-status, .timeline-error { margin: 6px 0 0; font-size: 11px; }
+.map-dialog[open], .chart-dialog[open] { display: flex; flex-direction: column; }
+.chart-dialog { height: calc(100dvh - 32px); max-height: none; }
+.chart-dialog > .chart-card { flex: 1; min-height: 0; overflow: auto; }
+.chart-dialog .chart-card canvas { height: clamp(200px, 45dvh, 650px); }
+.map-dialog > .timeline, .chart-dialog > .timeline { flex: none; margin: 0; border-radius: 0; border-width: 1px 0 0; }
+@media (max-width: 700px) {
+  .timeline { padding: 10px; }
+  .timeline-heading > label { margin-left: 0; }
+  .timeline-help { display: none; }
+  .timeline-axis { font-size: 10px; }
+  .timeline-controls { gap: 6px; }
+  .timeline-controls input { width: 185px; }
+  .map-dialog, .chart-dialog { width: calc(100vw - 12px); height: calc(100dvh - 12px); }
+}
 @media(min-width:700px) {
   .chart-dialog .chart-controls{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
   .chart-dialog .chart-field-wide{grid-column:auto}

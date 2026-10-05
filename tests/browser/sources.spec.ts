@@ -62,6 +62,7 @@ test('overlapping IDs across sources pick the top rendered source with its own m
     const f = feature(48, 'dense');
     await page.evaluate(c => (window as any).__WFS_MAP__.map.jumpTo({ center: c, zoom: 18 }), f.geometry.coordinates);
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].layer.drawnLastFrame === 1);
+    await page.locator('#map').scrollIntoViewIfNeeded();
     const p = await page.evaluate(c => { const m = (window as any).__WFS_MAP__.map, p = m.project(c), r = m.getCanvas().getBoundingClientRect(); return { x: p.x + r.x, y: p.y + r.y }; }, f.geometry.coordinates);
     await page.mouse.dblclick(p.x, p.y);
     await expect(page.locator('.metadata')).toContainText('Second WFS');

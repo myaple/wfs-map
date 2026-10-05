@@ -3,6 +3,7 @@ import { csvDataset } from './csv.ts';
 import type { Config as SourceConfig } from './source-settings.ts';
 import type { QueryBounds } from './wfs-query.ts';
 import { Analyzer, all } from './analysis.ts';
+import { timeField } from './timeline-data.ts';
 import { decodePage, countFrom, inferFields, packPositions, spatialPage, wfsURL, type Field, type Rule } from './data.ts';
 import { Store } from './store.ts';
 import { RecordsIndex, recordsCSV } from './records.ts';
@@ -19,6 +20,7 @@ type Config = {
     sort: string;
     fields: Field[];
     filter?: string;
+    timeField?: string;
 };
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 let store: Store | undefined, revision = 0, colorRevision = 0, analyzer: Analyzer | undefined;
@@ -114,7 +116,7 @@ async function load(c: Config) {
     store.finish();
     if (store)
         analyzer = new Analyzer(store);
-    post({ type: 'done', loaded, total, bounds: store?.bounds, pages, bytes, parseMs, elapsedMs: performance.now() - start,
+    post({ type: 'done', loaded, total, timeline: timelineExtent(c.timeField), bounds: store?.bounds, pages, bytes, parseMs, elapsedMs: performance.now() - start,
         truncated: total !== undefined ? loaded < total : loaded === c.limit, warning: warning + (loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '') });
 }
 async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: string) {
@@ -134,7 +136,12 @@ async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: str
         await new Promise(resolve => setTimeout(resolve, 0));
     }
     store.finish(); analyzer = new Analyzer(store);
-    post({ type: 'done', loaded: total, total, bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false });
+    post({ type: 'done', loaded: total, total, timeline: timelineExtent(config.timeField), bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false });
+}
+function timelineExtent(configured?: string) {
+    if (!store || !analyzer) return;
+    const field = timeField(store.fields, configured);
+    if (field && ['date', 'string'].includes(store.fields.find(f => f.name === field)!.kind)) return analyzer.timeline(field).extent;
 }
 ctx.onmessage = (event: MessageEvent) => {
     const m = event.data;
@@ -191,7 +198,7 @@ ctx.onmessage = (event: MessageEvent) => {
     if ((m.type === 'chartDomain' || m.type === 'chartSeries') && store) {
         analyzer ??= new Analyzer(store);
         if (m.type === 'chartSeries') chartRevisions.set(m.spec.id, m.token);
-        const task = m.type === 'chartDomain' ? analyzer.domain(m.field) : analyzer.run(m.expression, [m.spec], () => chartRevisions.get(m.spec.id) !== m.token, m.domains).then(r => r.charts[0]);
+        const task = m.type === 'chartDomain' ? analyzer.domain(m.field) : analyzer.run(m.expression, [m.spec], () => chartRevisions.get(m.spec.id) !== m.token, m.domains, m.timeline).then(r => r.charts[0]);
         void task.then(result => {
             const transfers: Transferable[] = [];
             if ('counts' in result) {
@@ -211,7 +218,7 @@ ctx.onmessage = (event: MessageEvent) => {
             return;
         }
         analyzer ??= new Analyzer(store);
-        void analyzer.run(m.expression ?? all(m.rules ?? []), m.charts ?? [], () => r !== revision).then(result => {
+        void analyzer.run(m.expression ?? all(m.rules ?? []), m.charts ?? [], () => r !== revision, undefined, m.timeline).then(result => {
             if (r !== revision)
                 return;
             const transfers: Transferable[] = result.indices ? [result.indices.buffer] : [];

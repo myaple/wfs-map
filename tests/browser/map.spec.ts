@@ -7,6 +7,7 @@ test('loads genuine WFS pages, filters and double-clicks the correct GPU ID',asy
   await expect(page.locator('#status')).toContainText('1,024 points loaded');
   await page.evaluate(()=> (window as any).__WFS_MAP__.filter([{field:'id',op:'eq',value:'48'}]));
   await expect(page.locator('#filterStatus')).toContainText('1 matches');
+  await page.locator('#map').scrollIntoViewIfNeeded();
   const f=feature(48);
   const point=await page.evaluate(coords=>{const m=(window as any).__WFS_MAP__.map;const p=m.project(coords);const r=m.getCanvas().getBoundingClientRect();return{x:p.x+r.x,y:p.y+r.y};},f.geometry.coordinates);
   await page.mouse.dblclick(point.x,point.y);
@@ -41,6 +42,7 @@ test('high zoom culling retains original IDs and coordinates',async({page})=>{
   const f=feature(42);
   await page.evaluate(coords=>(window as any).__WFS_MAP__.map.jumpTo({center:coords,zoom:20}),f.geometry.coordinates);
   await page.waitForFunction(()=>{const n=(window as any).__WFS_MAP__.layer.drawnLastFrame;return n>0&&n<2048;});
+  await page.locator('#map').scrollIntoViewIfNeeded();
   const point=await page.evaluate(coords=>{const m=(window as any).__WFS_MAP__.map,p=m.project(coords),r=m.getCanvas().getBoundingClientRect();return {x:p.x+r.x,y:p.y+r.y};},f.geometry.coordinates);
   await page.mouse.dblclick(point.x,point.y);await expect(page.locator('.metadata')).toContainText('points.42');
 });
@@ -85,7 +87,9 @@ test('map enlargement preserves the live map, data and view, resizes on narrow s
   await page.setViewportSize({ width: 375, height: 700 });
   await expect.poll(() => page.locator('#map canvas').evaluate(canvas => {
     const r = canvas.getBoundingClientRect(), map = document.getElementById('map')!.getBoundingClientRect();
-    return r.width === map.width && r.height === map.height;
+    // The visible timeline can leave a fractional CSS pixel for the canvas;
+    // MapLibre rounds backing dimensions to whole pixels.
+    return Math.abs(r.width - map.width) < 1 && Math.abs(r.height - map.height) < 1;
   })).toBe(true);
   expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= innerWidth)).toBe(true);
   await page.keyboard.press('Escape');

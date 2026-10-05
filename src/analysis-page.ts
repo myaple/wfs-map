@@ -1,4 +1,6 @@
 import { sharedDomain, combineSeries, seriesColors } from './multi-charts.ts';
+import { Timeline } from './timeline.ts';
+import type { TimelineExtent } from './timeline-data.ts';
 import type { ChartDomain, ChartResult, ChartSpec } from './analysis.ts';
 import { RecordsPage } from './records-page.ts';
 import type { RecordRef, RecordData } from './records.ts';
@@ -76,6 +78,8 @@ type Source = {
     status: string;
     error: boolean;
     filterStatus: string;
+    timeline?: TimelineExtent;
+    timelinePending?: boolean;
     loadedConfig?: string;
     loadedQuery?: string;
 };
@@ -91,6 +95,14 @@ let mapSettings: MapSettings = settings.map ?? { center: [-3, 54], zoom: 5, poin
 let preserveMapView = !!settings.map;
 $<HTMLInputElement>('size').value = String(mapSettings.pointSize);
 const sources: Source[] = [];
+const timeline = new Timeline(document.querySelector<HTMLElement>('.analysis-grid')!, () => {
+    clearInspection();
+    for (const s of sources) if (s.enabled && s.done && s.timeline?.valid) {
+        s.timelinePending = true;
+        if (!s.filtering) filter(undefined, s, true);
+    }
+    refreshMultiCharts();
+});
 const savedQuery = currentAnalysis?.state.query;
 let queryBounds: QueryBounds = savedQuery ? { ...structuredClone(savedQuery.bounds), ...(savedQuery.choice === 'all' ? { time: undefined } : savedQuery.choice !== 'custom' ? { time: timeBounds(Number(savedQuery.choice)) } : {}) } : params.get('time') === 'all' ? {} : { time: timeBounds(24) };
 if (queryBounds.time) queryBounds.time = { start: utcISO(queryBounds.time.start), end: utcISO(queryBounds.time.end) };
@@ -326,6 +338,7 @@ function restoreMap() {
     const dialog = mapDialog;
     if (!dialog) return;
     mapDialog = undefined;
+    window.dispatchEvent(new CustomEvent('timelinehost'));
     $('map').after($('mapLegend'));
     mapPlaceholder?.replaceWith(mapPanel); mapPlaceholder = undefined;
     dialog.close(); dialog.remove();
@@ -347,6 +360,7 @@ enlargeMap.onclick = () => {
     dialog.className = 'map-dialog';
     dialog.setAttribute('aria-label', 'Enlarged map');
     document.body.append(dialog); dialog.append(mapPanel);
+    window.dispatchEvent(new CustomEvent('timelinehost', { detail: dialog }));
     $('map').append($('mapLegend'));
     enlargeMap.textContent = 'Return to normal size';
     enlargeMap.setAttribute('aria-label', 'Return map to normal size');
@@ -361,6 +375,7 @@ new ResizeObserver(() => map.resize()).observe($('map'));
 function status(text: string, error = false) { $('status').textContent = text; $('status').classList.toggle('error', error); }
 function enabled(id: string, on: boolean) { $<HTMLButtonElement>(id).disabled = !on; }
 function state() {
+    timeline.update(sources.filter(s => s.enabled && s.done).map(s => ({ name: s.name, extent: s.timeline, loaded: s.loaded })));
     recordPage.refresh();
     const s = filterSource(), enabledSources = sources.filter(s => s.enabled);
     enabled('load', mapReady && enabledSources.some(s => !s.loading));
@@ -433,7 +448,9 @@ function clearSource(s: Source) {
     s.abort?.abort();
     s.worker?.terminate();
     s.worker = undefined;
+    for (const [token, reply] of chartReplies) if (reply.source === s) { chartReplies.delete(token); reply.reject(Error('Chart source was cleared.')); }
     s.exportRequest++; s.exporting = s.filtering = false; s.exportStatus = '';
+    s.timeline = undefined; s.timelinePending = false;
     s.complete?.();
     s.complete = undefined;
     if (mapReady && map.getLayer(s.layer.id))
@@ -545,6 +562,7 @@ async function performLoad(s: Source) {
                     s.status = `${s.loaded.toLocaleString()}${s.total !== undefined ? ' / ' + s.total.toLocaleString() : ''} points · ${m.pages} pages · ${(m.elapsedMs / 1000).toFixed(1)} s`;
                 }
                 if (m.type === 'done') {
+                    s.timeline = m.timeline;
                     s.loading = false;
                     s.done = true;
                     s.loadedConfig = configIdentity(config);
@@ -583,6 +601,8 @@ async function performLoad(s: Source) {
                     s.metrics.gpuBytes = s.layer.gpuBytes;
                     s.filterStatus = `${s.selected.toLocaleString()} matches · ${m.elapsedMs.toFixed(0)} ms`;
                     recordPage.invalidate(s.id);
+                    if (s.timelinePending) filter(undefined, s, true);
+                    else if (!sources.some(source => source.enabled && source.filtering)) refreshMultiCharts();
                 }
                 if (m.type === 'colored' && m.request === s.colorRequest) {
                     s.colorCategories = m.categories;
@@ -597,6 +617,7 @@ async function performLoad(s: Source) {
                     s.workspace.settled();
                     s.filtering = false;
                     s.filterStatus = 'Filter error: ' + m.message;
+                    if (s.timelinePending) filter(undefined, s, true);
                 }
                 if (m.type === 'csvExported' && m.request === s.exportRequest && s.enabled && s.done) {
                     s.exporting = false;
@@ -631,7 +652,7 @@ async function performLoad(s: Source) {
             }
         };
         if (csv) s.worker!.postMessage({ type: 'loadCSV', config, bounds, fileUser });
-        else s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), limit: Number(config.limit), sort: config.sort, fields: schema.fields, filter: serverFilter } });
+        else s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), limit: Number(config.limit), sort: config.sort, fields: schema.fields, filter: serverFilter, timeField: schema.queryFields.time } });
     });
     if (session === s.request)
         s.complete = undefined;
@@ -644,46 +665,59 @@ function fit() {
 }
 const appliedExpressions = new WeakMap<Source, Expression>();
 let chartToken = 0, chartGeneration = 0;
-const chartReplies = new Map<number, { resolve: (value: any) => void; reject: (e: Error) => void }>();
+const chartReplies = new Map<number, { source: Source; resolve: (value: any) => void; reject: (e: Error) => void }>();
 function chartRPC(s: Source, message: object): Promise<any> {
     return new Promise((resolve, reject) => {
         if (!s.worker || !s.enabled || !s.done) { reject(Error(`${s.name} is not loaded. Enable and load every chart source.`)); return; }
         const token = ++chartToken;
         const timer = setTimeout(() => { chartReplies.delete(token); reject(Error('Chart calculation timed out. Reload the chart sources.')); }, 120000);
-        chartReplies.set(token, { resolve: v => { clearTimeout(timer); resolve(v); }, reject: e => { clearTimeout(timer); reject(e); } });
+        chartReplies.set(token, { source: s, resolve: v => { clearTimeout(timer); resolve(v); }, reject: e => { clearTimeout(timer); reject(e); } });
         s.worker.postMessage({ ...message, token });
     });
 }
+let comparisonsRunning = false, comparisonsPending = false;
 async function refreshMultiCharts() {
+    if (comparisonsRunning) { comparisonsPending = true; return; }
+    comparisonsRunning = true; comparisonsPending = false;
     const generation = ++chartGeneration;
+    const window = timeline.window ? { ...timeline.window } : undefined;
+    const tasks: Promise<void>[] = [];
     for (const owner of sources) for (const spec of owner.workspace.specs.filter(c => c.series?.length)) {
-        owner.workspace.chartPending(spec.id);
-        void (async () => {
+        // Retain the previous plotted snapshot during timeline scrubbing.
+        if (!timeline.window) owner.workspace.chartPending(spec.id);
+        tasks.push((async () => {
             const mappings = [{ sourceId: owner.id, x: spec.x, y: spec.y }, ...spec.series!];
             const members = mappings.map(m => { const s = sources.find(s => s.id === m.sourceId); if (!s?.enabled || !s.done) throw Error('Enable and load every chart source.'); return s; });
             const x = sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.x }) as Promise<ChartDomain>)));
             const usesY = spec.type === 'scatter' || spec.type === 'time' && (spec.aggregate ?? 'count') !== 'count';
             const y = usesY ? sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.y }) as Promise<ChartDomain>))) : undefined;
-            const results: ChartResult[] = await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartSeries', spec: { ...spec, series: undefined, x: m.x, y: m.y }, domains: { x, y }, expression: appliedExpressions.get(members[i]) ?? all([]) })));
+            const results: ChartResult[] = await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartSeries', spec: { ...spec, series: undefined, x: m.x, y: m.y }, domains: { x, y }, expression: appliedExpressions.get(members[i]) ?? all([]), timeline: window && members[i].timeline?.valid ? { ...window, field: members[i].timeline!.field } : undefined })));
             if (generation !== chartGeneration || !owner.workspace.specs.includes(spec) || members.some(s => !s.enabled || !s.done)) return;
             owner.workspace.updateComparison(combineSeries(spec, results.map((result, i) => ({ sourceId: members[i].id, name: members[i].name, color: seriesColors[i], result }))));
-        })().catch(e => { if (generation === chartGeneration) owner.workspace.chartError(spec.id, (e as Error).message); });
+        })().catch(e => { if (generation === chartGeneration) owner.workspace.chartError(spec.id, (e as Error).message); }));
     }
+    await Promise.all(tasks);
+    comparisonsRunning = false;
+    if (comparisonsPending) void refreshMultiCharts();
 }
-function filter(rules?: Rule[] | Expression, s = filterSource()) {
+function timelineSelection(s: Source) {
+    return timeline.window && s.timeline?.valid ? { ...timeline.window, field: s.timeline.field } : undefined;
+}
+function filter(rules?: Rule[] | Expression, s = filterSource(), scrubbing = false) {
     if (!s?.enabled || !s.done)
         return;
     let expression: Expression;
-    try { expression = Array.isArray(rules) ? all(rules) : rules ?? s.workspace.expression(); }
+    try { expression = scrubbing ? appliedExpressions.get(s) ?? all([]) : Array.isArray(rules) ? all(rules) : rules ?? s.workspace.expression(); }
     catch (error) { s.filterStatus = 'Filter error: ' + (error instanceof Error ? error.message : String(error)); state(); return; }
     s.filtering = true;
+    s.timelinePending = false;
     s.exportRequest++; s.exporting = false; s.exportStatus = '';
-    s.workspace.pending();
+    if (!scrubbing) s.workspace.pending();
     s.filterStatus = 'Updating selection and charts…';
-    clearInspection();
-    appliedExpressions.set(s, structuredClone(expression));
-    refreshMultiCharts();
-    s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, charts: s.workspace.specs.filter(c => !c.series?.length && c.x && (c.type !== 'scatter' || c.y)) });
+    if (!scrubbing) clearInspection();
+    if (!scrubbing) appliedExpressions.set(s, structuredClone(expression));
+    if (!scrubbing) chartGeneration++; // Dataset predicates invalidate comparisons; scrubbing uses bounded snapshots.
+    s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, timeline: timelineSelection(s), charts: s.workspace.specs.filter(c => !c.series?.length && c.x && (c.type !== 'scatter' || c.y)) });
     state();
 }
 function showMetadata(data: any, source: Source) {
