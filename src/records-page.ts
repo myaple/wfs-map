@@ -35,7 +35,7 @@ export class RecordsPage {
         this.scroll.className = 'records-scroll'; this.scroll.tabIndex = 0; this.scroll.setAttribute('aria-label', 'Records table. Arrow keys navigate; Enter inspects.');
         this.table.className = 'records-table'; this.table.append(el('thead'), this.body); this.scroll.append(this.table);
         this.inspector.className = 'record-inspector'; this.inspector.setAttribute('aria-label', 'Record inspector');
-        layout.append(this.scroll, this.inspector); this.root.append(el('h2', 'Records'), el('p', 'Browse applied results. The filter sidebar and bottom timeline are shared across pages. Inspection highlights records without changing filters. Search narrows this table and its export.'), controls, this.status, layout);
+        layout.append(this.scroll, this.inspector); this.root.append(el('h2', 'Records'), el('p', 'Browse applied results. The bottom Filters and Timeline panels are shared across pages. Inspection highlights records without changing filters. Search narrows this table and its export.'), controls, this.status, layout);
         document.getElementById('app')!.append(this.root);
         this.source.onchange = () => { this.version = ''; this.reset(); this.refresh(); this.sourceChanged(this.source.value); };
         let timer: ReturnType<typeof setTimeout>;

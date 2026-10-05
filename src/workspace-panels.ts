@@ -3,17 +3,21 @@ export function mountWorkspacePanels(app: HTMLElement, query: HTMLElement, filte
     const layout = document.createElement('div'); layout.className = 'workspace-layout';
     const pages = document.createElement('div'); pages.className = 'workspace-pages';
     for (const id of ['analysis', 'records', 'configuration', 'derived']) pages.append(document.getElementById(id)!);
-    const sidebar = document.createElement('aside'); sidebar.id = 'workspaceFilters'; sidebar.className = 'workspace-filters'; sidebar.setAttribute('aria-label', 'Workspace filters');
+    const panel = document.createElement('section'); panel.id = 'workspaceFilters'; panel.className = 'workspace-filters'; panel.hidden = true; panel.setAttribute('aria-label', 'Workspace filters');
     const button = document.createElement('button'); button.id = 'toggleFilters'; button.type = 'button'; button.textContent = 'Filters';
     button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-controls', 'workspaceFilterContent');
     const content = document.createElement('div'); content.id = 'workspaceFilterContent'; content.className = 'analysis-controls'; content.hidden = true;
-    content.append(query, filters); sidebar.append(button, content); layout.append(pages, sidebar);
+    content.append(query, filters); panel.append(content); layout.append(pages);
     app.insertBefore(layout, timeline.previousSibling);
+    // The existing timeline host also carries filters into enlarged views.
+    timeline.id = 'workspaceDock'; timeline.classList.add('workspace-dock'); timeline.setAttribute('aria-label', 'Workspace filters and loaded data timeline');
+    timeline.querySelector('.timeline-bar')!.prepend(button);
+    timeline.querySelector('.timeline-body')!.before(panel);
     const setOpen = (open: boolean) => {
-        content.hidden = !open; button.setAttribute('aria-expanded', String(open)); layout.classList.toggle('filters-open', open);
+        content.hidden = panel.hidden = !open; button.setAttribute('aria-expanded', String(open));
     };
     button.onclick = () => setOpen(content.hidden);
-    sidebar.onkeydown = event => {
+    panel.onkeydown = event => {
         if (event.key === 'Escape' && !content.hidden) { setOpen(false); button.focus(); event.stopPropagation(); }
     };
     // Colouring belongs alongside export, below the dashboard's map and charts.
@@ -24,7 +28,9 @@ export function mountWorkspacePanels(app: HTMLElement, query: HTMLElement, filte
     pages.querySelector('#analysis > .analysis-controls')?.remove();
     let frame = 0;
     new ResizeObserver(() => {
-        app.style.setProperty('--timeline-height', `${timeline.closest('dialog') ? 0 : timeline.getBoundingClientRect().height}px`);
+        const height = `${timeline.closest('dialog') ? 0 : timeline.getBoundingClientRect().height}px`;
+        app.style.setProperty('--dock-height', height);
+        document.documentElement.style.setProperty('--workspace-dock-height', height);
         if (!frame) frame = requestAnimationFrame(() => { frame = 0; resized(); });
     }).observe(timeline);
     new ResizeObserver(() => {

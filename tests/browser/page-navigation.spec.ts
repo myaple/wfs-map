@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 import { navigate, openFilters, openTimeline } from '../navigation.ts';
 
-test('two hover menus route four pages; shared sidebar starts collapsed and retains controls across all pages', async ({ page }) => {
+test('two hover menus route four pages; shared bottom panels start collapsed and retain controls across all pages', async ({ page }) => {
  const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
  await page.addInitScript(config => localStorage.setItem('wfs-settings', JSON.stringify({sources:[{id:'a',name:'North observations',enabled:true,config:{...config,type:'csv',longitudeField:'lon',latitudeField:'lat',timeField:'day',csvText:'lon,lat,uuid,value,day\n-1,54,A,1,2025-01-01\n-2,53,B,2,2025-01-02'}},{id:'b',name:'Survey results',enabled:true,config:{...config,type:'csv',longitudeField:'lon',latitudeField:'lat',csvText:'lon,lat,uuid,value\n0,55,A,5\n0,55,B,6'}}]})),defaultConfig);
  await page.goto('/?time=all#analysis'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s:any)=>s.done&&!s.filtering));
@@ -52,7 +52,7 @@ test('Derived datasets deep links load directly and browser history restores sub
  await page.reload(); await expect(page.locator('#derivedDatasets')).toBeVisible(); await expect(page.locator('#toggleFilters')).toHaveAttribute('aria-expanded','false');
 });
 
-test('shared docks reserve desktop space, collapse without clearing selection, and fit narrow screens and banners', async ({ page }) => {
+test('bottom panels stack independently, preserve selection, and fit narrow screens and banners', async ({ page }) => {
  await page.route('**/api/site-config', route => route.fulfill({json:{bannerText:'Analysis workspace',bannerBackground:'#ccddee'}}));
  await page.goto('/?time=all&points=32&autoload=1');
  await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
@@ -60,9 +60,22 @@ test('shared docks reserve desktop space, collapse without clearing selection, a
  await expect(page.locator('#toggleTimeline')).toHaveAttribute('aria-expanded','false');
  const mapWidth = (await page.locator('#map').boundingBox())!.width;
  await openFilters(page); await openTimeline(page);
- expect((await page.locator('#map').boundingBox())!.width).toBeLessThan(mapWidth);
- const content=(await page.locator('.workspace-pages').boundingBox())!, sidebar=(await page.locator('#workspaceFilters').boundingBox())!;
- expect(content.x+content.width).toBeLessThanOrEqual(sidebar.x);
+ expect((await page.locator('#map').boundingBox())!.width).toBe(mapWidth);
+ const filterBox=(await page.locator('#workspaceFilters').boundingBox())!, timelineBox=(await page.locator('.timeline-body').boundingBox())!;
+ expect(filterBox.y+filterBox.height).toBeLessThanOrEqual(timelineBox.y);
+ expect(filterBox.height).toBeGreaterThan(100); expect(timelineBox.height).toBeGreaterThan(100);
+ const filterTab=(await page.locator('#toggleFilters').boundingBox())!, timelineTab=(await page.locator('#toggleTimeline').boundingBox())!;
+ expect(filterTab.y).toBe(timelineTab.y);
+ for (const enlarge of [page.locator('#enlargeMap'), page.locator('.chart-card').first().getByRole('button',{name:'Enlarge',exact:true})]) {
+  await enlarge.click();
+  const dialog=page.getByRole('dialog');
+  await expect(dialog.locator('#workspaceFilters')).toBeVisible(); await expect(dialog.locator('.timeline-body')).toBeVisible();
+  const filters=(await dialog.locator('#workspaceFilters').boundingBox())!, timeline=(await dialog.locator('.timeline-body').boundingBox())!;
+  expect(filters.height).toBeGreaterThan(100); expect(timeline.height).toBeGreaterThan(100);
+  expect(filters.y+filters.height).toBeLessThanOrEqual(timeline.y);
+  await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
+  await expect(page.locator('#app > #workspaceDock #workspaceFilters')).toBeVisible(); await expect(page.locator('#app > #workspaceDock .timeline-body')).toBeVisible();
+ }
  const colour=(await page.locator('.dashboard-footer > .colour-panel').first().boundingBox())!, csv=(await page.locator('.csv-export-panel').boundingBox())!;
  expect(colour.x+colour.width).toBeLessThanOrEqual(csv.x);
  expect(colour.y).toBeGreaterThan((await page.locator('.analysis-grid').boundingBox())!.y);
@@ -73,6 +86,10 @@ test('shared docks reserve desktop space, collapse without clearing selection, a
  const count = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected);
  await page.locator('#toggleTimeline').click(); await page.locator('#toggleFilters').click();
  await expect(page.locator('.timeline-body')).toBeHidden();
+ await openFilters(page); await expect(page.locator('.timeline-body')).toBeHidden();
+ await openTimeline(page); await page.locator('#toggleFilters').click();
+ await expect(page.locator('#workspaceFilters')).toBeHidden(); await expect(page.locator('.timeline-body')).toBeVisible();
+ await page.locator('#toggleTimeline').click();
  for (const target of ['records','derived','configuration','analysis'] as const) {
   await navigate(page,target); await expect(page.locator('#toggleFilters')).toBeVisible(); await expect(page.locator('#toggleTimeline')).toBeVisible();
   expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(count);
@@ -85,6 +102,7 @@ test('shared docks reserve desktop space, collapse without clearing selection, a
  expect(bottom.y+bottom.height).toBeLessThanOrEqual(banner.y);
  await page.locator('#filterSource').focus(); await page.keyboard.press('Escape');
  await expect(page.locator('#toggleFilters')).toBeFocused(); await expect(page.locator('#workspaceFilterContent')).toBeHidden();
+ await expect(page.locator('.timeline-body')).toBeVisible();
  await page.locator('#toggleTimeline').click();
  await page.screenshot({path:'test-results/workspace-docks-mobile.png'});
 });
