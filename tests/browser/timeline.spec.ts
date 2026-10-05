@@ -98,12 +98,25 @@ test('multi-source chart shares the timeline; rapid drag settles on the latest w
     await range(page,'2025-01-01','2025-01-03');await expect(chart.locator('.hint').last()).toContainText('plotted');
     const track=page.locator('.timeline-track');await track.scrollIntoViewIfNeeded();
     const box=(await page.getByRole('slider',{name:'Move time window',exact:true}).boundingBox())!;
-    const countBefore=await page.evaluate(()=>(window as any).__WFS_MAP__.sources[0].filterRequest);
+    await ready(page);
+    const countBefore=await page.evaluate(()=>{
+        const api=(window as any).__WFS_MAP__,worker=api.sources[0].worker as Worker;
+        const pending=new Set<number>();let maximum=0;
+        const send=worker.postMessage.bind(worker);
+        worker.postMessage=(message:any,options?:any)=>{if(message.type==='analyze'){pending.add(message.request);maximum=Math.max(maximum,pending.size);}send(message,options);};
+        // Observe completion before the app starts its one deferred latest request.
+        worker.addEventListener('message',event=>{if(['filtered','filterError'].includes(event.data.type))pending.delete(event.data.request);},{capture:true});
+        api.timelineQueue=()=>({maximum,pending:pending.size});
+        return api.sources[0].filterRequest;
+    });
     await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
     await page.mouse.move(box.x+240,box.y+box.height/2,{steps:80});await page.mouse.up();await ready(page);
-    const result=await page.evaluate(()=>{const api=(window as any).__WFS_MAP__,h=document.querySelector('[data-edge=start]')!,e=document.querySelector('[data-edge=end]')!;return {start:Number(h.getAttribute('aria-valuenow')),end:Number(e.getAttribute('aria-valuenow')),selected:api.sources.slice(0,2).map((s:any)=>s.selected),request:api.sources[0].filterRequest};});
+    const result=await page.evaluate(()=>{const api=(window as any).__WFS_MAP__,h=document.querySelector('[data-edge=start]')!,e=document.querySelector('[data-edge=end]')!;return {start:Number(h.getAttribute('aria-valuenow')),end:Number(e.getAttribute('aria-valuenow')),selected:api.sources.slice(0,2).map((s:any)=>s.selected),request:api.sources[0].filterRequest,queue:api.timelineQueue()};});
     const expected=Array.from({length:4096},(_,i)=>feature(i)).filter(f=>{const t=Date.parse(f.properties.timestamp);return t>=result.start&&t<=result.end;}).length;
-    expect(result.selected[0]).toBe(expected);expect(result.request-countBefore).toBeLessThan(81);
+    expect(result.selected[0]).toBe(expected);
+    // Pointer down plus 80 moves may all finish on a fast worker without coalescing.
+    expect(result.request-countBefore).toBeLessThanOrEqual(81);
+    expect(result.queue.maximum).toBeLessThanOrEqual(1);expect(result.queue.pending).toBe(0);
     await expect(chart.locator('.hint').last()).toContainText(`${(result.selected[0]+result.selected[1]).toLocaleString()} plotted`);
     await page.getByLabel('Timeline start (UTC)',{exact:true}).fill('invalid');await page.getByRole('button',{name:'Set window',exact:true}).click();
     await expect(page.locator('.timeline-error')).toBeVisible();expect(await selected(page)).toEqual([...result.selected,1]);
