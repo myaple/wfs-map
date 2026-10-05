@@ -5,6 +5,9 @@ export type RecordsSource = { id: string; name: string; enabled: boolean; done: 
 export class RecordsPage {
     readonly root = el('section');
     readonly inspector = el('aside');
+    readonly analysisControls = el('div');
+    readonly timelineHost = el('div');
+    get sourceId() { return this.source.value; }
     private source = el('select'); private search = el('input'); private status = el('p');
     private columns = el('details'); private scroll = el('div'); private table = el('table'); private body = el('tbody');
     private columnSummary = el('summary', 'Columns'); private columnOptions = el('div');
@@ -14,7 +17,7 @@ export class RecordsPage {
     private request = 0; private total = 0; private offset = 0; private rows: RecordRow[] = [];
     private version = ''; private selected?: RecordRef; private selectedData?: RecordData;
     private exportButton = el('button', 'Download table CSV'); private copy = el('button', 'Copy record');
-    constructor(private sources: () => RecordsSource[], private send: (id: string, message: unknown) => void, private inspect: (ref: RecordRef) => void) {
+    constructor(private sources: () => RecordsSource[], private send: (id: string, message: unknown) => void, private inspect: (ref: RecordRef) => void, private sourceChanged: (id: string) => void) {
         this.root.id = 'records'; this.root.hidden = true; this.root.className = 'records-page';
         this.source.id = 'recordsSource'; this.source.setAttribute('aria-label', 'Records data source');
         this.search.type = 'search'; this.search.setAttribute('aria-label', 'Search applied records'); this.search.placeholder = 'Search all fields, IDs and coordinates';
@@ -34,9 +37,11 @@ export class RecordsPage {
         this.scroll.className = 'records-scroll'; this.scroll.tabIndex = 0; this.scroll.setAttribute('aria-label', 'Records table. Arrow keys navigate; Enter inspects.');
         this.table.className = 'records-table'; this.table.append(el('thead'), this.body); this.scroll.append(this.table);
         this.inspector.className = 'record-inspector'; this.inspector.setAttribute('aria-label', 'Record inspector');
-        layout.append(this.scroll, this.inspector); this.root.append(el('h2', 'Records'), el('p', 'Browse applied results. Inspection highlights records without changing filters. Search narrows this table and its export.'), controls, this.status, layout);
+        this.analysisControls.className = 'analysis-controls records-analysis-controls';
+        this.timelineHost.hidden = true;
+        layout.append(this.scroll, this.inspector); this.root.append(el('h2', 'Records'), el('p', 'Browse applied results. Filters and the timeline are shared with Analysis. Inspection highlights records without changing filters. Search narrows this table and its export.'), this.analysisControls, this.timelineHost, controls, this.status, layout);
         document.getElementById('app')!.append(this.root);
-        this.source.onchange = () => { this.version = ''; this.reset(); this.refresh(); };
+        this.source.onchange = () => { this.version = ''; this.reset(); this.refresh(); this.sourceChanged(this.source.value); };
         let timer: ReturnType<typeof setTimeout>;
         this.search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => this.reset(), 180); };
         this.scroll.onscroll = () => { const offset = Math.max(0, Math.min(Math.max(0, this.total - 40), Math.floor(this.scroll.scrollTop * this.scrollScale() / 34) - 4)); if (offset !== this.offset) { this.offset = offset; this.fetch(); } };
