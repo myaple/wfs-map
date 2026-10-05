@@ -68,6 +68,7 @@ test('shared docks reserve desktop space, collapse without clearing selection, a
  expect(colour.y).toBeGreaterThan((await page.locator('.analysis-grid').boundingBox())!.y);
  await page.getByLabel('Use time window').check();
  await page.getByRole('slider',{name:'Timeline start handle',exact:true}).focus(); await page.keyboard.press('ArrowRight');
+ await expect.poll(() => page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(31);
  await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
  const count = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected);
  await page.locator('#toggleTimeline').click(); await page.locator('#toggleFilters').click();
