@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 const now = new Date('2026-10-02T12:00:00Z');
@@ -95,7 +96,7 @@ test('missing schema requires an explicit time override and never falls back to 
   });
   await page.goto('/?autoload=1');
   await expect(page.locator('#status')).toContainText('Choose a time attribute'); expect(requests).toHaveLength(0);
-  await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure First', exact: true }).click();
+  await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure First', exact: true }).click();
   await page.locator('#wfsCompatibility summary').click(); await page.getByLabel('Time attribute (optional override)', { exact: true }).fill('timestamp');
   await page.getByLabel('Geometry attribute (optional override)', { exact: true }).fill('geometry');
   await page.locator('#updateSource').click(); await page.locator('#saveSettings').click(); await ready(page);

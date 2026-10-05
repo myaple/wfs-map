@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 async function add(page: Page, name = 'Stations', url = '/wfs?points=128&vendor=keep') {
     await page.locator('#addSource').click();
@@ -26,8 +27,8 @@ test('clean first visit has a generic empty list; drafts, cancel and discard nev
     await expect(page.locator('#saveState')).toHaveText('Unsaved changes');
     expect(await sourceStorage(page)).toBeNull();
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.length)).toBe(0);
-    await page.locator('#analysisLink').click(); await expect(page.locator('#load')).toBeDisabled();
-    await page.locator('#configLink').click(); await page.locator('#discardSettings').click();
+    await navigate(page, 'analysis'); await expect(page.locator('#load')).toBeDisabled();
+    await navigate(page, 'configuration'); await page.locator('#discardSettings').click();
     await expect(page.locator('.source-row')).toHaveCount(0);
     await expect(page.locator('#saveSettings')).toBeDisabled();
     expect(errors).toEqual([]);
@@ -70,9 +71,9 @@ test('removal can be undone and saved removal of the last loaded source releases
     expect((await sourceStorage(page)).sources).toHaveLength(0);
     const cleared = await page.evaluate(() => { const s = (window as any).__removedSource; return { loaded: s.loaded, bytes: s.layer.gpuBytes, worker: !!s.worker }; });
     expect(cleared).toEqual({ loaded: 0, bytes: 0, worker: false });
-    await page.locator('#analysisLink').click(); await expect(page.locator('#hud')).toContainText('Loaded 0');
+    await navigate(page, 'analysis'); await expect(page.locator('#hud')).toContainText('Loaded 0');
     await expect(page.locator('#filterSource')).toBeDisabled(); await page.reload();
-    await page.locator('#configLink').click(); await expect(page.locator('.source-row')).toHaveCount(0);
+    await navigate(page, 'configuration'); await expect(page.locator('.source-row')).toHaveCount(0);
     await add(page, 'Replacement'); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
     expect(errors).toEqual([]);
@@ -93,7 +94,7 @@ test(`start a test WFS separately and add it through the normal editor${withoutR
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
     expect((await sourceStorage(page)).sources[0].config).not.toHaveProperty('distribution');
-    await page.locator('#analysisLink').click(); await expect(page.locator('#hud')).toContainText('Loaded 96');
+    await navigate(page, 'analysis'); await expect(page.locator('#hud')).toContainText('Loaded 96');
     await page.reload(); await page.locator('#load').click(); await page.waitForFunction(() => (window as any).__WFS_MAP__.done);
     await expect(page.locator('#hud')).toContainText('Loaded 96');
     await expect(page.locator('.chart-card')).toHaveCount(3);

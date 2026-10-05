@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { emptyState } from '../../src/analysis-state.ts';
 
@@ -32,7 +33,7 @@ test('shared header and footer survive every base view, errors, scrolling and na
         await check();
         if (url.includes('#configuration')) {
             await expect(page.locator('#configuration')).toBeVisible();
-            await page.locator('#analysisLink').click();
+            await navigate(page, 'analysis');
             await check();
         }
         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));

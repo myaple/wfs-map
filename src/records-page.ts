@@ -6,6 +6,7 @@ export class RecordsPage {
     readonly root = el('section');
     readonly inspector = el('aside');
     readonly analysisControls = el('div');
+    readonly filters = el('details');
     readonly timelineHost = el('div');
     get sourceId() { return this.source.value; }
     private source = el('select'); private search = el('input'); private status = el('p');
@@ -38,8 +39,10 @@ export class RecordsPage {
         this.table.className = 'records-table'; this.table.append(el('thead'), this.body); this.scroll.append(this.table);
         this.inspector.className = 'record-inspector'; this.inspector.setAttribute('aria-label', 'Record inspector');
         this.analysisControls.className = 'analysis-controls records-analysis-controls';
+        this.filters.id = 'recordsFilters'; this.filters.className = 'page-filters';
+        this.filters.append(el('summary', 'Filters'), this.analysisControls);
         this.timelineHost.hidden = true;
-        layout.append(this.scroll, this.inspector); this.root.append(el('h2', 'Records'), el('p', 'Browse applied results. Filters and the timeline are shared with Analysis. Inspection highlights records without changing filters. Search narrows this table and its export.'), this.analysisControls, this.timelineHost, controls, this.status, layout);
+        layout.append(this.scroll, this.inspector); this.root.append(el('h2', 'Records'), el('p', 'Browse applied results. Filters and the timeline are shared with Dashboard. Inspection highlights records without changing filters. Search narrows this table and its export.'), this.filters, this.timelineHost, controls, this.status, layout);
         document.getElementById('app')!.append(this.root);
         this.source.onchange = () => { this.version = ''; this.reset(); this.refresh(); this.sourceChanged(this.source.value); };
         let timer: ReturnType<typeof setTimeout>;

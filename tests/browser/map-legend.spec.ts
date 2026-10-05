@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 
@@ -74,10 +75,10 @@ test('legend tracks palette edits, filters, disabled sources and dark mode', asy
     await expect(page.locator('#mapLegend')).toContainText('Category-239');
     await page.getByRole('button', { name: 'Dark mode', exact: true }).click();
     await expect(page.locator('#mapLegend')).toHaveCSS('background-color', 'rgb(26, 38, 50)');
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByLabel('Enable Categories', { exact: true }).uncheck();
     await page.locator('#saveSettings').click();
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.locator('#mapLegend')).toBeVisible();
     await expect(page.locator('#mapLegend')).not.toContainText('Categories');
     await expect(page.locator('#mapLegend')).toContainText('Gradient');

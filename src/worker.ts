@@ -8,6 +8,7 @@ import { timeField } from './timeline-data.ts';
 import { decodePage, countFrom, inferFields, packPositions, latitudeClampWarning, spatialPage, wfsURL, type Field, type Rule } from './data.ts';
 import { Store } from './store.ts';
 import { RecordsIndex, recordsCSV } from './records.ts';
+import { joinSnapshot } from './derived-datasets.ts';
 import { exportCSV } from './csv-export.ts';
 type Config = {
     url: string;
@@ -141,6 +142,10 @@ function timelineExtent(configured?: string) {
 }
 ctx.onmessage = (event: MessageEvent) => {
     const m = event.data;
+    if (m.type === 'joinSnapshot') {
+        m.port.postMessage(store ? { snapshot: joinSnapshot(store, m.scope === 'applied' ? applied : null) } : { error: 'Load both sources before joining.' });
+        m.port.close(); return;
+    }
     if (m.type === 'csvSchema') {
         void (async () => {
             const file = m.config.csvText ? new Blob([m.config.csvText]) : await readCSVBlob(m.config.csvRef, m.fileUser);

@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { emptyState, configurationState, type AnalysisDocument } from '../../src/analysis-state.ts';
@@ -19,14 +20,14 @@ async function user(context: BrowserContext, baseURL: string, value: string) {
     await context.addCookies([{ name: 'wfs_test_user', value, url: baseURL }]);
 }
 async function attach(page: Page, text: string) {
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByRole('button', { name: 'Configure Local stations', exact: true }).click();
     await page.locator('#csvFile').setInputFiles({ name: 'stations.csv', mimeType: 'text/csv', buffer: Buffer.from(text) });
     await expect(page.locator('#csvFileStatus')).toContainText('4 columns');
     await page.locator('#updateSource').click();
     await page.locator('#saveSettings').click();
     await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
 }
 const save = async (page: Page) => {
     await page.getByRole('button', { name: 'Save analysis', exact: true }).click();

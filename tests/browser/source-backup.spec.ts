@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { createBackup } from '../../src/source-backup.ts';
@@ -37,7 +38,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
     const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto('/?time=all&points=17');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await addCSV(page, 'Active CSV', small);
     await addCSV(page, 'Disabled large CSV', large);
     await page.getByRole('checkbox', { name: 'Enable Disabled large CSV', exact: true }).uncheck();
@@ -46,7 +47,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
     await page.locator('#basemapAttribution').fill('Shared basemap ©');
     await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.done);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     const activeID = (await saved(page)).sources[1].id;
     await page.locator('#colorSource').selectOption(activeID);
     await page.locator('#sourceColor').evaluate((el: HTMLInputElement) => { el.value = '#aabbcc'; el.dispatchEvent(new Event('change', { bubbles: true })); });
@@ -58,7 +59,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
     });
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1].selected === 1);
     const before = await saved(page), beforeFiles = await csvFiles(page);
-    await page.locator('#configLink').click(); const archive = await downloadedBackup(page);
+    await navigate(page, 'configuration'); const archive = await downloadedBackup(page);
     expect(archive.buffer.length).toBeLessThan(100_000);
     const context = await browser.newContext({ baseURL: 'http://127.0.0.1:8787' }), receiver = await context.newPage();
     receiver.on('pageerror', e => errors.push(e.message));
@@ -77,7 +78,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
         expect(after.sources[1].config.csvRef).not.toBe(before.sources[1].config.csvRef);
         expect(await receiver.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.loaded))).toEqual([17, 3, 0]);
         expect(await receiver.evaluate(() => (window as any).__WFS_MAP__.sources[1].selected)).toBe(3);
-        await receiver.locator('#analysisLink').click(); await expect(receiver.locator('#size')).toHaveValue('4.5');
+        await navigate(receiver, 'analysis'); await expect(receiver.locator('#size')).toHaveValue('4.5');
         const view = await receiver.evaluate(() => { const m = (window as any).__WFS_MAP__.map; return { center: m.getCenter().toArray(), zoom: m.getZoom() }; });
         expect(view.center[0]).toBeCloseTo(-1.54, 7); expect(view.center[1]).toBeCloseTo(53.99, 7); expect(view.zoom).toBeCloseTo(12.5);
         await receiver.reload(); await receiver.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.done);
@@ -124,7 +125,7 @@ test('draft export, cancelled restore, invalid archive and failed storage preser
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     expect((await csvFiles(page))[0].text).toBe(replacement.sources[0].config.csvText);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].layer.color)).toEqual([1, 0, 0]);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await page.evaluate(() => (window as any).__WFS_MAP__.getPoint(1));
     await expect(page.locator('.metadata')).toContainText('replacement');
     await expect(page.locator('.metadata')).toContainText('99');

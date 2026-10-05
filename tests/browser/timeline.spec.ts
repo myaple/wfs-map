@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 import { feature } from '../../server/demo.ts';
@@ -105,7 +106,8 @@ test('multi-source chart shares the timeline; rapid drag settles on the latest w
         const send=worker.postMessage.bind(worker);
         worker.postMessage=(message:any,options?:any)=>{if(message.type==='analyze'){pending.add(message.request);maximum=Math.max(maximum,pending.size);}send(message,options);};
         // Observe completion before the app starts its one deferred latest request.
-        worker.addEventListener('message',event=>{if(['filtered','filterError'].includes(event.data.type))pending.delete(event.data.request);},{capture:true});
+        const receive=worker.onmessage;
+        worker.onmessage=event=>{if(['filtered','filterError'].includes(event.data.type))pending.delete(event.data.request);receive?.call(worker,event);};
         api.timelineQueue=()=>({maximum,pending:pending.size});
         return api.sources[0].filterRequest;
     });
@@ -139,7 +141,7 @@ test('an enlarged timeline returns to Records when the page changes behind its d
     await page.keyboard.press('Escape');
     await expect(page.locator('#records > .timeline')).toBeVisible();
     await expect(page.getByLabel('Use time window')).toBeChecked();
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.locator('#analysis > .timeline')).toBeVisible();
     await expect(page.locator('.timeline')).toHaveCount(1);
 });

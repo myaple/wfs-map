@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 test('loads genuine WFS pages, filters and double-clicks the correct GPU ID',async({page})=>{
@@ -20,7 +21,7 @@ test('loads genuine WFS pages, filters and double-clicks the correct GPU ID',asy
 test('GML path uses schema hints and correct axis order',async({page})=>{
   await page.goto('/?time=all&points=105');
   await page.waitForFunction(()=> (window as any).__WFS_MAP__?.map.loaded());
-  await page.locator('#configLink').click();await page.getByRole('button', { name: 'Configure WFS source', exact: true }).click();await page.locator('#wfsCompatibility summary').click();
+  await navigate(page, 'configuration');await page.getByRole('button', { name: 'Configure WFS source', exact: true }).click();await page.locator('#wfsCompatibility summary').click();
   await page.locator('#format').fill('application/gml+xml; version=3.2');
   await page.locator('#srs').fill('urn:ogc:def:crs:EPSG::4326');
   await page.locator('#axis').selectOption('yx');await page.locator('#pageSize').fill('100');
@@ -31,7 +32,7 @@ test('GML path uses schema hints and correct axis order',async({page})=>{
 });
 test('client limit is explicitly reported and clear releases the dataset',async({page})=>{
   await page.goto('/?time=all&points=1024');await page.waitForFunction(()=> (window as any).__WFS_MAP__?.map.loaded());
-  await page.locator('#configLink').click();await page.getByRole('button', { name: 'Configure WFS source', exact: true }).click();await page.locator('#wfsCompatibility summary').click();await page.locator('#limit').fill('100');await page.locator('#updateSource').click();await page.locator('#saveSettings').click();await page.locator('#load').click();
+  await navigate(page, 'configuration');await page.getByRole('button', { name: 'Configure WFS source', exact: true }).click();await page.locator('#wfsCompatibility summary').click();await page.locator('#limit').fill('100');await page.locator('#updateSource').click();await page.locator('#saveSettings').click();await page.locator('#load').click();
   await page.waitForFunction(()=> (window as any).__WFS_MAP__.done);
   await expect(page.locator('#status')).toContainText('LIMIT REACHED');
   await page.locator('#cancel').click();await expect(page.locator('#hud')).toContainText('Loaded 0');

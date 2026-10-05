@@ -1,14 +1,15 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 async function setup(page: Page) {
     await page.goto('/?time=all&points=16&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3);
-    await page.locator('#configLink').click(); await page.locator('#addSource').click();
+    await navigate(page, 'configuration'); await page.locator('#addSource').click();
     await page.locator('#sourceName').fill('CSV temperatures'); await page.locator('#type').selectOption('csv');
     await page.locator('#csvFile').setInputFiles({ name: 'temperatures.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,day,temperature,station\n-1,54,2026-10-01,7,north\n-2,53,2026-10-02,9,south') });
     await expect(page.locator('#csvFileStatus')).toContainText('5 columns'); await page.locator('#csvTime').selectOption('day');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1]?.workspace.results.length === 3);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     return page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.id));
 }
 test('all charts stay visible and each source selector repopulates axes, aggregation and routes selection', async ({ page }) => {
@@ -47,7 +48,7 @@ test('all charts stay visible and each source selector repopulates axes, aggrega
 test('disabled and reloaded sources retain visible cards and source removal affects only its charts', async ({ page }) => {
     const ids = await setup(page);
     const csvCards = page.locator(`.chart-card[data-source-id="${ids[1]}"]`);
-    await page.locator('#configLink').click(); await page.getByRole('checkbox', { name: 'Enable CSV temperatures', exact: true }).uncheck(); await page.locator('#saveSettings').click(); await page.locator('#analysisLink').click();
+    await navigate(page, 'configuration'); await page.getByRole('checkbox', { name: 'Enable CSV temperatures', exact: true }).uncheck(); await page.locator('#saveSettings').click(); await navigate(page, 'analysis');
     await expect(page.locator('.chart-card')).toHaveCount(6); await expect(csvCards.first()).toContainText('Load this source');
     await expect(page.locator('#filterSource option')).toHaveCount(1);
     await csvCards.first().getByRole('button', { name: 'Settings', exact: true }).click();
@@ -55,10 +56,10 @@ test('disabled and reloaded sources retain visible cards and source removal affe
     await expect(source.locator('option')).toHaveText(['Choose an enabled data source', 'WFS source']);
     await expect(source).toHaveValue('');
     await expect(csvCards.first()).toHaveAttribute('data-source-id', ids[1]);
-    await page.locator('#configLink').click(); await page.getByRole('checkbox', { name: 'Enable CSV temperatures', exact: true }).check(); await page.locator('#saveSettings').click();
+    await navigate(page, 'configuration'); await page.getByRole('checkbox', { name: 'Enable CSV temperatures', exact: true }).check(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].workspace.results.length === 3);
-    await page.locator('#analysisLink').click(); await expect(csvCards.first()).toContainText('2 plotted');
-    await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Remove CSV temperatures', exact: true }).click(); await page.locator('#saveSettings').click(); await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis'); await expect(csvCards.first()).toContainText('2 plotted');
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Remove CSV temperatures', exact: true }).click(); await page.locator('#saveSettings').click(); await navigate(page, 'analysis');
     await expect(page.locator('.chart-card')).toHaveCount(3); await expect(csvCards).toHaveCount(0);
     await page.locator('.chart-card').first().getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.locator('.chart-card').first().getByLabel('Data source', { exact: true }).locator('option')).toHaveCount(1);
@@ -90,7 +91,7 @@ test('raw observations follow the chosen source and a new schema refreshes the s
             });
         };
     });
-    await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure CSV temperatures', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure CSV temperatures', exact: true }).click();
     await page.waitForFunction(() => typeof (window as any).__resumeCSVRestore === 'function');
     await expect(page.locator('#csvTime')).toHaveValue('day');
     await expect(page.locator('#longitudeField')).toHaveValue('lon');
@@ -102,7 +103,7 @@ test('raw observations follow the chosen source and a new schema refreshes the s
     await expect(page.locator('#csvFileStatus')).toContainText('new.csv · 4 columns');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].done && (window as any).__WFS_MAP__.sources[1].selected === 2);
-    await page.locator('#analysisLink').click(); await expect(page.locator('.chart-card')).toHaveCount(6);
+    await navigate(page, 'analysis'); await expect(page.locator('.chart-card')).toHaveCount(6);
     await expect(chart.getByLabel('X attribute', { exact: true }).locator('option')).toHaveText(['lon', 'lat', 'day', 'pressure']);
     await expect(chart).toHaveAttribute('data-source-id', ids[1]);
     await expect(chart.locator('.hint').last()).toContainText('2 plotted');

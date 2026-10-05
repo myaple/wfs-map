@@ -1,6 +1,6 @@
 import { createUUID } from './uuid.ts';
 import { currentAnalysis } from './saved-analysis.ts';
-import { readCSVText, readCSVBlob, stageCSVFile, discardStagedCSVFiles, saveSettings } from './source-storage.ts';
+import { readCSVText, readCSVBlob, stageCSVFile, unstageCSVFile, discardStagedCSVFiles, saveSettings } from './source-storage.ts';
 import { csvHeaders } from './csv.ts';
 import { createBackup, readBackup } from './source-backup.ts';
 import { wfsURL, xmlDocument } from './data.ts';
@@ -102,6 +102,22 @@ export class DataSources {
         $('startTestServer').onclick = () => void this.startTestServer();
         $('addTestSource').onclick = () => this.open({ ...defaultConfig, url: input('testEndpoint').value, layer: 'demo:points' }, 'Test WFS');
         this.render();
+    }
+    async addDerivedSource(source: SavedSource, blob: Blob, base: Settings) {
+        if (this.saving || this.backupBusy) throw Error('Wait for the Data sources operation to finish, then retry.');
+        if (JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved))) throw Error('Save or discard your pending changes in Data sources before saving a joined dataset.');
+        if (base.sources.length >= 8) throw Error('Remove a source in Data sources to free a slot before saving.');
+        validateConfig(source.config);
+        this.saving = true; document.querySelector<HTMLElement>('.sources-page')!.inert = true;
+        stageCSVFile(source.config.csvRef, blob);
+        try {
+            const next = await saveSettings({ ...base, sources: [...base.sources, source] });
+            this.saved = structuredClone(next); this.draft = structuredClone(next); this.removed = undefined;
+            this.apply(structuredClone(next)); this.render();
+        } finally {
+            unstageCSVFile(source.config.csvRef); this.saving = false;
+            document.querySelector<HTMLElement>('.sources-page')!.inert = false; this.updateState();
+        }
     }
     syncServerFilters(source: SavedSource) {
         for (const settings of [this.saved, this.draft]) {

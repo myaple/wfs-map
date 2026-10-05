@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type BrowserContext } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 import { configurationState, emptyState, type AnalysisDocument } from '../../src/analysis-state.ts';
@@ -63,12 +64,12 @@ test('CSV attachment and saved filters/charts round-trip locally without sending
     doc.state.analyses = [{ id: 'csv-source', fields: [{ name: 'value', kind: 'number' }], expression: { op: 'and', children: [{ field: 'value', op: 'gte', value: '8' }] }, charts: [{ id: 'saved-chart', type: 'bar', x: 'value', bins: 8 }] }];
     const db = await service(context, [doc]); await page.goto('/?analysis=csv');
     await expect(page.locator('#status')).toContainText('file is missing');
-    await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure Local stations', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure Local stations', exact: true }).click();
     await page.locator('#csvFile').setInputFiles({ name: 'wrong.csv', mimeType: 'text/csv', buffer: Buffer.from('other,value\n1,9') });
     await expect(page.locator('#sourceError')).toContainText('missing configured columns');
     await page.locator('#csvFile').setInputFiles({ name: 'stations.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,value,secret\n-1,54,7,SENSITIVE_ROW_A\n-2,53,9,SENSITIVE_ROW_B') });
     await expect(page.locator('#csvFileStatus')).toContainText('4 columns'); await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
-    await page.locator('#analysisLink').click(); await expect(page.locator('#filterStatus')).toContainText('1 matches');
+    await navigate(page, 'analysis'); await expect(page.locator('#filterStatus')).toContainText('1 matches');
     await expect(page.locator('.chart-card')).toHaveCount(1);
     await page.getByRole('button', { name: 'Save analysis', exact: true }).click(); await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
     await page.reload(); await expect(page.locator('#filterStatus')).toContainText('1 matches'); await expect(page.locator('.chart-card')).toHaveCount(1);
@@ -80,10 +81,10 @@ test('a shared setup can attach a local CSV and retain that binding on reload be
     const doc = document('shared'); doc.state.settings.sources = [{ id: 'csv-source', name: 'Shared CSV', enabled: true, config: { ...defaultConfig, type: 'csv', csvRef: 'remote-reference', fileName: 'stations.csv', longitudeField: 'lon', latitudeField: 'lat' } }];
     const db = await service(context, [doc]); await page.goto('/?share=token-shared');
     await expect(page.getByRole('button', { name: 'Save analysis', exact: true })).toHaveCount(0);
-    await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure Shared CSV', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure Shared CSV', exact: true }).click();
     await page.locator('#csvFile').setInputFiles({ name: 'stations.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,value\n-1,54,9') });
     await expect(page.locator('#csvFileStatus')).toContainText('3 columns'); await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
-    await page.locator('#analysisLink').click(); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
+    await navigate(page, 'analysis'); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
     await page.reload(); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
     expect(db.docs.get('shared')?.state.settings.sources[0].config.csvRef).toBe('remote-reference');
     await page.getByRole('button', { name: 'Save a copy', exact: true }).click(); await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue('Analysis shared (copy)'); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
