@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { categoryColors, colorBytes } from '../../src/category-colors.ts';
 
@@ -36,11 +37,11 @@ test('text colours are editable, stable, per-source and saved; gradients and sol
     await expect(page.getByLabel('Colour for sensor', { exact: true })).toHaveValue('#00ff00');
     await expect(page.locator('#colorAttribute option[value="timestamp"]')).toHaveCount(0);
     await expect(page.locator('#colorAttribute option[value="active"]')).toHaveCount(0);
-    await page.locator('#configLink').click(); await page.locator('#addSource').click();
+    await navigate(page, 'configuration'); await page.locator('#addSource').click();
     await page.locator('#sourceName').fill('Second'); await page.locator('#url').fill('/wfs?points=16'); await page.locator('#layer').fill('demo:points');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1]?.done);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
     await page.locator('#colorSource').selectOption(id); await page.locator('#colorAttribute').selectOption('category');
     await expect(page.getByLabel('Colour for sensor', { exact: true })).toHaveValue(categoryColors(['sensor','vehicle','station','event']).get('sensor')!);
@@ -55,7 +56,7 @@ test('CSV categories are searchable and paged without an Other group or DOM cap 
     const csv = 'lon,lat,label\n' + Array.from({ length: 300 }, (_, i) => `-1,54,value-${i}`).join('\n');
     await page.getByLabel('CSV file', { exact: true }).setInputFiles({ name: 'many.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
-    await page.locator('#analysisLink').click(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
+    await navigate(page, 'analysis'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
     await page.locator('#colorAttribute').selectOption('label');
     await expect(page.locator('#colorLegend')).toContainText('300 unique values');
     await expect(page.locator('#categoryColorList input')).toHaveCount(50);
@@ -75,7 +76,7 @@ test('Log10 colour bins recompute codes, keep full-data ranges and persist indep
     await page.locator('#csvFile').setInputFiles({ name: 'colours.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,value,label,empty\n-1,54,1,A,0\n-1,54,10,B,-1\n-1,54,100,C,0\n-1,54,1000,D,-1\n-1,54,0,E,0\n-1,54,-1,F,-1\n-1,54,,G,') });
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
-    await page.locator('#analysisLink').click(); await expect(page.locator('#colorScale')).toBeHidden();
+    await navigate(page, 'analysis'); await expect(page.locator('#colorScale')).toBeHidden();
     await page.locator('#colorAttribute').selectOption('value'); await page.locator('#colorBins').selectOption('8');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0].layer.colorCodes?.length === 7);
     const codes = () => page.evaluate(() => Array.from((window as any).__WFS_MAP__.sources[0].layer.colorCodes));

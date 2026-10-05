@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 import { readFile } from 'node:fs/promises';
@@ -13,6 +14,8 @@ test('Records shares filters and timeline with Analysis, composes table search a
  await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done && !s.filtering));
  const status = page.locator('#records > [role=status]');
  await expect(status).toContainText('4 table rows');
+ await expect(page.locator('#recordsFilters')).not.toHaveAttribute('open', '');
+ await page.locator('#recordsFilters > summary').click();
  await expect(page.locator('#records .query-panel')).toBeVisible();
  await expect(page.locator('#records .filter-panel')).toBeVisible();
  await expect(page.locator('#records > .timeline')).toBeVisible();
@@ -36,14 +39,14 @@ test('Records shares filters and timeline with Analysis, composes table search a
  await page.getByLabel('Search applied records').fill(''); await expect(status).toContainText('2 table rows');
  await rule.getByLabel('Filter value', { exact: true }).fill('3');
  await page.getByRole('button', { name: 'Collapse filter group', exact: true }).click();
- await page.locator('#analysisLink').click();
+ await navigate(page, 'analysis');
  await expect(page.locator('#analysis > .timeline')).toBeVisible();
  await expect(page.locator('#analysis .filter-panel')).toBeVisible();
  await expect(rule.getByLabel('Filter value', { exact: true })).toHaveValue('3');
  await expect(page.getByRole('button', { name: 'Expand filter group', exact: true })).toBeVisible();
  await expect(page.getByLabel('Use time window')).toBeChecked();
  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(2);
- await page.locator('#recordsLink').click(); await expect(status).toContainText('2 table rows');
+ await navigate(page, 'records'); await expect(status).toContainText('2 table rows');
  await page.getByRole('button', { name: 'Expand filter group', exact: true }).click();
  await page.locator('#apply').click(); await expect(status).toContainText('1 table rows');
  await page.getByRole('slider', { name: 'Move time window', exact: true }).focus(); await page.keyboard.press('End');
@@ -52,8 +55,8 @@ test('Records shares filters and timeline with Analysis, composes table search a
  await page.locator('#recordsSource').selectOption('wfs'); await expect(page.locator('#filterSource')).toHaveValue('wfs');
  await page.locator('#recordsSource').selectOption('csv'); await expect(page.locator('#filterSource')).toHaveValue('csv');
  await expect(rule.getByLabel('Filter value', { exact: true })).toHaveValue('3');
- await page.locator('#configLink').click(); await expect(page.locator('.timeline')).toBeHidden();
- await page.locator('#recordsLink').click();
+ await navigate(page, 'configuration'); await expect(page.locator('.timeline')).toBeHidden();
+ await navigate(page, 'records');
  await page.setViewportSize({ width: 375, height: 700 });
  for (const selector of ['#records > .timeline', '#records .filter-panel', '#records .query-panel']) {
   expect(await page.locator(selector).evaluate(e => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && e.scrollWidth <= e.clientWidth; })).toBe(true);
@@ -89,10 +92,10 @@ test('Records is a third page, virtualizes applied results, searches, sorts, exp
  await expect(page.getByRole('dialog',{name:'Choose overlapping record'})).toBeVisible();
  await expect(page.locator('.record-choices')).toContainText('Second');
  await page.locator('.record-choices button').last().click(); await expect(page.locator('.record-inspector')).toContainText('Second');
- await page.locator('#analysisLink').click(); await expect(page.locator('.record-inspector')).toBeHidden(); await expect(page.locator('#analysis .record-inspector')).toHaveCount(0);
- await page.locator('#recordsLink').click(); await expect(page.locator('.record-inspector')).toBeVisible(); await expect(page.locator('.record-inspector')).toContainText('Second'); await page.locator('#analysisLink').click();
+ await navigate(page, 'analysis'); await expect(page.locator('.record-inspector')).toBeHidden(); await expect(page.locator('#analysis .record-inspector')).toHaveCount(0);
+ await navigate(page, 'records'); await expect(page.locator('.record-inspector')).toBeVisible(); await expect(page.locator('.record-inspector')).toContainText('Second'); await navigate(page, 'analysis');
  await page.evaluate(()=>(window as any).__WFS_MAP__.filterSource('a',[{field:'quality',op:'gte',value:'90'}]));
- await page.locator('#recordsLink').click(); await page.getByLabel('Search applied records').fill('');
+ await navigate(page, 'records'); await page.getByLabel('Search applied records').fill('');
  await expect(page.locator('.record-inspector')).toBeVisible();
  await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
  const matches = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected);
@@ -113,7 +116,7 @@ test('map chooser includes coincident records within and across sources, and exc
  };
  await pick(); await expect(page.locator('.record-choices button')).toHaveCount(3); await expect(page.locator('.record-choices')).toContainText('B');
  await page.locator('.record-choices button').last().click(); await expect(page.locator('.record-inspector')).toBeHidden();
- await page.locator('#recordsLink').click(); await expect(page.locator('.record-inspector')).toContainText('B'); await expect(page.locator('.record-inspector')).toBeVisible(); await page.locator('#analysisLink').click();
+ await navigate(page, 'records'); await expect(page.locator('.record-inspector')).toContainText('B'); await expect(page.locator('.record-inspector')).toBeVisible(); await navigate(page, 'analysis');
  await page.evaluate(() => (window as any).__WFS_MAP__.filterSource('a', [{ field: 'value', op: 'gte', value: '2' }])); await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
  await pick(); await expect(page.locator('.record-choices button')).toHaveCount(2); expect(await page.locator('.record-choices button').first().getAttribute('data-index')).toBe('1');
 });

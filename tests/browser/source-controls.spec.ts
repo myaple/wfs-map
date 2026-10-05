@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 
@@ -49,7 +50,7 @@ test('analysis automatically loads enabled sources and scopes filters, colours a
     await page.locator('#colorSource').selectOption('a');
     await expect(page.locator('#colorAttribute')).toHaveValue('quality');
     // Preferences also survive saving data-source configuration.
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByRole('button', { name: 'Configure First', exact: true }).click();
     await page.locator('#sourceName').fill('First renamed'); await page.locator('#updateSource').click();
     await page.locator('#saveSettings').click();
@@ -57,7 +58,7 @@ test('analysis automatically loads enabled sources and scopes filters, colours a
     expect(saved[0].coloring.field).toBe('quality'); expect(saved[1].coloring.field).toBe('value');
     expect(saved[1].coloring.bins).toBe(8); expect(saved[1].color).toEqual([0, 1, 0]);
     // Re-entering analysis loads cleared enabled sources without a Load click.
-    await page.locator('#cancel').click(); await page.locator('#analysisLink').click();
+    await page.locator('#cancel').click(); await navigate(page, 'analysis');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.slice(0, 2).every((s: any) => s.done && s.layer.colorCodes));
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[2].worker)).toBeUndefined();
     expect(errors).toEqual([]);
@@ -85,18 +86,18 @@ test('pickers fall back when selected sources are disabled and recover from no e
     await page.locator('#apply').click();
     await expect(page.locator('#filterStatus')).toContainText('Second · 2 matches');
     await page.locator('#colorAttribute').selectOption('quality');
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByRole('checkbox', { name: 'Enable Second', exact: true }).uncheck();
-    await page.locator('#saveSettings').click(); await page.locator('#analysisLink').click();
+    await page.locator('#saveSettings').click(); await navigate(page, 'analysis');
     for (const id of pickers) {
         await expect(page.locator(`#${id} option`)).toHaveText(['First']);
         await expect(page.locator(`#${id}`)).toHaveValue('a');
     }
     await expect(page.locator('#filterOwner')).toContainText('Filters for First');
     await expect(page.getByLabel('Filter value', { exact: true })).toHaveCount(0);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByRole('checkbox', { name: 'Enable First', exact: true }).uncheck();
-    await page.locator('#saveSettings').click(); await page.locator('#analysisLink').click();
+    await page.locator('#saveSettings').click(); await navigate(page, 'analysis');
     for (const id of pickers) {
         await expect(page.locator(`#${id}`)).toBeDisabled();
         await expect(page.locator(`#${id} option`)).toHaveText(['No enabled data sources']);
@@ -110,9 +111,9 @@ test('pickers fall back when selected sources are disabled and recover from no e
     const chartSource = chart.getByLabel('Data source', { exact: true });
     await expect(chartSource).toBeDisabled();
     await expect(chartSource.locator('option')).toHaveText(['No enabled data sources']);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByRole('checkbox', { name: 'Enable Second', exact: true }).check();
-    await page.locator('#saveSettings').click(); await page.locator('#analysisLink').click();
+    await page.locator('#saveSettings').click(); await navigate(page, 'analysis');
     for (const id of pickers) {
         await expect(page.locator(`#${id}`)).toBeEnabled();
         await expect(page.locator(`#${id} option`)).toHaveText(['Second']);

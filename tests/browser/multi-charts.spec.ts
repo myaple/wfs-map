@@ -1,14 +1,15 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 async function setup(page: Page) {
     await page.goto('/?time=all&points=16&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3);
-    await page.locator('#configLink').click(); await page.locator('#addSource').click();
+    await navigate(page, 'configuration'); await page.locator('#addSource').click();
     await page.locator('#sourceName').fill('Other observations'); await page.locator('#type').selectOption('csv');
     await page.locator('#csvFile').setInputFiles({ name:'other.csv',mimeType:'text/csv',buffer:Buffer.from('lon,lat,day,reading,label\n-1,54,2026-10-01,7,sensor\n-2,53,2026-10-02,9,vehicle\n-3,52,2026-10-03,11,sensor') });
     await expect(page.locator('#csvFileStatus')).toContainText('5 columns'); await page.locator('#csvTime').selectOption('day');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1]?.workspace.results.length === 3);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
 }
 async function comparison(page: Page, index: number) {
     const chart = page.locator('.chart-card').nth(index);
@@ -62,10 +63,10 @@ test('time aggregation and raw scatter share axes; raw inspection selects the co
     const canvas=chart.locator('.raw-scatter canvas:not(.raw-scatter-axes)');
     for(let i=0;i<16;i++) await canvas.press('ArrowRight');
     await canvas.press('Enter');
-    await page.locator('#recordsLink').click();
+    await navigate(page, 'records');
     await expect(page.getByLabel('Record inspector')).toContainText('reading');
     expect(await page.evaluate(()=> (window as any).__WFS_MAP__.sources.map((s:any)=>s.selected))).toEqual([16,3]);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await chart.getByLabel('Chart selection action').selectOption('filter');
     for(let i=0;i<16;i++) await canvas.press('ArrowRight');
     await canvas.press('Enter');
@@ -75,7 +76,7 @@ test('time aggregation and raw scatter share axes; raw inspection selects the co
 });
 test('removing a series restores single-source behavior and disabled members clear comparisons', async ({page}) => {
     await setup(page);const chart=await comparison(page,0);
-    await page.locator('#configLink').click();await page.getByRole('checkbox',{name:'Enable Other observations',exact:true}).uncheck();await page.locator('#saveSettings').click();await page.locator('#analysisLink').click();
+    await navigate(page, 'configuration');await page.getByRole('checkbox',{name:'Enable Other observations',exact:true}).uncheck();await page.locator('#saveSettings').click();await navigate(page, 'analysis');
     await expect(chart.locator('.hint').last()).toContainText('Load this source');
     await chart.getByRole('button',{name:'Remove source 2',exact:true}).click();
     await expect(chart.locator('.hint').last()).toContainText('16 plotted');await expect(chart.getByLabel('Chart source legend')).toBeHidden();

@@ -861,3 +861,17 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .join-sample th, .join-sample td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; }
 @media (max-width: 800px) { .derived-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .derived-controls, .derived-controls .join-column-choices { grid-template-columns: minmax(0, 1fr); } }
+.page-navigation { display: flex; align-items: center; gap: 8px; }
+.page-menu { position: relative; }
+.page-menu > button { border: 0; padding: 9px 12px; background: transparent; font-weight: 600; white-space: nowrap; }
+.page-menu > button::after { content: '▾'; margin-left: 6px; font-size: 11px; }
+.page-menu > button.current { color: var(--accent-strong); background: var(--hover); }
+.page-submenu { position: absolute; top: 100%; left: 0; min-width: 175px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px #0002; z-index: 30; }
+.page-submenu a { display: block; white-space: nowrap; padding: 9px 12px; border-radius: 5px; }
+.page-submenu a:hover, .page-submenu a:focus-visible { background: var(--hover); }
+.derived-page { padding: 20px; min-width: 0; }
+.page-filters { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); margin-bottom: 16px; min-width: 0; }
+.page-filters > summary { padding: 12px 16px; }
+.page-filters > .analysis-controls { padding: 0 16px 16px; margin: 0; }
+.derived-page > .timeline { margin-bottom: 16px; }
+@media (max-width: 480px) { .derived-page { padding: 12px; } .page-navigation { gap: 0; } .page-menu:last-child .page-submenu { left: auto; right: 0; } }

@@ -7,7 +7,7 @@ import type { SavedSource } from './source-settings.ts';
 export type JoinSource = { id: string; name: string; enabled: boolean; done: boolean; filtering: boolean; loaded: number; selected: number; request: number; filterRequest: number; fields: Field[]; metrics: { truncated?: boolean } };
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => { const n = document.createElement(tag); n.textContent = text; return n; };
 export class DerivedDatasetPanel {
-    readonly root = el('details');
+    readonly root = el('section');
     private left = el('select'); private right = el('select');
     private leftField = el('select'); private rightField = el('select'); private mode = el('select'); private scope = el('select');
     private name = el('input'); private maxRows = el('input'); private status = el('p'); private error = el('p');
@@ -20,7 +20,7 @@ export class DerivedDatasetPanel {
     constructor(private sources: () => JoinSource[], private run: (left: string, right: string, options: JoinOptions, save: boolean, signal: AbortSignal, progress: (message: string) => void) => Promise<JoinResult>,
         private save: (source: SavedSource, blob: Blob) => Promise<void>) {
         this.root.id = 'derivedDatasets'; this.root.className = 'settings-card derived-datasets';
-        const hint = el('p', 'Join two loaded datasets on an exact shared value, such as a UUID. Field types must agree; text matching is case-sensitive. Empty keys never match. Repeated keys produce every matching pair. Choose which columns to include; left. and right. prefixes distinguish duplicate names. Left geometry coordinates are required for the map. An included time column comes from the left dataset.'); hint.className = 'hint';
+        const hint = el('p', 'Join two loaded datasets on an exact shared value, such as a UUID. Field types must agree; text matching is case-sensitive. Empty keys never match. Repeated keys produce every matching pair. Choose which columns to include; each output column is prefixed with its original dataset name. Duplicate dataset names and column collisions get a suffix. Left geometry coordinates are required for the map. An included time column comes from the left dataset.'); hint.className = 'hint';
         const durable = el('p', 'Save creates an independent CSV-backed copy in Data sources. Refreshing or removing the inputs does not change its saved data. The copy uses the same filters, charts, export and backup as an imported CSV.'); durable.className = 'hint';
         this.controls.className = 'derived-controls';
         const control = (label: string, input: HTMLElement, id: string) => { input.id = id; const host = el('div'), l = el('label', label); l.htmlFor = id; host.append(l, input); this.controls.append(host); };
@@ -39,7 +39,7 @@ export class DerivedDatasetPanel {
         this.inputStatus.className = 'hint'; this.sample.className = 'join-sample'; this.sample.hidden = true;
         const actions = el('div'); actions.className = 'row'; this.saveButton.className = 'primary'; this.cancelButton.hidden = true;
         actions.append(this.previewButton, this.saveButton, this.cancelButton);
-        this.root.append(el('summary', 'Derived datasets'), hint, durable, this.controls, this.inputStatus, actions, this.status, this.error, this.sample);
+        this.root.append(el('h3', 'Join datasets'), hint, durable, this.controls, this.inputStatus, actions, this.status, this.error, this.sample);
         this.left.onchange = () => { this.fields(); this.invalidate(); this.update(); };
         this.right.onchange = () => { this.fields(); this.invalidate(); this.update(); };
         for (const input of [this.leftField, this.rightField, this.mode, this.scope, this.maxRows]) input.onchange = () => { this.invalidate(); this.update(); };
@@ -77,7 +77,7 @@ export class DerivedDatasetPanel {
         }
         this.inputsVersion = this.inputVersion();
     }
-    private inputVersion() { return JSON.stringify([this.left.value, this.right.value].map(id => { const s = this.sources().find(s => s.id === id); return s ? [s.id, s.enabled, s.done, s.filtering, s.request, s.filterRequest, s.loaded, s.selected, s.fields] : null; })); }
+    private inputVersion() { return JSON.stringify([this.left.value, this.right.value].map(id => { const s = this.sources().find(s => s.id === id); return s ? [s.id, s.name, s.enabled, s.done, s.filtering, s.request, s.filterRequest, s.loaded, s.selected, s.fields] : null; })); }
     refresh() {
         const sources = this.available(), version = JSON.stringify(this.sources().map(s => [s.id, s.name, s.enabled, s.done, s.filtering, s.request, s.filterRequest, s.loaded, s.selected, s.fields, s.metrics.truncated]));
         if (version !== this.version) {

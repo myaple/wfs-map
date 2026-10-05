@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -49,7 +50,7 @@ test('200 MB CSV with two million rows, 16 columns and two unique text columns i
             expect(record.data.properties.unique_b).toBe('b-' + String(record.index).padStart(17, '0'));
             expect(record.data.properties.n11).toBe(record.index % 10);
         }
-        await page.locator('#analysisLink').click();
+        await navigate(page, 'analysis');
         await page.evaluate(() => {
             const app = (window as any).__WFS_MAP__, s = app.sources[0];
             app.filterSource(s.id, [{ field: 'unique_b', op: 'eq', value: 'b-' + String(1_234_567).padStart(17, '0') }]);

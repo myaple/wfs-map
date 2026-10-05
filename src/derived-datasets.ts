@@ -4,7 +4,7 @@ import { defaultConfig, type Config } from './source-settings.ts';
 import { Store } from './store.ts';
 import { timeField as resolveTimeField } from './timeline-data.ts';
 
-export type JoinOptions = { leftField: string; rightField: string; mode: 'inner' | 'left'; scope: 'loaded' | 'applied'; maxRows: number; leftColumns?: string[]; rightColumns?: string[]; leftId?: boolean; rightId?: boolean; rightCoordinates?: boolean };
+export type JoinOptions = { leftField: string; rightField: string; mode: 'inner' | 'left'; scope: 'loaded' | 'applied'; maxRows: number; leftName?: string; rightName?: string; leftColumns?: string[]; rightColumns?: string[]; leftId?: boolean; rightId?: boolean; rightCoordinates?: boolean };
 export type JoinSnapshot = Pick<Store, 'fields' | 'columns' | 'chunks' | 'length'> & { indices: Uint32Array | null };
 export type JoinReport = { leftRows: number; rightRows: number; matchedLeft: number; unmatchedLeft: number; missingLeft: number; missingRight: number; duplicateRightKeys: number; outputRows: number };
 export type JoinResult = { report: JoinReport; fields: Field[]; sample: unknown[][]; config: Config; blob?: Blob };
@@ -33,19 +33,23 @@ function selectedFields(store: Store, selected?: string[]) {
     return store.fields.filter(f => selected.includes(f.name));
 }
 function outputSchema(leftFields: Field[], rightFields: Field[], timeField: string, options: JoinOptions) {
-    const fields: Field[] = [...leftFields.map(f => ({ ...f, name: `left.${f.name}` })), ...rightFields.map(f => ({ ...f, name: `right.${f.name}` }))];
-    const used = new Set(fields.map(f => f.name));
-    const identity = (prefix: string, name: string, kind: Field['kind']) => {
+    const leftName = options.leftName?.trim() || 'Dataset 1', originalRightName = options.rightName?.trim() || 'Dataset 2';
+    const rightName = originalRightName === leftName ? `${originalRightName} (2)` : originalRightName;
+    const used = new Set<string>();
+    const unique = (prefix: string, name: string) => {
         let output = `${prefix}.${name}`, suffix = 2;
         while (used.has(output)) output = `${prefix}.${name}_${suffix++}`;
-        used.add(output); fields.push({ name: output, kind }); return output;
+        used.add(output); return output;
     };
-    if (options.leftId !== false) identity('left', '@id', 'string');
-    if (options.rightId !== false) identity('right', '@id', 'string');
-    const lon = identity('left', '@longitude', 'number'), lat = identity('left', '@latitude', 'number');
-    if (options.rightCoordinates !== false) { identity('right', '@longitude', 'number'); identity('right', '@latitude', 'number'); }
+    const leftOutput = leftFields.map(f => ({ ...f, name: unique(leftName, f.name) }));
+    const fields: Field[] = [...leftOutput, ...rightFields.map(f => ({ ...f, name: unique(rightName, f.name) }))];
+    const identity = (prefix: string, name: string, kind: Field['kind']) => { const output = unique(prefix, name); fields.push({ name: output, kind }); return output; };
+    if (options.leftId !== false) identity(leftName, '@id', 'string');
+    if (options.rightId !== false) identity(rightName, '@id', 'string');
+    const lon = identity(leftName, '@longitude', 'number'), lat = identity(leftName, '@latitude', 'number');
+    if (options.rightCoordinates !== false) { identity(rightName, '@longitude', 'number'); identity(rightName, '@latitude', 'number'); }
     const config: Config = { ...defaultConfig, type: 'csv', geometryMode: 'xy', longitudeField: lon, latitudeField: lat,
-        timeField: leftFields.some(f => f.name === timeField && f.kind === 'date') ? `left.${timeField}` : '',
+        timeField: leftOutput[leftFields.findIndex(f => f.name === timeField && f.kind === 'date')]?.name ?? '',
         fieldTypes: JSON.stringify(Object.fromEntries(fields.map(f => [f.name, f.kind]))) };
     return { fields, config };
 }

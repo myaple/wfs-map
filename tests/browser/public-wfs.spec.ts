@@ -1,9 +1,10 @@
+import { navigate } from '../navigation.ts';
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 const fixture=(name:string)=>readFileSync(new URL('../fixtures/public-wfs/'+name,import.meta.url),'utf8');
 for(const layerFormats of [true,false])test(`captured Hamburg ${layerFormats?'layer':'global'} formats select GeoJSON and preserve supported manual formats`,async({page})=>{
  await page.route('https://public-wfs.example/**',route=>route.fulfill({contentType:'application/xml',body:layerFormats?fixture('hamburg-capabilities.xml'):fixture('hamburg-capabilities.xml').replace(/<OutputFormats>[\s\S]*?<\/OutputFormats>/g,'')}));
- await page.goto('/?time=all');await page.locator('#configLink').click();await page.locator('#addSource').click();await page.locator('#url').fill('https://public-wfs.example/wfs');await page.locator('#discover').click();
+ await page.goto('/?time=all');await navigate(page, 'configuration');await page.locator('#addSource').click();await page.locator('#url').fill('https://public-wfs.example/wfs');await page.locator('#discover').click();
  await expect(page.locator('#discoveryStatus')).toContainText('Output format set to application/geo+json');
  await expect(page.locator('#layer')).toHaveValue('de.hh.up:strassenbaumkataster');
  await page.locator('#wfsCompatibility summary').click();await expect(page.locator('#format')).toHaveValue('application/geo+json');

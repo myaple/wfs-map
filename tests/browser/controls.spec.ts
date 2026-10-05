@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 const ready = async (page: any) => { await page.goto('/?time=all&points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
@@ -77,21 +78,21 @@ test('basemap template and attribution persist and use local tiles', async ({ pa
     const requests: string[] = [];
     await page.route('**/tiles/**', route => { requests.push(route.request().url()); return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=', 'base64') }); });
     await ready(page);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.locator('#backgroundSettings summary').click();
     await page.getByLabel('Raster basemap tile URL').fill('/tiles/{z}/{x}/{y}.png');
     await page.getByLabel('Raster basemap tile URL').press('Tab');
     await page.getByLabel('Basemap attribution', { exact: true }).fill('Local tiles');
     await page.getByLabel('Basemap attribution', { exact: true }).press('Tab');
     await page.locator('#saveSettings').click();
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await page.locator('#basemap').check();
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     const tiles = await page.evaluate(() => (window as any).__WFS_MAP__.map.getStyle().sources.osm.tiles);
     expect(tiles).toEqual(['/tiles/{z}/{x}/{y}.png']);
     await page.reload();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.workspace.results.length === 3);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.locator('#backgroundSettings summary').click();
     await expect(page.getByLabel('Raster basemap tile URL')).toHaveValue('/tiles/{z}/{x}/{y}.png');
     await expect(page.getByLabel('Basemap attribution', { exact: true })).toHaveValue('Local tiles');
@@ -175,7 +176,7 @@ test('sources retain independent colour attributes and geographic selections acr
     await page.waitForFunction(() => (window as any).__WFS_MAP__.layer.colorCodes?.length === 4096);
     await page.locator('.chart-card').nth(2).getByLabel('Binning', { exact: true }).selectOption('exact');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].raw);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.locator('#addSource').click();
     await page.locator('#sourceName').fill('Other');
     await page.locator('#url').fill('/wfs?points=1024');
@@ -183,7 +184,7 @@ test('sources retain independent colour attributes and geographic selections acr
     await page.locator('#updateSource').click();
     await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].workspace.results.length === 3);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     const ids = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.id));
     await page.locator('#filterSource').selectOption(ids[1]); await page.locator('#colorSource').selectOption(ids[1]);
     await expect(page.getByLabel('Point colour attribute')).toHaveValue('');

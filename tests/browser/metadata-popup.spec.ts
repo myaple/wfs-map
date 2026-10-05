@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 
 async function openAt(page: Page, x: number, y: number) {
@@ -44,7 +45,7 @@ test('double-click metadata stays visible and scrolls at map edges, on resize an
     await page.getByLabel('CSV file', { exact: true }).setInputFiles({ name: 'metadata.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await page.locator('#map').scrollIntoViewIfNeeded();
     await openAt(page, .5, .5);
     await expectContained(page);

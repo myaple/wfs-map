@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 const ready = async (page: any) => { await page.goto('/?time=all&points=4096&autoload=1'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts?.length === 3); for (const toggle of await page.getByRole('button', { name: 'Settings', exact: true }).all()) await toggle.click(); };
@@ -42,13 +43,13 @@ test('configuration is a subpage and navigation retains selection and chart stat
     await ready(page);
     await expect(page.locator('#url')).toBeHidden();
     await expect(page.locator('.chart-card')).toHaveCount(3);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await expect(page.locator('#url')).toBeHidden();
     await page.getByRole('button', { name: 'Configure WFS source', exact: true }).click();
     await expect(page.locator('#url')).toBeVisible();
     await page.locator('#cancelSource').click();
     await expect(page.locator('#analysis')).toBeHidden();
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.locator('.chart-card')).toHaveCount(3);
     await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
 });

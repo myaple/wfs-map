@@ -11,33 +11,33 @@ function store(rows, schema = fields) {
 }
 const a = store([['001', 1, '2025-01-02T00:00:00Z', true], ['x', 2, null, false], [null, 3], ['001', 4]]);
 const b = store([['001', 10], ['001', 20], ['y', 30], [null, 40], ['x', 50]]);
-const options = { leftField: 'key', rightField: 'key', mode: 'inner', scope: 'loaded', maxRows: 1000 };
+const options = { leftField: 'key', rightField: 'key', leftName: 'Observations', rightName: 'Annotations', mode: 'inner', scope: 'loaded', maxRows: 1000 };
 const snapshots = () => [structuredClone(joinSnapshot(a, new Uint32Array([0, 1]))), structuredClone(joinSnapshot(b, new Uint32Array([1, 4])))];
 test('exact joins preserve every duplicate pair, typed fields, nulls, UTC times and CSV escaping', async () => {
  const before = JSON.stringify([a.get(0), b.get(0)]);
  const result = await joinDatasets(...snapshots(), options, 'day', true);
  assert.deepEqual(result.report, { leftRows: 4, rightRows: 5, matchedLeft: 3, unmatchedLeft: 1, missingLeft: 1, missingRight: 1, duplicateRightKeys: 1, outputRows: 5 });
  const parsed = parseCSV(await result.blob.text()); assert.equal(new Set(parsed.headers).size, parsed.headers.length);
- assert.equal(result.config.timeField, 'left.day');
+ assert.equal(result.config.timeField, 'Observations.day');
  const decoded = csvDataset({ ...result.config, csvText: await result.blob.text() }, {});
  assert.equal(decoded.features.length, 5);
- assert.deepEqual(decoded.features.map(f => f.properties['right.value']), [10, 20, 50, 10, 20]);
- assert.equal(decoded.features[0].properties['left.key'], '001');
- assert.equal(decoded.features[0].properties['left.day'], '2025-01-02T00:00:00.000Z');
- assert.equal(decoded.features[2].properties['left.flag'], false);
+ assert.deepEqual(decoded.features.map(f => f.properties['Annotations.value']), [10, 20, 50, 10, 20]);
+ assert.equal(decoded.features[0].properties['Observations.key'], '001');
+ assert.equal(decoded.features[0].properties['Observations.day'], '2025-01-02T00:00:00.000Z');
+ assert.equal(decoded.features[2].properties['Observations.flag'], false);
  assert.deepEqual(decoded.features[0].geometry.coordinates, [-1.123456789, 89]);
  assert.equal(before, JSON.stringify([a.get(0), b.get(0)]));
  const quoted = store([['comma,quote"\nline', 8]]);
  const escaped = await joinDatasets(joinSnapshot(quoted, null), joinSnapshot(quoted, null), options, '', true);
- assert.equal(csvDataset({ ...escaped.config, csvText: await escaped.blob.text() }, {}).features[0].properties['left.key'], 'comma,quote"\nline');
+ assert.equal(csvDataset({ ...escaped.config, csvText: await escaped.blob.text() }, {}).features[0].properties['Observations.key'], 'comma,quote"\nline');
 });
 test('left joins retain unmatched rows with null right values; missing keys never join', async () => {
  const result = await joinDatasets(...snapshots(), { ...options, mode: 'left' }, '', true);
  assert.equal(result.report.outputRows, 6);
  const decoded = csvDataset({ ...result.config, csvText: await result.blob.text() }, {});
- assert.equal(decoded.features[3].properties['left.key'], null);
- assert.equal(decoded.features[3].properties['right.value'], null);
- assert.equal(decoded.features[3].properties['right.@id'], null);
+ assert.equal(decoded.features[3].properties['Observations.key'], null);
+ assert.equal(decoded.features[3].properties['Annotations.value'], null);
+ assert.equal(decoded.features[3].properties['Annotations.@id'], null);
  const blank = store([['', 1], [' ', 2], ['A', 3], ['a', 4]]);
  const result2 = await joinDatasets(joinSnapshot(blank, null), joinSnapshot(store([['A', 5], [null, 6], ['', 7]]), null), options);
  assert.equal(result2.report.outputRows, 1); assert.equal(result2.report.missingLeft, 2);
@@ -50,9 +50,9 @@ test('optional applied scope intersects each input independently; empty selectio
 });
 test('an automatically discovered or namespace-qualified left time field remains configured in the copy', async () => {
  const automatic = await joinDatasets(...snapshots(), options);
- assert.equal(automatic.config.timeField, 'left.day');
+ assert.equal(automatic.config.timeField, 'Observations.day');
  const qualified = await joinDatasets(...snapshots(), options, 'demo:day');
- assert.equal(qualified.config.timeField, 'left.day');
+ assert.equal(qualified.config.timeField, 'Observations.day');
  const excluded = await joinDatasets(...snapshots(), { ...options, leftColumns: ['key'] });
  assert.equal(excluded.config.timeField, '');
 });
@@ -60,11 +60,11 @@ test('columns can be excluded, including join keys; duplicate names and reserved
  const special = store([['a', 'payload', 5]], [{name: 'key', kind: 'string'}, {name: '@id', kind: 'string'}, {name: '@longitude', kind: 'number'}]);
  const result = await joinDatasets(joinSnapshot(special, null), joinSnapshot(special, null), { ...options, leftColumns: ['@id', '@longitude'], rightColumns: ['@id'] }, '', true);
  const names = result.fields.map(f => f.name); assert.equal(new Set(names).size, names.length);
- assert(!names.includes('left.key')); assert(!names.includes('right.key')); assert(!names.includes('right.@longitude_2'));
+ assert(!names.includes('Observations.key')); assert(!names.includes('Annotations.key')); assert(!names.includes('Annotations.@longitude_2'));
  const decoded = csvDataset({ ...result.config, csvText: await result.blob.text() }, {});
- assert.equal(decoded.features[0].properties['left.@id'], 'payload');
- assert.equal(decoded.features[0].properties['left.@id_2'], 'row0');
- assert.equal(decoded.features[0].properties['right.@id'], 'payload');
+ assert.equal(decoded.features[0].properties['Observations.@id'], 'payload');
+ assert.equal(decoded.features[0].properties['Observations.@id_2'], 'row0');
+ assert.equal(decoded.features[0].properties['Annotations.@id'], 'payload');
  assert.deepEqual(decoded.features[0].geometry.coordinates, [-1.123456789, 89]);
  const noFields = await joinDatasets(...snapshots(), { ...options, leftColumns: [], rightColumns: [] }, 'day', true);
  assert.equal(noFields.config.timeField, ''); assert.equal(noFields.fields.length, 6);
@@ -96,5 +96,18 @@ test('joins across packed source chunks and CSV output batches without losing ro
  const result = await joinDatasets(structuredClone(joinSnapshot(left,null)), structuredClone(joinSnapshot(right,null)), {...options,maxRows:30000}, '', true);
  assert.equal(result.report.outputRows, 20001);
  const csv = parseCSV(await result.blob.text()); assert.equal(csv.rows.length,20001);
- assert.equal(csv.rows.at(-1)[csv.headers.indexOf('right.label')], 'row-20000');
+ assert.equal(csv.rows.at(-1)[csv.headers.indexOf('Annotations.label')], 'row-20000');
+});
+test('dataset names label columns, while duplicate names and dotted-name collisions remain unique', async () => {
+ const same = await joinDatasets(...snapshots(), { ...options, leftName: 'Shared', rightName: 'Shared' }, 'day', true);
+ assert.equal(same.config.timeField, 'Shared.day');
+ assert(same.fields.some(f => f.name === 'Shared (2).value'));
+ assert.equal(new Set(same.fields.map(f => f.name)).size, same.fields.length);
+ const l = store([['a', 1]], [{name:'key',kind:'string'},{name:'b.c',kind:'number'}]);
+ const r = store([['a', 2]], [{name:'key',kind:'string'},{name:'c',kind:'number'}]);
+ const collision = await joinDatasets(joinSnapshot(l,null), joinSnapshot(r,null), {...options,leftName:'a',rightName:'a.b'}, '', true);
+ const decoded = csvDataset({...collision.config,csvText:await collision.blob.text()},{});
+ assert.equal(decoded.features[0].properties['a.b.c'], 1); assert.equal(decoded.features[0].properties['a.b.c_2'], 2);
+ const quoted = await joinDatasets(...snapshots(), {...options,leftName:'North, "Team"\nSurvey'}, 'day', true);
+ assert.equal(csvDataset({...quoted.config,csvText:await quoted.blob.text()},{}).features[0].properties['North, "Team"\nSurvey.value'], 1);
 });

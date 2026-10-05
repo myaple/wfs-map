@@ -1,7 +1,8 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { feature } from '../../server/demo.ts';
 async function second(page: any, points = '2048') {
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.locator('#addSource').click();
     await page.locator('#sourceName').fill('Second WFS');
     await page.locator('#url').fill(`/wfs?points=${points}&distribution=dense`);
@@ -9,7 +10,7 @@ async function second(page: any, points = '2048') {
     await page.locator('#updateSource').click();
     await page.locator('#saveSettings').click();
     await page.waitForFunction(() => { const s = (window as any).__WFS_MAP__.sources[1]; return s.done && s.metrics.analysisCharts?.length === 3; });
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
 }
 test('two sources draw simultaneously, retain separate filters and chart settings, and re-enable without losing selections', async ({ page }) => {
     const errors: string[] = [];
@@ -33,20 +34,20 @@ test('two sources draw simultaneously, retain separate filters and chart setting
     await expect(page.locator('#filterStatus')).toContainText('256 matches');
     await expect(page.locator('#hud')).toHaveText('Loaded 3,072 points');
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.reduce((n: number, s: any) => n + s.selected, 0))).toBe(768);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByRole('checkbox', { name: 'Enable Second WFS', exact: true }).uncheck();
     await page.locator('#saveSettings').click();
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.locator('#hud')).toContainText('Loaded 1,024');
     const unloaded = await page.evaluate(() => { const s = (window as any).__WFS_MAP__.sources[1]; return { loaded: s.loaded, gpuBytes: s.layer.gpuBytes, worker: !!s.worker }; });
     expect(unloaded.loaded).toBe(0);
     expect(unloaded.gpuBytes).toBe(0);
     expect(unloaded.worker).toBe(false);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByRole('checkbox', { name: 'Enable Second WFS', exact: true }).check();
     await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].metrics.filterCount === 512);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await page.locator('#filterSource').selectOption(ids[1]);
     await expect(page.locator('#rules .selection').getByLabel('Filter value')).toHaveValue('vehicle');
     await expect(page.locator('#filterStatus')).toContainText('512 matches');
@@ -71,7 +72,7 @@ test('overlapping IDs across sources pick the top rendered source with its own m
 test('source lists persist and failure in one source leaves others available', async ({ page }) => {
     await page.goto('/?time=all&points=1024&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.locator('#addSource').click();
     await page.locator('#sourceName').fill('Unavailable WFS');
     await page.locator('#url').fill('/not-a-wfs');
@@ -79,13 +80,13 @@ test('source lists persist and failure in one source leaves others available', a
     await page.locator('#updateSource').click();
     await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].error);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.locator('#hud')).toContainText('Loaded 1,024');
     await expect(page.locator('.chart-card')).toHaveCount(3);
     await page.reload();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
     await expect(page.locator('#filterSource option')).toHaveCount(2);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await expect(page.getByRole('checkbox', { name: 'Enable Unavailable WFS', exact: true })).toBeChecked();
 });
 test('sources with different schemas expose only their own fields and counts', async ({ page }) => {
@@ -103,7 +104,7 @@ test('sources with different schemas expose only their own fields and counts', a
     await route.fulfill({ contentType: 'application/json', json: { type: 'FeatureCollection', numberMatched: 2, features: features.slice(offset, offset + count) } }); });
     await page.goto('/?time=all&points=1024&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.locator('#addSource').click();
     await page.locator('#sourceName').fill('Other schema');
     await page.locator('#url').fill('/alternate-wfs');
@@ -112,7 +113,7 @@ test('sources with different schemas expose only their own fields and counts', a
     await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].metrics.analysisCharts);
     expect(offsets).toEqual([0, 2]);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
     await page.locator('#filterSource').selectOption(id);
     await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();

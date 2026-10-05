@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 
 test('theme follows system, persists across pages and redraws map/charts without resetting data', async ({ page }) => {
@@ -26,7 +27,7 @@ test('theme follows system, persists across pages and redraws map/charts without
     await page.locator('#enlargeMap').click();
     await expect(page.getByRole('dialog', { name: 'Enlarged map' })).toHaveCSS('background-color', 'rgb(26, 38, 50)');
     await page.keyboard.press('Escape');
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByRole('button', { name: 'Configure WFS source', exact: true }).click();
     await expect(page.locator('#sourceDialog')).toHaveCSS('background-color', 'rgb(26, 38, 50)');
     await page.reload();

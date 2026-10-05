@@ -1,9 +1,10 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 test('CSV imports alongside WFS, configures fields, filters, colours, and persists its file', async ({ page }) => {
     const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto('/?time=all&points=16&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
-    await page.locator('#configLink').click(); await page.locator('#addSource').click();
+    await navigate(page, 'configuration'); await page.locator('#addSource').click();
     await page.getByLabel('Source name', { exact: true }).fill('CSV stations');
     await page.getByLabel('Source type').selectOption('csv');
     await expect(page.locator('#url')).toBeHidden();
@@ -12,7 +13,7 @@ test('CSV imports alongside WFS, configures fields, filters, colours, and persis
     await page.locator('#csvTime').selectOption('observed');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.metrics.analysisCharts?.length);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.locator('#hud')).toHaveText('Loaded 18 points');
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
     await page.locator('#filterSource').selectOption(id);
@@ -25,9 +26,9 @@ test('CSV imports alongside WFS, configures fields, filters, colours, and persis
     await expect(page.locator('.metadata')).toContainText('CSV stations'); await expect(page.locator('.metadata')).toContainText('north');
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done));
     await expect(page.locator('#hud')).toHaveText('Loaded 18 points');
-    await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure CSV stations', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure CSV stations', exact: true }).click();
     await expect(page.locator('#type')).toHaveValue('csv'); await expect(page.locator('#csvTime')).toHaveValue('observed'); await expect(page.locator('#csvFileStatus')).toContainText('stations.csv');
-    await page.locator('#cancelSource').click(); await page.locator('#analysisLink').click();
+    await page.locator('#cancelSource').click(); await navigate(page, 'analysis');
     await page.locator('#timeWindow').selectOption('custom'); await page.locator('#timeStart').fill('2026-10-02T00:00'); await page.locator('#timeEnd').fill('2026-10-03T00:00'); await page.locator('#applyTime').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.done && (window as any).__WFS_MAP__?.sources[1].loaded === 1);
     expect(errors).toEqual([]);
@@ -40,7 +41,7 @@ test('CSV validates files and supports a configured WKT geometry column', async 
     await expect(page.locator('#csvFileStatus')).toContainText('2 columns'); await page.locator('#geometryMode').selectOption('wkt');
     await expect(page.locator('#csvXY')).toBeHidden(); await page.locator('#csvGeometry').selectOption('geom');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
-    await page.locator('#analysisLink').click(); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
+    await navigate(page, 'analysis'); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
 });
 
 test('CSV import skips invalid rows, reports reasons and retains valid records and null metadata', async ({ page }) => {
@@ -52,16 +53,16 @@ test('CSV import skips invalid rows, reports reasons and retains valid records a
     await page.locator('#csvTime').selectOption('t');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.locator('#hud')).toHaveText('Loaded 2 points');
     const source = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0]);
     expect(source.metrics.csvReport).toMatchObject({ total: 5, imported: 2, rejected: 3, filtered: 0 });
     expect(source.status).toContain('3 rows not processed'); expect(source.status).toContain('CSV line 4');
     expect(source.status).toContain('Missing longitude'); expect(source.status).toContain('Invalid ISO 8601');
     await expect(page.locator('#status')).toContainText('3 rows not processed');
-    await page.locator('#recordsLink').click();
+    await navigate(page, 'records');
     await expect(page.locator('.record-row')).toHaveCount(2);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await page.evaluate(() => (window as any).__WFS_MAP__.getPoint(1));
     await expect(page.locator('.metadata')).toContainText('csv.7');
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
@@ -78,9 +79,9 @@ test('CSV with all blank times or headers only loads safely without timeline or 
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(2);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.getByLabel('Use time window')).toBeDisabled();
-    await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure Blank times', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure Blank times', exact: true }).click();
     await page.locator('#csvFile').setInputFiles({ name: 'empty.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,t,empty') });
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done && (window as any).__WFS_MAP__.sources[0].loaded === 0);
@@ -94,7 +95,7 @@ test('CSV rejects all invalid rows with complete counts and no misleading partia
     await page.locator('#csvFile').setInputFiles({ name: 'invalid.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat\n,54\n-1,\nno,54') });
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.error);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.locator('#status')).toContainText('0 of 3');
     await expect(page.locator('#status')).toContainText('3 rows not processed');
     await expect(page.locator('#status')).toContainText('No points were imported');
@@ -110,11 +111,11 @@ test('CSV column type override makes numeric codes categorical and survives relo
     await page.getByLabel('Type for code', { exact: true }).selectOption('string');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await page.locator('#colorAttribute').selectOption('code');
     await expect(page.locator('#categoryColorCount')).toContainText('2 of 2');
     await expect(page.getByLabel('Colour for 001', { exact: true })).toBeVisible();
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
-    await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure Codes', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure Codes', exact: true }).click();
     await expect(page.getByLabel('Type for code', { exact: true })).toHaveValue('string');
 });

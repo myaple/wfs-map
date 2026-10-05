@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect } from '@playwright/test';
 import { emptyState } from '../../src/analysis-state.ts';
 
@@ -17,7 +18,7 @@ test('Independent Log10 axes, fitted filtering, brush membership, enlargement an
     await page.locator('#csvFile').setInputFiles({ name: 'axes.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,x,y,code\n-1,54,1,1,A\n-1,54,10,10,B\n-1,54,100,100,C\n-1,54,1000,1000,D\n-1,54,0,-1,Z') });
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.metrics.analysisCharts?.length);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     const chart = page.locator('.chart-card').filter({ has: page.getByRole('heading', { name: 'Scatter plot', exact: true }) });
     await chart.getByRole('button', { name: 'Settings', exact: true }).click();
     await chart.getByLabel('X attribute', { exact: true }).selectOption('x');
@@ -68,7 +69,7 @@ test('Logarithmic count and aggregate Y axes keep positive bounds and date/categ
     await page.locator('#csvFile').setInputFiles({ name: 'measures.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,t,value,code\n-1,54,2026-10-01,1,A\n-1,54,2026-10-02,10,B\n-1,54,2026-10-03,100,B\n-1,54,2026-10-04,-1,B\n-1,54,2026-10-05,0,B') });
     await page.locator('#csvTime').selectOption('t'); await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.metrics.analysisCharts?.length);
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     const bar = page.locator('.chart-card').filter({ has: page.getByRole('heading', { name: 'Bar chart', exact: true }) });
     await bar.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(bar.getByLabel('X axis scale', { exact: true })).toBeDisabled();

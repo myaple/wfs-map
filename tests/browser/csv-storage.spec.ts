@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -38,7 +39,7 @@ test('million-row CSV saves beyond localStorage quota and reloads from IndexedDB
         const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
         await page.goto('/?time=all&autoload=1');
         await page.waitForFunction(() => (window as any).__WFS_MAP__?.map.loaded());
-        await page.locator('#configLink').click();
+        await navigate(page, 'configuration');
         await importFile(page, file, 'Million points');
         await page.locator('#saveSettings').click();
         await expect(page.locator('#saveState')).toHaveText('Saved in this browser', { timeout: 120_000 });
@@ -52,7 +53,7 @@ test('million-row CSV saves beyond localStorage quota and reloads from IndexedDB
         await page.reload();
         await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done, undefined, { timeout: 120_000 });
         expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(1_000_000);
-        await page.locator('#recordsLink').click();
+        await navigate(page, 'records');
         await expect(page.locator('#records > [role=status]')).toContainText('1,000,000 table rows');
         await page.locator('.records-scroll').focus(); await page.keyboard.press('End');
         await expect.poll(() => page.evaluate(() => (window as any).__WFS_MAP__.inspection?.index)).toBe(999999);
@@ -62,7 +63,7 @@ test('million-row CSV saves beyond localStorage quota and reloads from IndexedDB
         await page.keyboard.press('Home');
         await expect.poll(() => page.evaluate(() => (window as any).__WFS_MAP__.inspection?.index)).toBe(0);
         await expect(page.locator('.record-row').first()).toHaveAttribute('data-record-index', '0');
-        await page.locator('#configLink').click();
+        await navigate(page, 'configuration');
         await page.getByRole('button', { name: 'Configure Million points', exact: true }).click();
         await expect(page.locator('#csvFileStatus')).toContainText(/\d+ columns/, { timeout: 120_000 });
         await page.locator('#sourceName').fill('Renamed million'); await page.locator('#updateSource').click();
@@ -75,7 +76,7 @@ test('million-row CSV saves beyond localStorage quota and reloads from IndexedDB
 test('failed CSV replacement preserves the old file, supports retry, and cleans up removal', async ({ page }) => {
     await page.goto('/?time=all&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.map.loaded());
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await importFile(page, smallCSV(1)); await page.locator('#saveSettings').click();
     await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
@@ -104,7 +105,7 @@ test('failed CSV replacement preserves the old file, supports retry, and cleans 
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     await page.evaluate(async () => { (window as any).__WFS_MAP__.getPoint(0); });
     await expect(page.locator('.metadata')).toContainText('2');
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.getByRole('button', { name: 'Remove CSV', exact: true }).click();
     await page.locator('#undoRemove').click(); expect(await keys(page)).toEqual([replacement]);
     await page.getByRole('button', { name: 'Remove CSV', exact: true }).click();
@@ -119,7 +120,7 @@ test('inline CSV settings migrate on save and IndexedDB failures leave drafts in
     });
     await page.goto('/?time=all&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.map.loaded());
-    await page.locator('#configLink').click();
+    await navigate(page, 'configuration');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     await page.getByRole('button', { name: 'Configure Legacy CSV', exact: true }).click();
     await page.locator('#sourceName').fill('Migrated CSV'); await page.locator('#updateSource').click();

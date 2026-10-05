@@ -1,3 +1,4 @@
+import { navigate } from '../navigation.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 import { feature } from '../../server/demo.ts';
@@ -139,7 +140,7 @@ test('an enlarged timeline returns to Records when the page changes behind its d
     await page.keyboard.press('Escape');
     await expect(page.locator('#records > .timeline')).toBeVisible();
     await expect(page.getByLabel('Use time window')).toBeChecked();
-    await page.locator('#analysisLink').click();
+    await navigate(page, 'analysis');
     await expect(page.locator('#analysis > .timeline')).toBeVisible();
     await expect(page.locator('.timeline')).toHaveCount(1);
 });

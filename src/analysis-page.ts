@@ -5,6 +5,7 @@ import { Timeline } from './timeline.ts';
 import type { TimelineExtent } from './timeline-data.ts';
 import type { ChartDomain, ChartResult, ChartSpec } from './analysis.ts';
 import { RecordsPage } from './records-page.ts';
+import { mountPageNavigation } from './page-navigation.ts';
 import { DerivedDatasetPanel } from './derived-dataset-panel.ts';
 import type { JoinOptions, JoinResult } from './derived-datasets.ts';
 import type { RecordRef, RecordData } from './records.ts';
@@ -34,7 +35,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const value = (id: string) => $<HTMLInputElement>(id).value;
 const params = new URLSearchParams(location.search);
 $('app').innerHTML = `
-<header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav><a href="#analysis" id="analysisLink">Analysis</a><a href="#records" id="recordsLink">Records</a><a href="#configuration" id="configLink">Data sources</a></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
+<header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav id="workspaceNavigation"></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="sourceSummary" class="hint"></div></div>
 <section id="configuration" hidden></section>
 <section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div><details id="advancedServerFilters" class="server-filter-panel"><summary>Advanced server filters</summary></details></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply to points already loaded for this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
@@ -43,6 +44,15 @@ $('app').innerHTML = `
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section>`;
 mountThemeToggle(document.querySelector('.topbar')!);
+const updateNavigation = mountPageNavigation($('workspaceNavigation'));
+const derivedPage = document.createElement('section'); derivedPage.id = 'derived'; derivedPage.className = 'derived-page'; derivedPage.hidden = true;
+const derivedHeading = document.createElement('h2'); derivedHeading.textContent = 'Derived datasets';
+const derivedFilters = document.createElement('details'); derivedFilters.id = 'derivedFilters'; derivedFilters.className = 'page-filters';
+const derivedFilterTitle = document.createElement('summary'); derivedFilterTitle.textContent = 'Filters';
+const derivedControls = document.createElement('div'); derivedControls.className = 'analysis-controls';
+derivedFilters.append(derivedFilterTitle, derivedControls);
+const derivedTimelineHost = document.createElement('div'); derivedTimelineHost.hidden = true;
+derivedPage.append(derivedHeading, derivedFilters, derivedTimelineHost); $('app').append(derivedPage);
 const mapLegend = new MapLegend($('mapLegend'));
 type Source = {
     id: string;
@@ -264,24 +274,25 @@ function switchFilters(id: string) {
     state();
 }
 function route() {
-    const config = location.hash === '#configuration', records = location.hash === '#records';
+    const config = location.hash === '#configuration', records = location.hash === '#records', derived = location.hash === '#derived';
     recordPage.root.hidden = !records;
     $('configuration').hidden = !config;
-    $('analysis').hidden = config || records;
+    $('analysis').hidden = config || records || derived;
+    derivedPage.hidden = !derived;
     if (records) {
         recordPage.analysisControls.append(queryPanel, filterPanel);
         timeline.setHost(recordPage.timelineHost);
         switchFilters(recordPage.sourceId);
+    } else if (derived) {
+        derivedControls.append(queryPanel, filterPanel);
+        timeline.setHost(derivedTimelineHost);
     } else {
         queryAnchor.after(queryPanel); filterAnchor.after(filterPanel);
         timeline.setHost(analysisGrid);
     }
     for (const s of sources)
         s.workspace.visibilityChanged();
-    $('configLink').classList.toggle('current', config);
-    $('analysisLink').classList.toggle('current', !config && !records);
-    $('recordsLink').classList.toggle('current', records);
-    for (const [id, active] of [['analysisLink', !config && !records], ['configLink', config], ['recordsLink', records]] as const) $(id).setAttribute('aria-current', active ? 'page' : 'false');
+    updateNavigation(config ? 'configuration' : derived ? 'derived' : records ? 'records' : 'analysis');
     if (mapReady) {
         requestAnimationFrame(() => map.resize());
         if (!config) ensureSourcesLoaded();
@@ -302,7 +313,7 @@ const style: StyleSpecification = { version: 8, sources: { grid: { type: 'geojso
 const map = new maplibregl.Map({ container: 'map', style, center: mapSettings.center, zoom: mapSettings.zoom, maxZoom: 22, minZoom: 1, maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false, renderWorldCopies: false, pixelRatio: Math.min(devicePixelRatio, 2), canvasContextAttributes: { antialias: false }, attributionControl: { compact: true } });
 const recordPage = new RecordsPage(() => sources, (id, message) => sources.find(s => s.id === id)?.worker?.postMessage(message), inspectRecord, switchFilters);
 const derivedPanel = new DerivedDatasetPanel(() => sources, runJoin, (source, blob) => sourceSettings.addDerivedSource(source, blob, snapshot()));
-recordPage.timelineHost.after(derivedPanel.root);
+derivedPage.append(derivedPanel.root);
 function runJoin(leftId: string, rightId: string, options: JoinOptions, save: boolean, signal: AbortSignal, progress: (message: string) => void): Promise<JoinResult> {
     const left = sources.find(s => s.id === leftId), right = sources.find(s => s.id === rightId);
     if (!left?.enabled || !right?.enabled || !left.done || !right.done || left.filtering || right.filtering || !left.worker || !right.worker || leftId === rightId) return Promise.reject(Error('Load two different enabled sources and wait for filters before joining.'));
@@ -322,7 +333,7 @@ function runJoin(leftId: string, rightId: string, options: JoinOptions, save: bo
         worker.onmessage = event => { const m = event.data; if (m.progress) { clearTimeout(timer); progress(m.progress); } else finish(m.error ? Error(m.error) : undefined, m.result); };
         worker.onerror = event => finish(Error(event.message));
         worker.onmessageerror = () => finish(Error('Could not read the joined dataset. Retry with fewer input rows.'));
-        worker.postMessage({ leftPort: l.port1, rightPort: r.port1, options, save, timeField: left.config.timeField }, [l.port1, r.port1]);
+        worker.postMessage({ leftPort: l.port1, rightPort: r.port1, options: { ...options, leftName: left.name, rightName: right.name }, save, timeField: left.config.timeField }, [l.port1, r.port1]);
         left.worker!.postMessage({ type: 'joinSnapshot', port: l.port2, scope: options.scope }, [l.port2]);
         right.worker!.postMessage({ type: 'joinSnapshot', port: r.port2, scope: options.scope }, [r.port2]);
     });
@@ -567,7 +578,7 @@ function pumpLoads() {
     }
 }
 async function load() {
-    location.hash = '#analysis';
+    if (!['#records', '#derived'].includes(location.hash)) location.hash = '#analysis';
     for (const s of sources)
         if (s.enabled)
             loadSource(s);
