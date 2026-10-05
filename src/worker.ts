@@ -1,5 +1,6 @@
+import type { ServerFilter } from './server-filters.ts';
 import { readCSVBlob } from './source-storage.ts';
-import { ingestCSV, csvImportSummary } from './csv.ts';
+import { ingestCSV, csvImportSummary, describeCSV } from './csv.ts';
 import type { Config as SourceConfig } from './source-settings.ts';
 import type { QueryBounds } from './wfs-query.ts';
 import { Analyzer, all } from './analysis.ts';
@@ -114,14 +115,14 @@ async function load(c: Config) {
     post({ type: 'done', loaded, total, timeline: timelineExtent(c.timeField), bounds: store?.bounds, pages, bytes, parseMs, elapsedMs: performance.now() - start,
         truncated, warning: [warning.trim(), loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '', latitudeClampWarning(clamped)].filter(Boolean).join(' ') });
 }
-async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: string) {
+async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: string, rules: ServerFilter[] = []) {
     const start = performance.now();
     if (!config) throw Error('CSV source settings are missing.');
     const file = config.csvText ? new Blob([config.csvText]) : await readCSVBlob(config.csvRef, fileUser);
     let pages = 0, clamped = 0, loaded = 0, capacity = 0;
-    const dataset = await ingestCSV(file, config, bounds, (fields, size) => {
-        store = new Store(fields); capacity = size;
-        post({ type: 'init', capacity, total: capacity });
+    const dataset = await ingestCSV(file, config, bounds, (fields, size, limit) => {
+        store = new Store(fields); capacity = limit;
+        post({ type: 'init', capacity: size, limit, total: capacity });
         post({ type: 'fields', fields });
     }, features => {
         const offset = loaded;
@@ -129,7 +130,7 @@ async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: str
         store!.append(features); pages++; loaded += features.length;
         post({ type: 'chunk', offset, positions, ...spatial }, [positions.buffer, spatial.indices.buffer, spatial.groups.buffer]);
         post({ type: 'progress', loaded, total: capacity, pages, elapsedMs: performance.now() - start });
-    }, (phase, bytes, rows) => { if (phase === 'scan') post({ type: 'csvScan', bytes, fileBytes: file.size, rows }); });
+    }, (phase, bytes, rows) => { if (phase === 'scan') post({ type: 'csvScan', bytes, fileBytes: file.size, rows }); }, rules);
     store!.finish(); analyzer = new Analyzer(store!);
     post({ type: 'done', loaded, total: loaded, timeline: timelineExtent(config.timeField), bounds: store!.bounds, pages, bytes: file.size, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false, csvReport: dataset.report, warning: [csvImportSummary(dataset.report), latitudeClampWarning(clamped)].filter(Boolean).join('\n') });
 }
@@ -140,6 +141,13 @@ function timelineExtent(configured?: string) {
 }
 ctx.onmessage = (event: MessageEvent) => {
     const m = event.data;
+    if (m.type === 'csvSchema') {
+        void (async () => {
+            const file = m.config.csvText ? new Blob([m.config.csvText]) : await readCSVBlob(m.config.csvRef, m.fileUser);
+            post({ fields: await describeCSV(file, m.config) });
+        })().catch(e => post({ error: (e as Error).message }));
+        return;
+    }
     if (['records', 'recordAt', 'recordsExport'].includes(m.type) && store) {
         const r = m.type === 'recordAt' ? recordsRevision : ++recordsRevision, dataRevision = revision, localStore = store;
         const cancelled = () => m.type === 'recordAt' ? dataRevision !== revision : r !== recordsRevision;
@@ -172,7 +180,7 @@ ctx.onmessage = (event: MessageEvent) => {
         }).catch(e => post({ type: 'csvExportError', request: m.request, message: (e as Error).message }));
     }
     if (m.type === 'loadCSV')
-        void loadCSV(m.config, m.bounds, m.fileUser).catch(e => post({ type: 'error', message: (e as Error).message }));
+        void loadCSV(m.config, m.bounds, m.fileUser, m.serverFilters).catch(e => post({ type: 'error', message: (e as Error).message }));
     if (m.type === 'load')
         void load(m.config).catch(e => post({ type: 'error', message: (e as Error).message }));
     if (m.type === 'get') {

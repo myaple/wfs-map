@@ -103,6 +103,13 @@ export class DataSources {
         $('addTestSource').onclick = () => this.open({ ...defaultConfig, url: input('testEndpoint').value, layer: 'demo:points' }, 'Test WFS');
         this.render();
     }
+    syncServerFilters(source: SavedSource) {
+        for (const settings of [this.saved, this.draft]) {
+            const s = settings.sources.find(s => s.id === source.id);
+            if (s) s.serverFilters = structuredClone(source.serverFilters ?? []);
+        }
+        this.updateState();
+    }
     syncColoring(source: SavedSource) {
         for (const settings of [this.saved, this.draft]) {
             const s = settings.sources.find(s => s.id === source.id);
@@ -335,7 +342,7 @@ export class DataSources {
             if (this.editing?.config.type === 'csv') {
                 const mapped = ['longitudeField', 'latitudeField', 'geometryField', 'timeField'] as const;
                 const savedFields = currentAnalysis?.state.analyses.find(s => s.id === this.editing!.id)?.fields.map(f => f.name) ?? [];
-                const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields, ...Object.keys(this.fieldTypes)])].filter(k => k && !headers.includes(k));
+                const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields, ...(this.editing!.serverFilters ?? []).map(r => r.field), ...Object.keys(this.fieldTypes)])].filter(k => k && !headers.includes(k));
                 if (missing.length) throw Error('The chosen CSV is missing configured columns: ' + missing.join(', '));
             }
             this.csvText = ''; this.csvBlob = file; this.csvHeaderNames = headers; this.csvRef = createUUID(); this.fileName = file.name;

@@ -90,7 +90,15 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
     for source in array(required(settings, "sources")?, 8)? {
         let o = object(
             source,
-            &["id", "name", "enabled", "config", "color", "coloring"],
+            &[
+                "id",
+                "name",
+                "enabled",
+                "config",
+                "color",
+                "coloring",
+                "serverFilters",
+            ],
         )?;
         let id = required(source, "id")?
             .as_str()
@@ -101,6 +109,50 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
         string(required(source, "name")?)?;
         if required(source, "enabled")?.as_bool().is_none() {
             return Err("Invalid source enabled setting");
+        }
+        if let Some(filters) = o.get("serverFilters") {
+            for rule in array(filters, 100)? {
+                let r = object(rule, &["field", "kind", "op", "value"])?;
+                let field = required(rule, "field")?
+                    .as_str()
+                    .ok_or("Invalid server filter field")?;
+                string(required(rule, "field")?)?;
+                if field.trim().is_empty() {
+                    return Err("Invalid server filter field");
+                }
+                let kind = required(rule, "kind")?
+                    .as_str()
+                    .ok_or("Invalid server filter type")?;
+                if !matches!(kind, "string" | "number" | "boolean" | "date") {
+                    return Err("Invalid server filter type");
+                }
+                let op = required(rule, "op")?
+                    .as_str()
+                    .ok_or("Invalid server filter operator")?;
+                if !matches!(
+                    op,
+                    "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "contains" | "null" | "notnull"
+                ) || (matches!(op, "gt" | "gte" | "lt" | "lte")
+                    && !matches!(kind, "number" | "date"))
+                    || (op == "contains" && kind != "string")
+                {
+                    return Err("Invalid server filter operator");
+                }
+                if let Some(value) = r.get("value") {
+                    string(value)?;
+                }
+                if !matches!(op, "null" | "notnull") {
+                    let value = required(rule, "value")?
+                        .as_str()
+                        .ok_or("Invalid server filter value")?;
+                    if (kind == "number" && !value.trim().parse::<f64>().is_ok_and(f64::is_finite))
+                        || (kind == "boolean" && !matches!(value, "true" | "false"))
+                        || (kind == "date" && chrono::DateTime::parse_from_rfc3339(value).is_err())
+                    {
+                        return Err("Invalid server filter value");
+                    }
+                }
+            }
         }
         let config = required(source, "config")?;
         let c = object(
@@ -410,5 +462,26 @@ mod tests {
             e = serde_json::json!({"op":"and","children":[e]});
         }
         assert!(expression(&e, 0).is_err());
+    }
+    #[test]
+    fn server_filters_are_bounded_configuration_and_validate_types() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"a","name":"A","enabled":true,"config":{"type":"wfs"},"serverFilters":[{"field":"value","kind":"number","op":"gte","value":"10"},{"field":"timestamp","kind":"date","op":"gt","value":"2026-01-01T00:00:00Z"}]}]);
+        assert!(validate(&v).is_ok());
+        for rule in [
+            serde_json::json!({"field":"value","kind":"number","op":"eq","value":"NaN"}),
+            serde_json::json!({"field":"active","kind":"boolean","op":"gt","value":"true"}),
+            serde_json::json!({"field":"value","kind":"number","op":"contains","value":"1"}),
+            serde_json::json!({"field":"timestamp","kind":"date","op":"eq","value":"bad"}),
+            serde_json::json!({"field":"value","kind":"number","op":"eq","value":"1","rows":[]}),
+        ] {
+            v["settings"]["sources"][0]["serverFilters"] = serde_json::json!([rule]);
+            assert!(validate(&v).is_err());
+        }
+        v["settings"]["sources"][0]["serverFilters"] = serde_json::json!(vec![
+            serde_json::json!({"field":"value","kind":"number","op":"null"});
+            101
+        ]);
+        assert!(validate(&v).is_err());
     }
 }
