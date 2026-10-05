@@ -27,9 +27,14 @@ export function mountAnalysisControls(snapshot: () => AnalysisState, host: HTMLE
     const doc = currentAnalysis;
     const bar = document.createElement('section'); bar.className = 'saved-analysis-bar';
     const back = document.createElement('a'); back.href = '/'; back.textContent = 'All analyses';
-    const name = document.createElement('input'); name.value = doc?.name ?? 'Untitled analysis'; name.maxLength = 120; name.setAttribute('aria-label', 'Analysis name'); name.readOnly = doc?.readOnly ?? false;
-    if (doc) document.title = `${doc.name} · WFS analysis`;
-    const status = document.createElement('span'); status.setAttribute('role', 'status'); status.className = 'hint'; status.textContent = doc?.readOnly ? 'Shared setup · changes stay local until you save a copy' : doc ? 'Save your configuration remotely to resume or share it. CSV contents stay on this workstation.' : 'Save a remote analysis to resume or share this setup. CSV contents stay on this workstation.';
+    if (!doc) {
+        const hint = document.createElement('p'); hint.className = 'hint';
+        hint.textContent = 'Open or create a named analysis from All analyses to save remotely and share its setup.';
+        bar.append(back, hint); host.append(bar); return;
+    }
+    const name = document.createElement('input'); name.value = doc.name; name.maxLength = 120; name.setAttribute('aria-label', 'Analysis name'); name.readOnly = doc.readOnly;
+    document.title = `${doc.name} · WFS analysis`;
+    const status = document.createElement('span'); status.setAttribute('role', 'status'); status.className = 'hint'; status.textContent = doc.readOnly ? 'Shared setup · changes stay local until you save a copy' : 'Save your configuration remotely to resume or share it. CSV contents stay on this workstation.';
     const link = document.createElement('input'); link.readOnly = true; link.hidden = true; link.setAttribute('aria-label', 'Shared analysis link');
     let busy = false;
     const buttons: HTMLButtonElement[] = [];
@@ -43,13 +48,6 @@ export function mountAnalysisControls(snapshot: () => AnalysisState, host: HTMLE
     };
     const save = async () => { const state = snapshot(); rememberBindings(state.settings); currentAnalysis = await saveAnalysis(currentAnalysis!, name.value.trim(), state); document.title = `${currentAnalysis.name} · WFS analysis`; status.textContent = 'Analysis configuration saved'; };
     bar.append(back, name);
-    if (!doc) {
-        bar.append(action('Save analysis remotely', async () => {
-            const saved = await createAnalysis(name.value.trim(), snapshot());
-            location.href = '/?analysis=' + encodeURIComponent(saved.id) + '#configuration';
-        }));
-        bar.append(status); host.append(bar); return;
-    }
     if (!doc.readOnly) bar.append(action('Save analysis', save));
     bar.append(action('Save a copy', async () => {
         const state = snapshot(); rememberBindings(state.settings);
