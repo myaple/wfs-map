@@ -31,7 +31,7 @@ export class RawScatter {
             throw Error('WebGL 2 required for unbinned scatter');
         this.gl = gl;
         this.initialize();
-        this.interaction = new ChartInteraction(this.canvas, this.container, () => plotRect(this.canvas, this.result?.y?.kind === 'date'), () => this.draw(), (a, b) => this.brush(a, b), p => this.pick(p));
+        this.interaction = new ChartInteraction(this.canvas, this.container, () => plotRect(this.canvas, this.result?.y?.kind === 'date', this.result?.x?.kind === 'date'), () => this.draw(), (a, b) => this.brush(a, b), p => this.pick(p));
         this.canvas.addEventListener('pointermove', e => {
             if (!this.result?.raw)
                 return;
@@ -128,14 +128,15 @@ export class RawScatter {
         }
         this.interaction.setFit(view);
         this.focus = Math.min(this.focus, Math.max(0, r.raw!.rows.length - 1));
-        this.labels.textContent = 'Left-drag: zoom · right-drag: select · double-click: reset';
+        this.labels.textContent = '';
         const gl = this.gl;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
         gl.bufferData(gl.ARRAY_BUFFER, r.raw!.positions, gl.STATIC_DRAW);
         this.draw();
     }
     private draw(picking = false) {
-        const gl = this.gl, d = Math.min(devicePixelRatio, 2), p = plotRect(this.canvas, this.result?.y?.kind === 'date');
+        const gl = this.gl, d = Math.min(devicePixelRatio, 2), p = plotRect(this.canvas, this.result?.y?.kind === 'date', this.result?.x?.kind === 'date');
+        this.canvas.dataset.plotRect = JSON.stringify(p);
         this.canvas.width = Math.max(1, Math.round(p.width * d));
         this.canvas.height = Math.max(1, Math.round(p.height * d));
         gl.disable(gl.SCISSOR_TEST);

@@ -52,9 +52,9 @@ test('Independent Log10 axes, fitted filtering, brush membership, enlargement an
     await page.keyboard.press('Escape');
     // Select the full fitted rectangle: values are converted back from log space.
     await plot.scrollIntoViewIfNeeded();
-    const b = (await plot.boundingBox())!;
-    await page.mouse.move(b.x + 69, b.y + 19); await page.mouse.down({ button: 'right' });
-    await page.mouse.move(b.x + b.width - 19, b.y + b.height - 65); await page.mouse.up({ button: 'right' });
+    const b = (await plot.boundingBox())!, rect = JSON.parse((await plot.getAttribute("data-plot-rect"))!);
+    await page.mouse.move(b.x + rect.left + 1, b.y + rect.top + 1); await page.mouse.down({ button: 'right' });
+    await page.mouse.move(b.x + rect.right - 1, b.y + rect.bottom - 1); await page.mouse.up({ button: 'right' });
     await page.locator('#apply').click(); await expect(page.locator('#filterStatus')).toContainText('2 matches');
     await navigate(page, 'configuration');
     await page.getByRole('button', { name: 'Save analysis', exact: true }).click();

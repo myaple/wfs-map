@@ -18,9 +18,11 @@ export type PlotRect = {
     width: number;
     height: number;
 };
-export function plotRect(canvas: HTMLCanvasElement, dateY = false): PlotRect {
+export function plotRect(canvas: HTMLCanvasElement, dateY = false, dateX = false): PlotRect {
     const width = canvas.clientWidth, height = canvas.clientHeight;
-    return { left: dateY ? 106 : 68, right: Math.max(dateY ? 130 : 92, width - 18), top: 18, bottom: Math.max(40, height - 64), width, height };
+    // Only date ticks need two lines below the plot. Keep the same rectangle
+    // for drawing and pointer projection in both canvas and GPU charts.
+    return { left: dateY ? 106 : 68, right: Math.max(dateY ? 130 : 92, width - 18), top: 8, bottom: Math.max(40, height - (dateX ? 56 : 42)), width, height };
 }
 export function tickText(value: number, kind: string | undefined, span: number): string[] {
     if (!Number.isFinite(value))
@@ -79,11 +81,11 @@ export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View,
     ctx.strokeRect(p.left, p.top, p.right - p.left, p.bottom - p.top);
     ctx.fillStyle = text;
     ctx.textAlign = 'center';
-    ctx.fillText(xName, (p.left + p.right) / 2, p.height - 8);
+    ctx.fillText(xName, (p.left + p.right) / 2, p.height - 6, p.right - p.left);
     ctx.save();
     ctx.translate(12, (p.top + p.bottom) / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.fillText(yName, 0, 0);
+    ctx.fillText(yName, 0, 0, p.bottom - p.top);
     ctx.restore();
 }
 // The same local viewport and pointer gestures serve canvas and GPU plots.

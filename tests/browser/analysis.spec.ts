@@ -85,10 +85,10 @@ test('all chart types configure from schema and scatter drag produces an exact A
     await scatter.getByLabel('Binning', { exact: true }).selectOption('8');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[2].counts.length === 64);
     await scatter.locator('canvas').scrollIntoViewIfNeeded();
-    const b = (await scatter.locator('canvas').boundingBox())!, dx = (b.width - 86) / 8, dy = (b.height - 82) / 8;
-    await page.mouse.move(b.x + 68 + dx * .5, b.y + b.height - 64 - dy * .5);
+    const b = (await scatter.locator('canvas').boundingBox())!, rect = JSON.parse((await scatter.locator('canvas').getAttribute('data-plot-rect'))!), dx = (rect.right - rect.left) / 8, dy = (rect.bottom - rect.top) / 8;
+    await page.mouse.move(b.x + rect.left + dx * .5, b.y + rect.bottom - dy * .5);
     await page.mouse.down({ button: 'right' });
-    await page.mouse.move(b.x + 68 + dx * 2.5, b.y + b.height - 64 - dy * 2.5);
+    await page.mouse.move(b.x + rect.left + dx * 2.5, b.y + rect.bottom - dy * 2.5);
     await page.mouse.up({ button: 'right' });
     await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
     const result = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results[2]);
