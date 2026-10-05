@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodePage, countFrom, inferFields, packPositions, spatialPage, wfsURL, mercator } from '../src/data.ts';
+import { decodePage, countFrom, inferFields, packPositions, spatialPage, wfsURL, mercator, MAX_MERCATOR_LATITUDE, latitudeClampWarning } from '../src/data.ts';
 import { Store } from '../src/store.ts';
 import { feature } from '../server/demo.ts';
 
@@ -44,6 +44,24 @@ test('split-float Mercator retains coordinate precision at zoom 22',()=>{
 test('WFS URL preserves vendor parameters while replacing uppercase reserved arguments',()=>{
   const url=new URL(wfsURL('http://localhost/wfs?REQUEST=old&TOKEN=abc&points=100','2.0.0','GetFeature',{count:'10'}));
   assert.equal(url.searchParams.get('request'),'GetFeature');assert.equal(url.searchParams.has('REQUEST'),false);assert.equal(url.searchParams.get('TOKEN'),'abc');assert.equal(url.searchParams.get('points'),'100');
+});
+test('polar coordinates clamp only map positions and report affected points',()=>{
+  const latitudes=[90,86,MAX_MERCATOR_LATITUDE,54,-MAX_MERCATOR_LATITUDE,-86,-90];
+  const features=latitudes.map((lat,id)=>({id,geometry:{type:'Point',coordinates:[10,lat]},properties:{}}));
+  let clamped=0;
+  const positions=packPositions(features,count=>clamped+=count);
+  assert.equal(clamped,4);
+  assert.deepEqual(features.map(f=>f.geometry.coordinates[1]),latitudes);
+  for(let i=0;i<latitudes.length;i++) {
+    const y=positions[i*4+1]+positions[i*4+3];
+    assert.ok(Number.isFinite(y)&&y>=0&&y<=1);
+    if(latitudes[i]>=MAX_MERCATOR_LATITUDE) assert.equal(y,0);
+    if(latitudes[i]<=-MAX_MERCATOR_LATITUDE) assert.equal(y,1);
+  }
+  assert.match(latitudeClampWarning(clamped),/4 points.*clamped.*Original coordinates/);
+  assert.equal(latitudeClampWarning(0),'');
+  for(const [lon,lat] of [[0,91],[0,-91],[181,0],[-181,0],[NaN,0],[0,Infinity]])
+    assert.throws(()=>mercator(lon,lat),/Coordinate is invalid.*longitude.*latitude/);
 });
 test('spatial buckets cover every original feature index and contain all member positions',()=>{
   const positions=packPositions(Array.from({length:2048},(_,i)=>feature(i)));

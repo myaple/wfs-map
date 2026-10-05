@@ -90,19 +90,30 @@ export function numericValue(v:unknown, kind:FieldKind):number {
   return n;
 }
 export function toText(v:unknown):string { return typeof v==='object'?JSON.stringify(v):String(v); }
-export function mercator(lon:number,lat:number):[number,number] {
-  if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon < -180||lon>180||lat < -85.05112878||lat>85.05112878) throw new Error('Coordinate outside Web Mercator range; request CRS84 or check GML axis order');
-  return [(lon+180)/360,(1-Math.log(Math.tan(Math.PI/4+lat*Math.PI/360))/Math.PI)/2];
+export const MAX_MERCATOR_LATITUDE = 85.05112878;
+export function clampMapLatitude(lat:number):number {
+  return Math.max(-MAX_MERCATOR_LATITUDE, Math.min(MAX_MERCATOR_LATITUDE, lat));
 }
-export function packPositions(features:Feature[]):Float32Array {
+export function latitudeClampWarning(count:number):string {
+  return count ? `Warning: ${count.toLocaleString('en-GB')} ${count === 1 ? 'point has' : 'points have'} latitude beyond the Web Mercator map limit. Map positions were clamped to ±85.051129°. Original coordinates are preserved in records, charts and exports.` : '';
+}
+export function mercator(lon:number,lat:number):[number,number] {
+  if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon < -180||lon>180||lat < -90||lat>90) throw new Error(`Coordinate is invalid: longitude ${lon}, latitude ${lat}. Expected finite WGS84 degrees: longitude −180 to 180 and latitude −90 to 90. Check the coordinate columns, CRS or axis order.`);
+  lat = clampMapLatitude(lat);
+  return [(lon+180)/360,Math.max(0,Math.min(1,(1-Math.log(Math.tan(Math.PI/4+lat*Math.PI/360))/Math.PI)/2))];
+}
+export function packPositions(features:Feature[], onClamped?:(count:number)=>void):Float32Array {
   const out=new Float32Array(features.length*4);
+  let clamped=0;
   for(let i=0;i<features.length;i++) {
     const f=features[i];
     if(f.geometry?.type!=='Point') throw new Error('This proof of concept supports Point geometries only');
     const [x,y]=mercator(f.geometry.coordinates[0],f.geometry.coordinates[1]);
+    if(Math.abs(f.geometry.coordinates[1])>MAX_MERCATOR_LATITUDE) clamped++;
     const hx=Math.fround(x), hy=Math.fround(y);
     out.set([hx,hy,x-hx,y-hy],i*4);
   }
+  if(clamped) onClamped?.(clamped);
   return out;
 }
 export function spatialPage(positions:Float32Array, offset:number) {

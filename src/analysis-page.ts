@@ -17,7 +17,7 @@ import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import { csvExportFilename } from './csv-export.ts';
 import { PointsLayer } from './points-layer.ts';
 import { metadataPopup } from './metadata-popup.ts';
-import { wfsURL, fieldKind, xmlDocument, type Field, type Rule } from './data.ts';
+import { wfsURL, fieldKind, xmlDocument, clampMapLatitude, type Field, type Rule } from './data.ts';
 import { Workspace } from './workspace.ts';
 import { all, type Expression } from './analysis.ts';
 import { PointColors } from './point-colors.ts';
@@ -641,7 +641,7 @@ async function performLoad(s: Source) {
                 }
                 if (m.type === 'metadata' && m.request === s.request && m.data && (m.token === undefined || m.token === inspectionToken)) {
                     inspection = { sourceId: s.id, index: m.index }; recordPage.selection(inspection, m.data);
-                    marker?.remove(); marker = new maplibregl.Marker({ color: '#ef9d19' }).setLngLat(m.data.coordinates).addTo(map);
+                    marker?.remove(); marker = new maplibregl.Marker({ color: '#ef9d19' }).setLngLat([m.data.coordinates[0], clampMapLatitude(m.data.coordinates[1])]).addTo(map);
                     window.dispatchEvent(new CustomEvent('recordinspection', { detail: inspection }));
                     if (m.token === undefined || !document.getElementById('analysis')!.hidden) showMetadata(m.data, s);
                 }
@@ -661,7 +661,7 @@ function fit() {
     const bounds = sources.filter(s => s.enabled && s.loaded && s.metrics.bounds?.every(Number.isFinite)).map(s => s.metrics.bounds);
     if (!bounds.length)
         return;
-    map.fitBounds([[Math.min(...bounds.map(b => b[0])), Math.min(...bounds.map(b => b[1]))], [Math.max(...bounds.map(b => b[2])), Math.max(...bounds.map(b => b[3]))]], { padding: 35, duration: 0 });
+    map.fitBounds([[Math.min(...bounds.map(b => b[0])), clampMapLatitude(Math.min(...bounds.map(b => b[1])))], [Math.max(...bounds.map(b => b[2])), clampMapLatitude(Math.max(...bounds.map(b => b[3])))]], { padding: 35, duration: 0 });
 }
 const appliedExpressions = new WeakMap<Source, Expression>();
 let chartToken = 0, chartGeneration = 0;
@@ -736,7 +736,7 @@ function showMetadata(data: any, source: Source) {
         table.append(tr);
     }
     div.append(table);
-    popup = metadataPopup(map, data.coordinates, div);
+    popup = metadataPopup(map, [data.coordinates[0], clampMapLatitude(data.coordinates[1])], div);
 }
 map.on('dblclick', e => {
     e.preventDefault();
