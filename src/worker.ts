@@ -59,7 +59,9 @@ async function load(c: Config) {
             warning = 'GetFeature hits unavailable; loading until empty page or limit. ';
         }
     }
-    post({ type: 'init', capacity: Math.min(total ?? c.limit, c.limit), total, warning });
+    // Counts are estimates: each GeoServer page can see a different database state.
+    // Start small when hits are unavailable and let the map grow up to the limit.
+    post({ type: 'init', capacity: Math.min(Math.max(total ?? c.pageSize, c.pageSize), c.limit), limit: c.limit, total, warning });
     let loaded = 0, pages = 0, parseMs = 0, bytes = 0, previousSignature = '', clamped = 0;
     const getPage = (offset: number) => fetchText(wfsURL(c.url, c.version, 'GetFeature', { ...common, outputFormat: c.format, startIndex: String(offset), [countParam]: String(Math.min(c.pageSize, c.limit - offset)) }));
     // One bounded lookahead request overlaps server generation/transfer with column packing.
@@ -70,7 +72,7 @@ async function load(c: Config) {
         error: unknown;
     }> | undefined;
     const prefetch = (offset: number) => getPage(offset).then(text => ({ text }), error => ({ error }));
-    while (loaded < c.limit && (total === undefined || loaded < total)) {
+    while (loaded < c.limit) {
         const response = await (pending ?? prefetch(loaded));
         pending = undefined;
         if ('error' in response)
@@ -78,24 +80,16 @@ async function load(c: Config) {
         const text = response.text;
         bytes += new TextEncoder().encode(text).byteLength;
         const pstart = performance.now(), page = decodePage(text, c.axis);
-        if (!page.features.length) {
-            if (total !== undefined && loaded < total)
-                throw new Error(`Premature empty page at ${loaded}; server reported ${total}.`);
-            break;
-        }
+        if (!page.features.length) break;
         if (page.features.length > Math.min(c.pageSize, c.limit - loaded))
             throw new Error('Server ignored the requested page count');
-        if (page.numberMatched !== undefined) {
-            if (total !== undefined && total !== page.numberMatched)
-                throw new Error('Feature count changed during loading; use a stable snapshot');
-            total = page.numberMatched;
-        }
+        if (page.numberMatched !== undefined) total = page.numberMatched;
         const signature = JSON.stringify([page.features[0], page.features.at(-1)]);
         if (pages > 0 && signature === previousSignature)
             throw new Error('Server repeated a page; startIndex is not supported');
         previousSignature = signature;
         const next = loaded + page.features.length;
-        if (next < c.limit && (total === undefined || next < total))
+        if (next < c.limit)
             pending = prefetch(next);
         if (!store) {
             store = new Store(inferFields(page.features, c.fields));
@@ -108,16 +102,17 @@ async function load(c: Config) {
         post({ type: 'chunk', offset: loaded, positions, ...spatial }, [positions.buffer, spatial.indices.buffer, spatial.groups.buffer]);
         loaded += page.features.length;
         pages++;
-        post({ type: 'progress', loaded, total, pages, bytes, parseMs, elapsedMs: performance.now() - start });
+        post({ type: 'progress', loaded, total: total === undefined ? undefined : Math.max(loaded, total), pages, bytes, parseMs, elapsedMs: performance.now() - start });
     }
-    if (total !== undefined && loaded > total)
-        throw new Error('Received more features than the reported count');
+    // Only an empty page proves exhaustion; a count must never stop pagination.
+    const truncated = loaded === c.limit;
+    total = truncated ? total === undefined ? undefined : Math.max(loaded, total) : loaded;
     if (!store) { store = new Store(c.fields); post({ type: 'fields', fields: store.fields }); }
     store.finish();
     if (store)
         analyzer = new Analyzer(store);
     post({ type: 'done', loaded, total, timeline: timelineExtent(c.timeField), bounds: store?.bounds, pages, bytes, parseMs, elapsedMs: performance.now() - start,
-        truncated: total !== undefined ? loaded < total : loaded === c.limit, warning: [warning.trim(), loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '', latitudeClampWarning(clamped)].filter(Boolean).join(' ') });
+        truncated, warning: [warning.trim(), loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '', latitudeClampWarning(clamped)].filter(Boolean).join(' ') });
 }
 async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: string) {
     const start = performance.now();

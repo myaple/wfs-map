@@ -558,7 +558,7 @@ async function performLoad(s: Source) {
                 if (m.type === 'csvScan') s.status = `Scanning CSV types… ${Math.round(m.bytes / m.fileBytes * 100)}% · ${m.rows.toLocaleString()} rows checked`;
                 if (m.type === 'init') {
                     s.total = m.total;
-                    s.layer.allocate(m.capacity);
+                    s.layer.allocate(m.capacity, m.limit);
                     s.status = (csv ? 'Importing CSV points… ' : 'Fetching paged WFS features… ') + (m.warning ?? '');
                 }
                 if (m.type === 'fields')
