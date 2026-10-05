@@ -89,13 +89,18 @@ test('source lists persist and failure in one source leaves others available', a
     await expect(page.getByRole('checkbox', { name: 'Enable Unavailable WFS', exact: true })).toBeChecked();
 });
 test('sources with different schemas expose only their own fields and counts', async ({ page }) => {
+    const offsets: number[] = [];
     await page.route('**/alternate-wfs?*', async (route) => { const u = new URL(route.request().url()), operation = u.searchParams.get('request'); if (operation === 'DescribeFeatureType') {
         await route.fulfill({ status: 404, body: 'No schema' });
         return;
     } if (u.searchParams.get('resultType') === 'hits') {
         await route.fulfill({ contentType: 'application/xml', body: '<FeatureCollection numberMatched="2"/>' });
         return;
-    } await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ type: 'FeatureCollection', numberMatched: 2, features: [{ id: 'alternate.0', type: 'Feature', geometry: { type: 'Point', coordinates: [-1, 54] }, properties: { temperature: 7, name: 'north' } }, { id: 'alternate.1', type: 'Feature', geometry: { type: 'Point', coordinates: [-2, 53] }, properties: { temperature: 9, name: 'south' } }] }) }); });
+    }
+    const offset = Number(u.searchParams.get('startIndex')), count = Number(u.searchParams.get('count'));
+    offsets.push(offset);
+    const features = [{ id: 'alternate.0', type: 'Feature', geometry: { type: 'Point', coordinates: [-1, 54] }, properties: { temperature: 7, name: 'north' } }, { id: 'alternate.1', type: 'Feature', geometry: { type: 'Point', coordinates: [-2, 53] }, properties: { temperature: 9, name: 'south' } }];
+    await route.fulfill({ contentType: 'application/json', json: { type: 'FeatureCollection', numberMatched: 2, features: features.slice(offset, offset + count) } }); });
     await page.goto('/?time=all&points=1024&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
     await page.locator('#configLink').click();
@@ -106,6 +111,7 @@ test('sources with different schemas expose only their own fields and counts', a
     await page.locator('#updateSource').click();
     await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].metrics.analysisCharts);
+    expect(offsets).toEqual([0, 2]);
     await page.locator('#analysisLink').click();
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
     await page.locator('#filterSource').selectOption(id);
