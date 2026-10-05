@@ -79,12 +79,12 @@ test('raw observations follow the chosen source and a new schema refreshes the s
     // Hold the persisted-file read so replacement always races the editor restore,
     // rather than depending on runner speed or IndexedDB scheduling.
     await page.evaluate(() => {
-        const original = Blob.prototype.text;
-        Blob.prototype.text = function() {
-            if (this instanceof File) return original.call(this);
+        const original = Blob.prototype.arrayBuffer;
+        Blob.prototype.arrayBuffer = function() {
+            if ((window as any).__resumeCSVRestore) return original.call(this);
             return new Promise(resolve => {
                 (window as any).__resumeCSVRestore = async () => {
-                    Blob.prototype.text = original;
+                    Blob.prototype.arrayBuffer = original;
                     resolve(await original.call(this));
                 };
             });

@@ -2,6 +2,13 @@ import { createUUID } from './uuid.ts';
 import { settingsKey, settingsMetadata, type Settings } from './source-settings.ts';
 
 export let fileUser: string | undefined;
+const stagedFiles = new Map<string, Blob>();
+const fileKey = (reference: string, user = fileUser) => JSON.stringify([user ?? null, reference]);
+export function stageCSVFile(reference: string, file: Blob) { stagedFiles.set(fileKey(reference), file); }
+export function discardStagedCSVFiles(keep: Iterable<string>) {
+    const keys = new Set([...keep].map(reference => fileKey(reference)));
+    for (const key of stagedFiles.keys()) if (!keys.has(key)) stagedFiles.delete(key);
+}
 const storeName = 'csv';
 // Named analyses/copies may reuse immutable files within one user, but never
 // resolve another user's references or the unauthenticated legacy cache.
@@ -30,15 +37,20 @@ function completed(transaction: IDBTransaction): Promise<void> {
         transaction.onerror = () => {}; // Abort reports the transaction error.
     });
 }
-export async function readCSVText(reference: string, user = fileUser): Promise<string> {
+export async function readCSVBlob(reference: string, user = fileUser): Promise<Blob> {
+    const staged = stagedFiles.get(fileKey(reference, user));
+    if (staged) return staged;
     const db = await openFiles(user);
     try {
         const transaction = db.transaction(storeName, 'readonly'), done = completed(transaction);
         const request = transaction.objectStore(storeName).get(reference);
         await done;
         if (!(request.result instanceof Blob)) throw Error('The saved CSV file is missing. Choose the file again in Data sources.');
-        return await request.result.text();
+        return request.result;
     } finally { db.close(); }
+}
+export async function readCSVText(reference: string, user = fileUser): Promise<string> {
+    return (await readCSVBlob(reference, user)).text();
 }
 function references(settings: Settings): Set<string> {
     return new Set(settings.sources.filter(s => s.config.type === 'csv' && s.config.csvRef).map(s => s.config.csvRef));
@@ -68,7 +80,7 @@ export async function saveSettings(settings: Settings): Promise<Settings> {
         let missing = false;
         for (const source of files) {
             const ref = next.sources.find(s => s.id === source.id)!.config.csvRef;
-            const payload = source.config.csvText ? new Blob([source.config.csvText], { type: 'text/csv' }) : undefined;
+            const payload = stagedFiles.get(fileKey(ref)) ?? (source.config.csvText ? new Blob([source.config.csvText], { type: 'text/csv' }) : undefined);
             const request = store.getKey(ref);
             request.onsuccess = () => {
                 if (request.result !== undefined) return;
@@ -86,6 +98,7 @@ export async function saveSettings(settings: Settings): Promise<Settings> {
         // leaves every file referenced by the previous settings untouched.
         localStorage.setItem(settingsKey, JSON.stringify(next));
         published = true;
+        for (const source of next.sources) stagedFiles.delete(fileKey(source.config.csvRef));
         const keep = references(next);
         // Named analyses may share local blobs across tabs and copies. Retain them
         // rather than deleting a file another analysis still needs.
