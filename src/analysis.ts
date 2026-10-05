@@ -359,7 +359,7 @@ export class Analyzer {
         };
         return { column: j, axis: { field: name, labels, ranges, rules, scale }, bin };
     }
-    async colors(name: string, bins: number, cancelled: () => boolean = () => false, overrides: Record<string, string> = {}) {
+    async colors(name: string, bins: number, cancelled: () => boolean = () => false, overrides: Record<string, string> = {}, scale: Scale = 'linear') {
         const j = this.store.fields.findIndex(f => f.name === name);
         if (j < 0) throw Error(`Unknown colour attribute ${name}`);
         const column = this.store.columns[j];
@@ -385,13 +385,15 @@ export class Analyzer {
         if (column.field.kind !== 'number') throw Error('Gradients require a numeric field');
         if (!Number.isInteger(bins) || bins < 2 || bins > 64)
             throw Error('Invalid colour bins');
-        const a = await this.axis(name, bins, cancelled), codes = new Uint8Array(this.store.length);
+        const a = await this.axis(name, bins, cancelled, undefined, scale), codes = new Uint8Array(this.store.length);
         codes.fill(255);
+        let excluded = 0;
         for (const chunk of this.store.chunks)
             for (let base = 0; base < chunk.length; base += BLOCK) {
                 const end = Math.min(base + BLOCK, chunk.length);
                 for (let i = base; i < end; i++) {
-                    const bin = a.bin(chunk.values[a.column][i]);
+                    const value = chunk.values[a.column][i], bin = a.bin(value);
+                    if (scale === 'log10' && Number.isFinite(value) && value <= 0) excluded++;
                     if (bin >= 0)
                         codes[chunk.offset + i] = bin;
                 }
@@ -399,7 +401,7 @@ export class Analyzer {
                 if (cancelled())
                     throw Error('Superseded');
             }
-        return { codes, axis: a.axis };
+        return { codes, axis: a.axis, excluded };
     }
     async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false, domains?: { x: ChartDomain; y?: ChartDomain }, timeline?: TimelineSelection) {
         if (specs.length > 12)

@@ -168,7 +168,10 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
             }
         }
         if let Some(coloring) = o.get("coloring") {
-            let c = object(coloring, &["field", "bins", "low", "high", "categories"])?;
+            let c = object(
+                coloring,
+                &["field", "bins", "low", "high", "categories", "scale"],
+            )?;
             for k in ["field", "low", "high"] {
                 if let Some(v) = c.get(k) {
                     string(v)?;
@@ -176,6 +179,11 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
             }
             if let Some(v) = c.get("bins") {
                 finite(v)?;
+            }
+            if c.get("scale")
+                .is_some_and(|v| !matches!(v.as_str(), Some("linear" | "log10")))
+            {
+                return Err("Invalid colour bin scale");
             }
             if let Some(categories) = c.get("categories") {
                 let fields = categories
@@ -361,6 +369,14 @@ mod tests {
             assert!(validate(&bad).is_err());
         }
         v["analyses"][0]["charts"][0]["series"][0]["rows"] = serde_json::json!([1, 2]);
+        assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn validates_colour_bin_scale() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"a","name":"A","enabled":true,"config":{"type":"csv"},"coloring":{"field":"value","bins":8,"low":"#112233","high":"#445566","scale":"log10"}}]);
+        assert!(validate(&v).is_ok());
+        v["settings"]["sources"][0]["coloring"]["scale"] = "invalid".into();
         assert!(validate(&v).is_err());
     }
     #[test]

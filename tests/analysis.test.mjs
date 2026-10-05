@@ -143,3 +143,22 @@ test('Raw fitted extents follow filtered data with linear/log axes, constants an
     if (value > 0) assert.ok(Array.from(r.raw.positions).every(v => Math.abs(v) < 1e-6));
   }
 });
+
+test('Log10 colours use equal logarithmic bins, stable full-data domains and grey non-positive/missing values', async () => {
+  const rows = [.001, .01, .1, 1, 10, 100, 1000, 10000, 100000, 0, -1, null].map((value, i) => ({ ...feature(i), properties: { value } }));
+  const a = build(rows), log = await a.colors('value', 8, undefined, {}, 'log10');
+  assert.deepEqual([...log.codes], [0, 1, 2, 3, 4, 5, 6, 7, 7, 255, 255, 255]);
+  assert.equal(log.excluded, 2); assert.equal(log.axis.labels.length, 8);
+  const linear = await a.colors('value', 8); assert.notDeepEqual(log.codes, linear.codes);
+  await a.run({ field: 'value', op: 'lte', value: '10' }, []);
+  assert.deepEqual((await a.colors('value', 8, undefined, {}, 'log10')).codes, log.codes);
+  for (let i = 0; i < 8; i++) assert.equal((await a.run(log.axis.rules[i], [])).count, [...log.codes].filter(code => code === i).length);
+  await assert.rejects(a.colors('value', 8, () => true, {}, 'log10'), /Superseded/);
+  for (const values of [[0, -1, null], [7, 7, null], [Number.MIN_VALUE, 1, Number.MAX_VALUE]]) {
+    const a = build(values.map((value, i) => ({ ...feature(i), properties: { value } })));
+    const log = await a.colors('value', 8, undefined, {}, 'log10');
+    assert.equal(log.axis.labels.length, values[0] === 0 ? 0 : values[0] === 7 ? 1 : 8);
+    assert.ok([...log.codes].every(code => code === 255 || code < 8));
+    if (values[0] === 0) assert.deepEqual([...log.codes], [255, 255, 255]);
+  }
+});

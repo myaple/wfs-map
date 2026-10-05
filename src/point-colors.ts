@@ -21,12 +21,12 @@ export class PointColors {
         this.source.onchange = () => { this.search.value = ''; this.limit = 50; this.update(); };
         this.search.oninput = () => { this.limit = 50; this.renderCategories(); };
         document.getElementById('moreCategoryColors')!.onclick = () => { this.limit += 50; this.renderCategories(); };
-        for (const id of ['colorAttribute', 'colorBins', 'colorLow', 'colorHigh', 'sourceColor']) {
+        for (const id of ['colorAttribute', 'colorBins', 'colorScale', 'colorLow', 'colorHigh', 'sourceColor']) {
             input(id).onchange = () => {
                 const s = this.current();
                 if (!s) return;
                 const previous = s.coloring;
-                s.coloring = { ...previous, field: input('colorAttribute').value, bins: Number(input('colorBins').value), low: input('colorLow').value, high: input('colorHigh').value };
+                s.coloring = { ...previous, field: input('colorAttribute').value, bins: Number(input('colorBins').value), scale: input('colorScale').value as 'linear' | 'log10', low: input('colorLow').value, high: input('colorHigh').value };
                 if (id === 'sourceColor') {
                     const hex = input('sourceColor').value;
                     s.color = [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16) / 255) as [number, number, number];
@@ -59,6 +59,7 @@ export class PointColors {
         attribute.value = s?.coloring.field ?? '';
         const kind = s?.fields.find(f => f.name === s.coloring.field)?.kind;
         const gradient = kind === 'number', categorical = kind === 'string';
+        input('colorScale').value = s?.coloring.scale ?? 'linear';
         input('colorBins').value = String(s?.coloring.bins ?? 24);
         input('colorLow').value = s?.coloring.low ?? '#2463d4';
         input('colorHigh').value = s?.coloring.high ?? '#ee5539';
@@ -72,7 +73,7 @@ export class PointColors {
         document.getElementById('colorLegend')!.textContent = s ? `${s.name} · ${!s.done ? 'Attributes available after loading' : s.colorLegend || 'Single colour for every point'}` : 'Add or enable a data source to configure point colours.';
         attribute.disabled = !s?.enabled || !s.done;
         input('sourceColor').disabled = !s || !!s.coloring.field;
-        for (const id of ['colorBins', 'colorLow', 'colorHigh']) input(id).disabled = !s?.enabled || !s.done || !gradient;
+        for (const id of ['colorBins', 'colorScale', 'colorLow', 'colorHigh']) input(id).disabled = !s?.enabled || !s.done || !gradient;
         if (this.renderedSource !== s || this.renderedField !== s?.coloring.field || this.renderedCategories !== s?.colorCategories || this.renderedOverrides !== s?.coloring.categories?.[s.coloring.field]) this.renderCategories();
     }
     private renderCategories() {

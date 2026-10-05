@@ -67,3 +67,36 @@ test('CSV categories are searchable and paged without an Other group or DOM cap 
     await page.setViewportSize({ width: 375, height: 812 }); await expect(page.locator('#categoryColorList')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('Log10 colour bins recompute codes, keep full-data ranges and persist independently from chart scales', async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
+    await page.locator('#sourceName').fill('Log colours'); await page.locator('#type').selectOption('csv');
+    await page.locator('#csvFile').setInputFiles({ name: 'colours.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,value,label,empty\n-1,54,1,A,0\n-1,54,10,B,-1\n-1,54,100,C,0\n-1,54,1000,D,-1\n-1,54,0,E,0\n-1,54,-1,F,-1\n-1,54,,G,') });
+    await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
+    await page.locator('#analysisLink').click(); await expect(page.locator('#colorScale')).toBeHidden();
+    await page.locator('#colorAttribute').selectOption('value'); await page.locator('#colorBins').selectOption('8');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0].layer.colorCodes?.length === 7);
+    const codes = () => page.evaluate(() => Array.from((window as any).__WFS_MAP__.sources[0].layer.colorCodes));
+    const linear = await codes();
+    await page.getByLabel('Colour bin scale', { exact: true }).selectOption('log10');
+    await expect(page.locator('#colorLegend')).toContainText('Log10'); await expect(page.locator('#colorLegend')).toContainText('2 non-positive values');
+    expect(await codes()).toEqual([0, 2, 5, 7, 255, 255, 255]); expect(await codes()).not.toEqual(linear);
+    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
+    await expect(page.locator('#mapLegend')).toContainText('Missing / non-positive value');
+    const log = await codes();
+    await page.locator('#colorLow').fill('#ff0000'); expect(await codes()).toEqual(log);
+    await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
+    await page.getByLabel('Attribute', { exact: true }).selectOption('value'); await page.getByLabel('Operator').selectOption('lte');
+    await page.getByLabel('Filter value').fill('10'); await page.locator('#apply').click();
+    await expect(page.locator('#filterStatus')).toContainText('4 matches'); expect(await codes()).toEqual(log);
+    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
+    await expect(page.locator('#colorScale')).toHaveValue('log10'); await expect(page.locator('#colorLegend')).toContainText('2 non-positive values'); expect(await codes()).toEqual(log);
+    await page.locator('#colorAttribute').selectOption('label'); await expect(page.locator('#colorScale')).toBeHidden(); await expect(page.locator('#categoryColorCount')).toContainText('7 of 7');
+    await page.locator('#colorAttribute').selectOption('empty'); await expect(page.locator('#colorLegend')).toContainText('No positive values');
+    expect(await codes()).toEqual([255,255,255,255,255,255,255]);
+    await page.locator('#colorAttribute').selectOption('value'); await page.locator('#colorScale').selectOption('linear');
+    await expect(page.locator('#colorLegend')).not.toContainText('Log10'); expect(await codes()).toEqual(linear);
+    expect(errors).toEqual([]);
+});

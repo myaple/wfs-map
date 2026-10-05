@@ -5,7 +5,7 @@ export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', for
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
-    coloring?: { field: string; bins: number; low: string; high: string; categories?: Record<string, Record<string, string>> };
+    coloring?: { scale?: 'linear' | 'log10'; field: string; bins: number; low: string; high: string; categories?: Record<string, Record<string, string>> };
 };
 export type Background = { url: string; attribution: string; enabled: boolean };
 export type MapSettings = { center: [number, number]; zoom: number; pointSize: number };
