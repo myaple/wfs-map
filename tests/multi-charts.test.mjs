@@ -52,3 +52,15 @@ test('categorical scatter aligns text dictionaries independently on both axes, i
         else { assert.equal(ar.raw.rows.length,2);assert.deepEqual([...ar.raw.positions.slice(2,4)],[...br.raw.positions.slice(0,2)]); }
     }
 });
+
+test('shared logarithmic domains align unequal source ranges and fit the union of displayed points', async () => {
+    const fields = [{ name: 'x', kind: 'number' }, { name: 'y', kind: 'number' }];
+    const a = build(fields, [{ x: -1, y: 0 }, { x: 1, y: 1 }, { x: 10, y: 10 }]);
+    const b = build(fields, [{ x: 100, y: 100 }, { x: 1000, y: 1000 }]);
+    const domains = { x: sharedDomain(await Promise.all([a.domain('x'), b.domain('x')])), y: sharedDomain(await Promise.all([a.domain('y'), b.domain('y')])) };
+    const spec = { id: 'log', type: 'scatter', x: 'x', y: 'y', bins: 8, xScale: 'log10', yScale: 'log10', binned: false };
+    const ar = (await a.run(all([]), [spec], undefined, domains)).charts[0], br = (await b.run(all([]), [spec], undefined, domains)).charts[0];
+    assert.deepEqual([...ar.raw.bounds], [1, 1, 1000, 1000]); assert.deepEqual(ar.raw.bounds, br.raw.bounds);
+    const r = combineSeries(spec, [{ sourceId: 'a', name: 'A', color: '#2463d4', result: ar }, { sourceId: 'b', name: 'B', color: '#d45b24', result: br }]);
+    assert.deepEqual([...r.raw.extent], [0, 0, 1, 1]); assert.equal(r.missing, 1); assert.equal(r.raw.rows.length, 4);
+});

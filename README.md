@@ -391,3 +391,5 @@ filtering** beside their existing filter action; individual scatter observations
 also highlight when inspected elsewhere. Inspection is transient and cleared on
 reload/filter changes. Raw records and inspection indices are never saved to the
 analysis service.
+
+Chart settings offer independent **X axis scale** and **Y axis scale** choices: Linear or Log10. Log10 requires numeric axes and positive values; dates and categories retain their natural scales, and pie charts have no axis controls. Log10 bins use equal logarithmic intervals with selections in the original units. Zero, negative and missing scatter values are counted as missing; non-positive counts or aggregate values are omitted from logarithmic Y plots. Binned and raw plots fit the displayed subset with margins as filters or the timeline change. Manual zoom stays in place; **Fit data** or double-click fits the current subset. Enlargement keeps the scale and view.

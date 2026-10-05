@@ -1,3 +1,4 @@
+import { transform, untransform } from './scales.ts';
 import { themeColor } from './theme.ts';
 import type { ChartResult, Expression, Axis } from './analysis.ts';
 import { ChartInteraction, plotRect, drawAxes, interpolate, tickText, type Point, type View } from './chart-plot.ts';
@@ -35,7 +36,7 @@ export class RawScatter {
             if (!this.result?.raw)
                 return;
             const box = this.canvas.getBoundingClientRect(), t = this.interaction.data([e.clientX - box.left, e.clientY - box.top]), b = this.bounds();
-            this.canvas.title = `${this.result.x.field}: ${tickText(interpolate(b[0], b[2], t[0]), this.result.x.kind, (b[2] - b[0]) * (this.interaction.view[2] - this.interaction.view[0])).join(' ')} · ${this.result.y!.field}: ${tickText(interpolate(b[1], b[3], t[1]), this.result.y?.kind, (b[3] - b[1]) * (this.interaction.view[3] - this.interaction.view[1])).join(' ')}`;
+            this.canvas.title = `${this.result.x.field}: ${tickText(untransform(interpolate(transform(b[0], this.result.x.scale), transform(b[2], this.result.x.scale), t[0]), this.result.x.scale), this.result.x.kind, (b[2] - b[0]) * (this.interaction.view[2] - this.interaction.view[0])).join(' ')} · ${this.result.y!.field}: ${tickText(untransform(interpolate(transform(b[1], this.result.y!.scale), transform(b[3], this.result.y!.scale), t[1]), this.result.y!.scale), this.result.y?.kind, (b[3] - b[1]) * (this.interaction.view[3] - this.interaction.view[1])).join(' ')}`;
         });
         window.addEventListener('themechange', this.onThemeChange); window.addEventListener('recordinspection', this.onInspection);
         this.observer = new ResizeObserver(() => this.draw());
@@ -91,7 +92,7 @@ export class RawScatter {
         const str = (v: number, kind?: string, lower = false) => kind === 'date' ? new Date(lower ? Math.ceil(v) : Math.floor(v)).toISOString() : String(v);
         const members = r.raw.series ?? [{ sourceId: this.sourceId(), x: r.x.field, y: r.y!.field }];
         const axisSelection = (axis: Axis, field: string, lower: number, upper: number, min: number, max: number): Expression => {
-            if (axis.ranges) return { op: 'and', children: [{ field, op: 'gte', value: str(interpolate(min, max, lower), axis.kind, true) }, { field, op: 'lte', value: str(interpolate(min, max, upper), axis.kind) }] };
+            if (axis.ranges) return { op: 'and', children: [{ field, op: 'gte', value: str(untransform(interpolate(transform(min, axis.scale), transform(max, axis.scale), lower), axis.scale), axis.kind, true) }, { field, op: 'lte', value: str(untransform(interpolate(transform(min, axis.scale), transform(max, axis.scale), upper), axis.scale), axis.kind) }] };
             const indices = axis.labels.flatMap((_, i) => (i + .5) / axis.labels.length >= lower && (i + .5) / axis.labels.length <= upper ? [i] : []);
             const translate = (e: Expression): Expression => 'children' in e ? { ...e, children: e.children.map(translate) } : 'field' in e ? { ...e, field } : e;
             return { op: 'or', children: indices.map(i => translate(axis.rules[i])) };
@@ -113,18 +114,19 @@ export class RawScatter {
     private bounds(): View {
         const b = this.result!.raw!.bounds;
         const out: View = [b[0], b[1], b[2], b[3]];
-        for (let i = 0; i < 2; i++)
-            if (out[i] === out[i + 2]) {
-                const pad = (i === 0 ? this.result!.x.kind : this.result!.y?.kind) === 'date' ? 1000 : Math.max(1, Math.abs(out[i]) * .01);
-                out[i] -= pad;
-                out[i + 2] += pad;
-            }
         return out;
     }
     update(r: ChartResult) {
         if (this.result && (this.result.x.field !== r.x.field || this.result.y?.field !== r.y?.field))
             this.interaction.reset();
         this.result = r;
+        const extent = r.raw!.extent;
+        const view: View = [0, 0, 1, 1];
+        if (extent && Array.from(extent).every(Number.isFinite)) for (let i = 0; i < 2; i++) {
+            const pad = Math.max(.001, (extent[i + 2] - extent[i] || 1) * .04);
+            view[i] = extent[i] - pad; view[i + 2] = extent[i + 2] + pad;
+        }
+        this.interaction.setFit(view);
         this.focus = Math.min(this.focus, Math.max(0, r.raw!.rows.length - 1));
         this.labels.textContent = 'Left-drag: zoom · right-drag: select · double-click: reset';
         const gl = this.gl;
@@ -176,10 +178,12 @@ export class RawScatter {
             this.axes.height = this.canvas.height;
             const ctx = this.axes.getContext('2d')!;
             ctx.scale(d, d);
-            drawAxes(ctx, p, view, this.bounds(), this.result.x.ranges ? this.result.x.kind : 'category', this.result.y?.ranges ? this.result.y.kind : 'category', this.result.x.field, this.result.y!.field, this.result.x.ranges ? undefined : this.result.x.labels, this.result.y?.ranges ? undefined : this.result.y?.labels);
+            drawAxes(ctx, p, view, this.bounds(), this.result.x.ranges ? this.result.x.kind : 'category', this.result.y?.ranges ? this.result.y.kind : 'category', this.result.x.field + (this.result.x.scale === 'log10' ? ' (log10)' : ''), this.result.y!.field + (this.result.y!.scale === 'log10' ? ' (log10)' : ''), this.result.x.ranges ? undefined : this.result.x.labels, this.result.y?.ranges ? undefined : this.result.y?.labels, this.result.x.scale, this.result.y?.scale);
+            this.canvas.dataset.scaleX = this.result.x.scale ?? 'linear'; this.canvas.dataset.scaleY = this.result.y?.scale ?? 'linear';
             this.canvas.dataset.axisX = this.result.x.kind ?? 'number';
             this.canvas.dataset.axisY = this.result.y?.kind ?? 'number';
         }
     }
+    fit() { this.interaction.reset(); }
     destroy() { window.removeEventListener('recordinspection', this.onInspection); window.removeEventListener('themechange', this.onThemeChange); this.observer.disconnect(); this.interaction.destroy(); this.gl.deleteBuffer(this.buffer); this.gl.deleteProgram(this.program); this.result = undefined; this.container.remove(); this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
 }

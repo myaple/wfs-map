@@ -267,6 +267,8 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                     "bins",
                     "binned",
                     "aggregate",
+                    "xScale",
+                    "yScale",
                     "series",
                 ],
             )?;
@@ -301,6 +303,13 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
             if let Some(v) = c.get("binned") {
                 if v.as_bool().is_none() {
                     return Err("Invalid binning setting");
+                }
+            }
+            for key in ["xScale", "yScale"] {
+                if c.get(key)
+                    .is_some_and(|v| !matches!(v.as_str(), Some("linear" | "log10")))
+                {
+                    return Err("Invalid axis scale");
                 }
             }
             if let Some(v) = c.get("aggregate") {
@@ -353,6 +362,19 @@ mod tests {
         }
         v["analyses"][0]["charts"][0]["series"][0]["rows"] = serde_json::json!([1, 2]);
         assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn validates_chart_axis_scales() {
+        let mut v = state();
+        v["settings"]["sources"] =
+            serde_json::json!([{"id":"a","name":"A","enabled":true,"config":{"type":"csv"}}]);
+        v["analyses"] = serde_json::json!([{"id":"a","fields":[],"expression":{"op":"and","children":[]},"charts":[{"id":"c","type":"scatter","x":"x","y":"y","bins":24,"xScale":"log10","yScale":"linear"}]}]);
+        assert!(validate(&v).is_ok());
+        for key in ["xScale", "yScale"] {
+            let mut bad = v.clone();
+            bad["analyses"][0]["charts"][0][key] = "invalid".into();
+            assert!(validate(&bad).is_err());
+        }
     }
     #[test]
     fn validates_csv_column_type_overrides() {

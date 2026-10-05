@@ -27,7 +27,7 @@ export function configurationState(settings: Settings, query: AnalysisState['que
             ...(settings.map ? { map: { center: [...settings.map.center] as [number, number], zoom: settings.map.zoom, pointSize: settings.map.pointSize } } : {})
         },
         query: { choice: query.choice, bounds: structuredClone(query.bounds) },
-        analyses: analyses.map(s => ({ id: s.id, fields: s.fields.map(f => ({ name: f.name, kind: f.kind })), expression: shareExpression(s.expression), charts: s.charts.map(c => ({ id: c.id, type: c.type, x: c.x, ...(c.y !== undefined ? { y: c.y } : {}), bins: c.bins, ...(c.binned !== undefined ? { binned: c.binned } : {}), ...(c.aggregate ? { aggregate: c.aggregate } : {}), ...(c.series?.length ? { series: c.series.map(s => ({ sourceId: s.sourceId, x: s.x, ...(s.y !== undefined ? { y: s.y } : {}) })) } : {}) })) }))
+        analyses: analyses.map(s => ({ id: s.id, fields: s.fields.map(f => ({ name: f.name, kind: f.kind })), expression: shareExpression(s.expression), charts: s.charts.map(c => ({ id: c.id, type: c.type, x: c.x, ...(c.y !== undefined ? { y: c.y } : {}), bins: c.bins, ...(c.xScale ? { xScale: c.xScale } : {}), ...(c.yScale ? { yScale: c.yScale } : {}), ...(c.binned !== undefined ? { binned: c.binned } : {}), ...(c.aggregate ? { aggregate: c.aggregate } : {}), ...(c.series?.length ? { series: c.series.map(s => ({ sourceId: s.sourceId, x: s.x, ...(s.y !== undefined ? { y: s.y } : {}) })) } : {}) })) }))
     };
 }
 export function localSettings(state: AnalysisState): Settings {

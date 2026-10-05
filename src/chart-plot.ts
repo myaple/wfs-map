@@ -1,3 +1,4 @@
+import { transform, untransform, type Scale } from './scales.ts';
 import { themeColor } from './theme.ts';
 export type Point = [
     number,
@@ -33,7 +34,8 @@ export function tickText(value: number, kind: string | undefined, span: number):
     return [value.toLocaleString('en-GB', { maximumFractionDigits: 4 })];
 }
 export const interpolate = (lo: number, hi: number, t: number) => lo * (1 - t) + hi * t;
-export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View, bounds: View, xKind: string | undefined, yKind: string | undefined, xName: string, yName: string, xLabels?: string[], yLabels?: string[]) {
+export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View, bounds: View, xKind: string | undefined, yKind: string | undefined, xName: string, yName: string, xLabels?: string[], yLabels?: string[], xScale: Scale = 'linear', yScale: Scale = 'linear') {
+    bounds = [transform(bounds[0], xScale), transform(bounds[1], yScale), transform(bounds[2], xScale), transform(bounds[3], yScale)];
     const grid = themeColor('chart-grid'), muted = themeColor('muted'), text = themeColor('text'), axis = themeColor('chart-axis');
     ctx.font = '11px system-ui';
     ctx.lineWidth = 1;
@@ -48,7 +50,7 @@ export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View,
         ctx.stroke();
         ctx.fillStyle = muted;
         ctx.textAlign = i === 0 ? 'left' : i === nx ? 'right' : 'center';
-        (xKind === 'category' ? [] : tickText(v, xKind, xspan)).forEach((line, j) => ctx.fillText(line, x, p.bottom + 18 + j * 14));
+        (xKind === 'category' ? [] : tickText(untransform(v, xScale), xKind, xspan)).forEach((line, j) => ctx.fillText(line, x, p.bottom + 18 + j * 14));
     }
     for (let i = 0; i <= ny; i++) {
         const t = i / ny, y = p.bottom - t * (p.bottom - p.top), v = interpolate(bounds[1], bounds[3], interpolate(view[1], view[3], t));
@@ -59,7 +61,7 @@ export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View,
         ctx.stroke();
         ctx.fillStyle = muted;
         ctx.textAlign = 'right';
-        (yKind === 'category' ? [] : tickText(v, yKind, yspan)).forEach((line, j) => ctx.fillText(line, p.left - 7, y + 4 + j * 13));
+        (yKind === 'category' ? [] : tickText(untransform(v, yScale), yKind, yspan)).forEach((line, j) => ctx.fillText(line, p.left - 7, y + 4 + j * 13));
     }
     const categories = (labels: string[] | undefined, vertical: boolean) => {
         if (!labels) return;
@@ -87,6 +89,7 @@ export function drawAxes(ctx: CanvasRenderingContext2D, p: PlotRect, view: View,
 // The same local viewport and pointer gestures serve canvas and GPU plots.
 export class ChartInteraction {
     view: View = [0, 0, 1, 1];
+    private fitted: View = [0, 0, 1, 1];
     private start?: Point;
     private button = 0;
     private clickTimer?: ReturnType<typeof setTimeout>;
@@ -158,7 +161,12 @@ export class ChartInteraction {
     private clamp(p: Point): Point { const r = this.rect(); return [Math.max(r.left, Math.min(r.right, p[0]) - 1e-7), Math.max(r.top, Math.min(r.bottom, p[1]) - 1e-7)]; }
     data(p: Point): Point { const r = this.rect(); return [interpolate(this.view[0], this.view[2], (p[0] - r.left) / (r.right - r.left)), interpolate(this.view[1], this.view[3], (r.bottom - p[1]) / (r.bottom - r.top))]; }
     screen(p: Point): Point { const r = this.rect(); return [r.left + (p[0] - this.view[0]) / (this.view[2] - this.view[0]) * (r.right - r.left), r.bottom - (p[1] - this.view[1]) / (this.view[3] - this.view[1]) * (r.bottom - r.top)]; }
-    reset() { clearTimeout(this.clickTimer); this.cancel(); this.view = [0, 0, 1, 1]; this.sync(); this.redraw(); }
+    reset() { clearTimeout(this.clickTimer); this.cancel(); this.view = [...this.fitted]; this.sync(); this.redraw(); }
+    setFit(view: View) {
+        const automatic = this.view.every((v, i) => v === this.fitted[i]);
+        this.fitted = view; this.canvas.dataset.fit = JSON.stringify(view);
+        if (automatic) { this.view = [...view]; this.sync(); }
+    }
     private sync() { this.canvas.dataset.view = JSON.stringify(this.view); }
     cancel() { this.start = undefined; this.box.hidden = true; }
     destroy() { clearTimeout(this.clickTimer); this.cancel(); this.box.remove(); }
