@@ -137,7 +137,15 @@ test('pie and time charts share zoom/select gestures; removing an enlarged chart
 });
 test('GPU date zoom keeps observations one millisecond apart distinct across a multi-year dataset',async({page})=>{
  const times=[Date.UTC(2024,0,1),Date.UTC(2025,0,1),Date.UTC(2025,0,1)+1,Date.UTC(2026,0,1)],values=[0,25,75,100];
- await page.route('**/wfs?*',async route=>{const url=new URL(route.request().url());if(url.searchParams.get('request')==='DescribeFeatureType'){await route.fulfill({status:404,body:'No schema'});return;}if(url.searchParams.get('resultType')==='hits'){await route.fulfill({contentType:'application/xml',body:'<FeatureCollection numberMatched="4"/>'});return;}await route.fulfill({contentType:'application/json',body:JSON.stringify({type:'FeatureCollection',numberMatched:4,features:times.map((t,i)=>({type:'Feature',id:`f${i}`,geometry:{type:'Point',coordinates:[-1+i*.1,54]},properties:{category:'a',timestamp:new Date(t).toISOString(),value:values[i]}}))})});});
+ const features=times.map((t,i)=>({type:'Feature',id:`f${i}`,geometry:{type:'Point',coordinates:[-1+i*.1,54]},properties:{category:'a',timestamp:new Date(t).toISOString(),value:values[i]}})),offsets:number[]=[];
+ await page.route('**/wfs?*',async route=>{
+  const params=new URL(route.request().url()).searchParams;
+  if(params.get('request')==='DescribeFeatureType')return route.fulfill({status:404,body:'No schema'});
+  if(params.get('resultType')==='hits')return route.fulfill({contentType:'application/xml',body:'<FeatureCollection numberMatched="4"/>'});
+  const offset=Number(params.get('startIndex')),count=Number(params.get('count'));offsets.push(offset);
+  return route.fulfill({contentType:'application/json',json:{type:'FeatureCollection',numberMatched:4,features:features.slice(offset,offset+count)}});
+ });
  await page.goto('/?time=all&points=4&autoload=1');await page.waitForFunction(()=>(window as any).__WFS_MAP__?.workspace.results.length===3);const s=page.locator('.chart-card').nth(2);await s.getByRole('button',{name:'Settings',exact:true}).click();await s.getByLabel('X attribute').selectOption('timestamp');await s.getByLabel('Y attribute').selectOption('value');await s.getByLabel('Binning',{exact:true}).selectOption('exact');await page.waitForFunction(()=>(window as any).__WFS_MAP__.workspace.results[2].raw?.precise);
+ expect(offsets).toEqual([0,4]);
  const hits=await page.evaluate(times=>{const h=(window as any).__WFS_MAP__,raw=h.workspace.views.get(h.workspace.specs[2].id).raw,b=h.workspace.results[2].raw.bounds,t1=(times[1]-b[0])/(b[2]-b[0]),t2=(times[2]-b[0])/(b[2]-b[0]),span=t2-t1;raw.interaction.view=[t1-span*.5,0,t2+span*.5,1];raw.draw(true);const canvas=raw.canvas,d=canvas.width/canvas.clientWidth,w=canvas.clientWidth,height=canvas.clientHeight,hits=[];for(const [x,y] of [[.25,.25],[.75,.75]]){const pixels=new Uint8Array(4);raw.gl.readPixels(Math.round((68+(w-86)*x)*d),Math.round((64+(height-82)*y)*d),1,1,raw.gl.RGBA,raw.gl.UNSIGNED_BYTE,pixels);hits.push((pixels[0]+pixels[1]*256+pixels[2]*65536+pixels[3]*16777216)-1);}raw.draw();return hits;},times);expect(hits).toEqual([1,2]);
 });

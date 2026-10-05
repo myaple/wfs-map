@@ -1,3 +1,4 @@
+import { validateServerFilters, type ServerFilter } from './server-filters.ts';
 import { createUUID } from './uuid.ts';
 export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField', 'fieldTypes'] as const;
 export type Config = Record<typeof configKeys[number], string>;
@@ -5,6 +6,7 @@ export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', for
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
+    serverFilters?: ServerFilter[];
     coloring?: { scale?: 'linear' | 'log10'; field: string; bins: number; low: string; high: string; categories?: Record<string, Record<string, string>> };
 };
 export type Background = { url: string; attribution: string; enabled: boolean };
@@ -27,7 +29,8 @@ export function migrateSource(input: any): SavedSource | undefined {
             config.url = config.url.startsWith('/') ? url.pathname + url.search : url.href;
         }
     } catch { }
-    return { id: typeof input.id === 'string' ? input.id : createUUID(), name: input.name, enabled: input.enabled === true, config, color: input.color, coloring: input.coloring };
+    if (input.serverFilters !== undefined) validateServerFilters(input.serverFilters);
+    return { serverFilters: input.serverFilters ? structuredClone(input.serverFilters) : [], id: typeof input.id === 'string' ? input.id : createUUID(), name: input.name, enabled: input.enabled === true, config, color: input.color, coloring: input.coloring };
 }
 export function readSettings(): Settings {
     const empty = { sources: [], background: { ...defaultBackground } };

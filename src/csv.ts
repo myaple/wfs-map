@@ -1,3 +1,4 @@
+import { serverPredicate, type ServerFilter } from './server-filters.ts';
 import { parseUTC, utcISO } from './time.ts';
 import { mercator, type Feature, type Field } from './data.ts';
 import { csvFieldTypes, type Config } from './source-settings.ts';
@@ -13,7 +14,7 @@ function addIssue(issues: CSVIssue[], reason: string, line: number) {
 }
 export function csvImportSummary(report: CSVReport): string {
     const n = (value: number) => value.toLocaleString('en-GB');
-    return `CSV: ${n(report.imported)} of ${n(report.total)} data rows imported; ${n(report.rejected)} rows not processed because of errors; ${n(report.filtered)} rows excluded by time/map bounds.`
+    return `CSV: ${n(report.imported)} of ${n(report.total)} data rows imported; ${n(report.rejected)} rows not processed because of errors; ${n(report.filtered)} rows excluded by time/map bounds or advanced server filters.`
         + report.issues.map(i => `\n${n(i.count)} row(s): ${i.reason} (CSV line${i.lines.length === 1 ? '' : 's'} ${i.lines.join(', ')}${i.count > i.lines.length ? ', …' : ''}).`).join('');
 }
 type CSVRow = (row: string[], line: number, headers: string[]) => void;
@@ -139,7 +140,8 @@ function inferredFields(headers: string[], states: Inference[], config: Config):
         return { name, kind: Object.hasOwn(types, name) ? types[name] : name === config.timeField ? 'date' : s?.present && s.number ? 'number' : s?.present && s.boolean ? 'boolean' : 'string' };
     });
 }
-function rowDecoder(fields: Field[], config: Config, bounds: QueryBounds, totalRows: number) {
+function rowDecoder(fields: Field[], config: Config, bounds: QueryBounds, totalRows: number, rules: ServerFilter[] = []) {
+    const matches = serverPredicate(rules, fields);
     const headers = fields.map(f => f.name);
     const index = (name: string, purpose: string) => {
         if (!name) throw Error(`${totalRows} data rows not processed: choose a CSV ${purpose} column in Data sources.`);
@@ -188,6 +190,7 @@ function rowDecoder(fields: Field[], config: Config, bounds: QueryBounds, totalR
                 properties[f.name] = v.trim().toLowerCase() === 'true';
             } else properties[f.name] = v;
         });
+        if (!matches(properties)) return null;
         if (bounds.time) {
             const t = properties[config.timeField] === null ? NaN : parseUTC(String(properties[config.timeField]));
             if (!Number.isFinite(t)) throw Error(`Missing time in "${config.timeField}" required by the selected time bounds`);
@@ -213,12 +216,12 @@ function recordFeature(decode: ReturnType<typeof rowDecoder>, report: CSVReport,
     }
 }
 function finishReport(report: CSVReport) { if (report.total && report.rejected === report.total) throw Error(csvImportSummary(report)); }
-export function csvDataset(config: Config, bounds?: QueryBounds | null) {
+export function csvDataset(config: Config, bounds?: QueryBounds | null, rules: ServerFilter[] = []) {
     if (!config) throw Error('CSV source settings are missing. Configure the source and retry.');
     const parsed = parseCSV(config.csvText, config.delimiter), states: Inference[] = [];
     parsed.rows.forEach(row => inferRow(states, row));
     const fields = inferredFields(parsed.headers, states, config), report = reportFor(parsed);
-    const decode = rowDecoder(fields, config, bounds ?? {}, report.total), features: Feature[] = [];
+    const decode = rowDecoder(fields, config, bounds ?? {}, report.total, rules), features: Feature[] = [];
     parsed.rows.forEach((row, i) => { const feature = recordFeature(decode, report, row, parsed.rowLines[i]); if (feature) features.push(feature); });
     finishReport(report);
     return { fields, features, report };
@@ -226,13 +229,13 @@ export function csvDataset(config: Config, bounds?: QueryBounds | null) {
 
 /** Two bounded passes preserve whole-file types without retaining rows or features. */
 export async function ingestCSV(file: Blob, config: Config, bounds: QueryBounds,
-    ready: (fields: Field[], capacity: number) => void, batch: (features: Feature[]) => void,
-    progress?: (phase: 'scan' | 'ingest', bytes: number, rows: number) => void) {
+    ready: (fields: Field[], capacity: number, limit: number) => void, batch: (features: Feature[]) => void,
+    progress?: (phase: 'scan' | 'ingest', bytes: number, rows: number) => void, rules: ServerFilter[] = []) {
     const states: Inference[] = [];
     const scan = await streamCSV(file, config.delimiter, row => inferRow(states, row), (bytes, rows) => progress?.('scan', bytes, rows));
     const fields = inferredFields(scan.headers, states, config), report = reportFor(scan);
-    const decode = rowDecoder(fields, config, bounds ?? {}, report.total);
-    ready(fields, scan.validRows);
+    const decode = rowDecoder(fields, config, bounds ?? {}, report.total, rules);
+    ready(fields, rules.length ? Math.min(scan.validRows, 25000) : scan.validRows, scan.validRows);
     let features: Feature[] = [];
     await streamCSV(file, config.delimiter, (row, line) => {
         const feature = recordFeature(decode, report, row, line);
@@ -242,4 +245,11 @@ export async function ingestCSV(file: Blob, config: Config, bounds: QueryBounds,
     finishReport(report);
     if (features.length) batch(features);
     return { fields, report };
+}
+
+/** Schema discovery uses bounded streaming and retains no data rows. */
+export async function describeCSV(file: Blob, config: Config): Promise<Field[]> {
+    const states: Inference[] = [];
+    const scan = await streamCSV(file, config.delimiter, row => inferRow(states, row));
+    return inferredFields(scan.headers, states, config);
 }

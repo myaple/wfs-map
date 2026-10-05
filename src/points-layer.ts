@@ -66,6 +66,7 @@ export class PointsLayer implements CustomLayerInterface {
     private paletteBins = 24;
     categorical = false;
     capacity = 0;
+    private capacityLimit = 0;
     count = 0;
     pointSize = 2;
     chunks: {
@@ -135,21 +136,32 @@ export class PointsLayer implements CustomLayerInterface {
         this.framebuffer = undefined;
         this.texture = undefined;
     }
-    allocate(capacity: number) {
+    allocate(capacity: number, limit = capacity) {
+        this.capacityLimit = limit;
+        this.resize(capacity);
+    }
+    private resize(capacity: number) {
         this.capacity = capacity;
         const gl = this.gl;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, capacity * 16, gl.STATIC_DRAW);
+        for (const c of this.chunks)
+            gl.bufferSubData(gl.ARRAY_BUFFER, c.offset * 16, c.positions);
         gl.bindVertexArray(this.vao);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.spatialBuffer);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, capacity * 4, gl.STATIC_DRAW);
+        for (const c of this.chunks)
+            gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, c.offset * 4, c.indices);
         gl.bindVertexArray(null);
         if (gl.getError() !== gl.NO_ERROR)
             throw new Error('GPU allocation failed; lower point limit');
     }
     append(offset: number, positions: Float32Array, indices: Uint32Array, groups: Float64Array) {
-        if (offset + positions.length / 4 > this.capacity)
+        const required = offset + positions.length / 4;
+        if (required > this.capacityLimit)
             throw new Error('WFS exceeded allocated count');
+        if (required > this.capacity)
+            this.resize(Math.min(this.capacityLimit, Math.max(required, this.capacity * 2)));
         this.chunks.push({ offset, positions, indices, groups });
         const gl = this.gl;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
@@ -388,4 +400,3 @@ export class PointsLayer implements CustomLayerInterface {
     }
     get gpuBytes() { return this.capacity * 20 + (this.colorCodes?.byteLength ?? 0) + (this.indices?.byteLength ?? 0); }
 }
-

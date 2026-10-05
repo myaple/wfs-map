@@ -838,3 +838,11 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .chart-dialog .raw-scatter { height:100%; }
 .chart-dialog .raw-scatter canvas { height:calc(100% - 22px); }
 .chart-dialog .raw-scatter-labels { height:22px; box-sizing:border-box; }
+
+.server-filter-panel { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
+.server-filter-panel summary { cursor: pointer; font-weight: 600; }
+.server-filter-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(90px, .5fr) minmax(180px, 1fr) auto; gap: 8px; margin: 8px 0; align-items: center; }
+.server-filter-row select, .server-filter-row input { width: 100%; min-width: 0; }
+@media (max-width: 700px) { .server-filter-row { grid-template-columns: 1fr 1fr; } }
+
+.server-filter-panel button.primary:hover:not(:disabled) { background: var(--accent-strong); }

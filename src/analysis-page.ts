@@ -1,3 +1,5 @@
+import { ServerFilterPanel } from './server-filter-panel.ts';
+import { validateServerFilters, type ServerFilter } from './server-filters.ts';
 import { sharedDomain, combineSeries, seriesColors } from './multi-charts.ts';
 import { Timeline } from './timeline.ts';
 import type { TimelineExtent } from './timeline-data.ts';
@@ -33,7 +35,7 @@ $('app').innerHTML = `
 <header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav><a href="#analysis" id="analysisLink">Analysis</a><a href="#records" id="recordsLink">Records</a><a href="#configuration" id="configLink">Data sources</a></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="sourceSummary" class="hint"></div></div>
 <section id="configuration" hidden></section>
-<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply only to this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
+<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div><details id="advancedServerFilters" class="server-filter-panel"><summary>Advanced server filters</summary></details></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply to points already loaded for this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
 
 <div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
@@ -50,6 +52,8 @@ type Source = {
         number
     ];
     config: Config;
+    serverFilters: ServerFilter[];
+    loadedServerFilters?: string;
     layer: PointsLayer;
     worker?: Worker;
     abort?: AbortController;
@@ -121,6 +125,7 @@ function createSource(input: {
     name?: string;
     enabled?: boolean;
     config?: Config;
+    serverFilters?: ServerFilter[];
     coloring?: Source['coloring'];
     color?: [
         number,
@@ -133,7 +138,7 @@ function createSource(input: {
     charts.id = 'charts';
     charts.setAttribute('aria-live', 'polite');
     const color = input.color ?? colors[sources.length % colors.length];
-    const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, filtering: false, exportRequest: 0, exporting: false, exportStatus: '', colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
+    const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, serverFilters: structuredClone(input.serverFilters ?? []), layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, filtering: false, exportRequest: 0, exporting: false, exportStatus: '', colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
     s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, enabled: source.enabled, available: source.enabled && source.done })), expression => inspectExpression(s, expression));
     sources.push(s);
     const saved = savedAnalyses.get(id);
@@ -154,7 +159,7 @@ if (!settings.sources.length && (params.has('points') || params.has('url'))) {
 for (const [i, source] of settings.sources.entries()) createSource(source, i === 0);
 filterSourceId = filterSource()?.id ?? '';
 function snapshot(): Settings {
-    return { sources: sources.map(({ id, name, enabled, color, config, coloring }) => ({ id, name, enabled, color, config, coloring })), background: { ...background }, map: structuredClone(mapSettings) };
+    return { sources: sources.map(({ id, name, enabled, color, config, coloring, serverFilters }) => ({ id, name, enabled, color, config, coloring, serverFilters })), background: { ...background }, map: structuredClone(mapSettings) };
 }
 function persist() {
     try { localStorage.setItem(settingsKey, JSON.stringify(snapshot())); }
@@ -179,6 +184,7 @@ function renderSources() {
         $('rules').replaceWith(empty);
     }
     pointColors.refresh();
+    serverFilterPanel.refresh();
 }
 const sourceSettings = new DataSources(snapshot(), applySettings);
 const pointColors = new PointColors(() => sources, (source, previous) => {
@@ -190,6 +196,22 @@ const pointColors = new PointColors(() => sources, (source, previous) => {
     mapLegend.update(sources);
     map.triggerRepaint();
 });
+const serverFilterPanel = new ServerFilterPanel($<HTMLDetailsElement>('advancedServerFilters'), () => sources,
+    async input => {
+        const s = sources.find(s => s.id === input.id)!;
+        if (s.config.type !== 'csv') return (await describe(undefined, { ...s.config })).fields;
+        return new Promise<Field[]>((resolve, reject) => {
+            const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+            const timer = setTimeout(() => { worker.terminate(); reject(Error('CSV field discovery timed out. Retry after checking the file.')); }, 120000);
+            worker.onmessage = e => { clearTimeout(timer); worker.terminate(); e.data.error ? reject(Error(e.data.error)) : resolve(e.data.fields); };
+            worker.onerror = e => { clearTimeout(timer); worker.terminate(); reject(Error(e.message)); };
+            worker.postMessage({ type: 'csvSchema', config: { ...s.config }, fileUser });
+        });
+    }, (input, rules) => {
+        const s = sources.find(s => s.id === input.id)!;
+        s.serverFilters = rules; sourceSettings.syncServerFilters(s); persist();
+        loadSource(s); state();
+    });
 function applySettings(next: Settings, restore = false) {
     for (const s of [...sources]) if (restore || !next.sources.some(n => n.id === s.id)) {
         clearSource(s); s.workspace.reset(); sources.splice(sources.indexOf(s), 1);
@@ -199,9 +221,10 @@ function applySettings(next: Settings, restore = false) {
         let s = sources.find(s => s.id === input.id);
         if (!s) { s = createSource(input); if (s.enabled) load.push(s); }
         else {
-            const changed = configIdentity(s.config) !== configIdentity(input.config), wasEnabled = s.enabled;
-            s.name = input.name; s.config = { ...input.config }; s.enabled = input.enabled;
+            const changed = configIdentity(s.config) !== configIdentity(input.config) || JSON.stringify(s.serverFilters) !== JSON.stringify(input.serverFilters ?? []), wasEnabled = s.enabled;
+            s.name = input.name; s.config = { ...input.config }; s.serverFilters = structuredClone(input.serverFilters ?? []); s.enabled = input.enabled;
             if (changed || !s.enabled) clearSource(s);
+            if (changed) s.fields = [];
             if (s.enabled && (changed || !wasEnabled)) load.push(s);
         }
     }
@@ -219,6 +242,7 @@ function applySettings(next: Settings, restore = false) {
         const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = 'Add a data source to create charts from its attributes.'; $('charts').append(empty);
         popup?.remove();
     }
+    serverFilterPanel.refresh(true);
     renderSources();
     for (const s of sources) s.workspace.refreshSources();
     state();
@@ -417,11 +441,11 @@ function state() {
     hud();
 }
 function endpoint(config: Config) { return new URL(config.url, location.href).href; }
-async function describe(s: Source, config: Config): Promise<{ fields: Field[]; queryFields: QueryFields }> {
+async function describe(s: Source | undefined, config: Config): Promise<{ fields: Field[]; queryFields: QueryFields }> {
     const controller = new AbortController();
-    s.abort = controller;
+    if (s) s.abort = controller;
     const timeout = setTimeout(() => controller.abort(), 45000);
-    const fallback = { fields: [] as Field[], queryFields: { time: config.timeField, geometry: config.geometryField } };
+    const fallback = { fields: [] as Field[], queryFields: { time: config.timeField, geometry: config.geometryField, attributes: {} } };
     try {
         const r = await fetch(wfsURL(endpoint(config), config.version, 'DescribeFeatureType', { [config.version === '2.0.0' ? 'typeNames' : 'typeName']: config.layer }), { signal: controller.signal });
         const text = await r.text();
@@ -444,9 +468,9 @@ async function describe(s: Source, config: Config): Promise<{ fields: Field[]; q
         const targetNamespace = doc.documentElement.getAttribute('targetNamespace');
         const prefix = Object.keys(namespaces).find(key => namespaces[key] === targetNamespace);
         const reference = (name: string) => prefix && doc.documentElement.getAttribute('elementFormDefault') === 'qualified' ? `${prefix}:${name}` : name;
-        return { fields, queryFields: { time: config.timeField || (dates.length === 1 ? reference(dates[0].name) : ''), geometry: config.geometryField || (geometries.length === 1 ? reference(geometries[0].getAttribute('name')!) : ''), namespaces } };
+        return { fields, queryFields: { time: config.timeField || (dates.length === 1 ? reference(dates[0].name) : ''), geometry: config.geometryField || (geometries.length === 1 ? reference(geometries[0].getAttribute('name')!) : ''), namespaces, attributes: Object.fromEntries(fields.map(f => [f.name, reference(f.name)])) } };
     } catch { return fallback; }
-    finally { clearTimeout(timeout); if (s.abort === controller) s.abort = undefined; }
+    finally { clearTimeout(timeout); if (s?.abort === controller) s.abort = undefined; }
 }
 function clearSource(s: Source) {
     if (inspection?.sourceId === s.id || choices.some(r => r.sourceId === s.id)) clearInspection();
@@ -493,7 +517,7 @@ function clear() {
 function loadSource(s: Source) {
     if (!s.enabled || s.loading || !mapReady)
         return;
-    if (s.done && s.loadedConfig === configIdentity(s.config) && s.loadedQuery === JSON.stringify(queryBounds))
+    if (s.done && s.loadedConfig === configIdentity(s.config) && s.loadedQuery === JSON.stringify(queryBounds) && s.loadedServerFilters === JSON.stringify(s.serverFilters))
         return;
     clearSource(s);
     s.loading = true;
@@ -519,21 +543,22 @@ async function load() {
             loadSource(s);
 }
 async function performLoad(s: Source) {
-    const session = s.request, config = { ...s.config }, bounds = structuredClone(queryBounds);
+    const session = s.request, config = { ...s.config }, bounds = structuredClone(queryBounds), serverFilters = structuredClone(s.serverFilters);
     s.status = 'Reading feature schema…';
     state();
     const csv = config.type === 'csv';
     const schema = csv ? { fields: [], queryFields: { time: config.timeField, geometry: config.geometryField } } : await describe(s, config);
     if (session !== s.request || !s.enabled)
         return;
-    const serverFilter = csv ? undefined : queryFilter(config.version, bounds, schema.queryFields);
-    if (serverFilter && [...new URL(endpoint(config)).searchParams.keys()].some(key => ['bbox', 'filter', 'cql_filter', 'featureid', 'resourceid'].includes(key.toLowerCase()))) throw Error('Remove selection parameters from the endpoint URL before using the time or map area controls.');
+    validateServerFilters(serverFilters, csv ? undefined : schema.fields);
+    const serverFilter = csv ? undefined : queryFilter(config.version, bounds, schema.queryFields, serverFilters);
+    if (serverFilter && [...new URL(endpoint(config)).searchParams.keys()].some(key => ['bbox', 'filter', 'cql_filter', 'featureid', 'resourceid'].includes(key.toLowerCase()))) throw Error('Remove selection parameters from the endpoint URL before using time, map area or advanced server filters.');
     s.fields = schema.fields;
     map.addLayer(s.layer);
     layerOrder.push(s);
     s.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     const began = performance.now();
-    s.metrics = { sourceId: s.id, sourceName: s.name, startedAt: new Date().toISOString(), userAgent: navigator.userAgent, queryBounds: bounds, pointsRequested: Number(new URL(endpoint(config)).searchParams.get('points')) || undefined, viewport: { width: map.getCanvas().width, height: map.getCanvas().height }, devicePixelRatio, pointSize: s.layer.pointSize, distribution: new URL(endpoint(config)).searchParams.get('distribution') ?? undefined, renderer: gpuName(), note: 'Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.' };
+    s.metrics = { sourceId: s.id, sourceName: s.name, startedAt: new Date().toISOString(), userAgent: navigator.userAgent, queryBounds: bounds, serverFilters, pointsRequested: Number(new URL(endpoint(config)).searchParams.get('points')) || undefined, viewport: { width: map.getCanvas().width, height: map.getCanvas().height }, devicePixelRatio, pointSize: s.layer.pointSize, distribution: new URL(endpoint(config)).searchParams.get('distribution') ?? undefined, renderer: gpuName(), note: 'Worker and end-to-end frame observations; no GPU timer queries. JSON bytes are uncompressed.' };
     await new Promise<void>(resolve => {
         s.complete = resolve;
         const fail = (message: string) => {
@@ -558,7 +583,7 @@ async function performLoad(s: Source) {
                 if (m.type === 'csvScan') s.status = `Scanning CSV types… ${Math.round(m.bytes / m.fileBytes * 100)}% · ${m.rows.toLocaleString()} rows checked`;
                 if (m.type === 'init') {
                     s.total = m.total;
-                    s.layer.allocate(m.capacity);
+                    s.layer.allocate(m.capacity, m.limit);
                     s.status = (csv ? 'Importing CSV points… ' : 'Fetching paged WFS features… ') + (m.warning ?? '');
                 }
                 if (m.type === 'fields')
@@ -582,6 +607,8 @@ async function performLoad(s: Source) {
                     s.done = true;
                     s.loadedConfig = configIdentity(config);
                     s.loadedQuery = JSON.stringify(bounds);
+                    s.loadedServerFilters = JSON.stringify(serverFilters);
+                    serverFilterPanel.refresh();
                     if (JSON.stringify(s.workspace.fields) !== JSON.stringify(s.fields)) {
                         if (!s.workspace.fields.length) s.workspace.ready(s.fields);
                         else s.workspace.reconfigure(s.fields);
@@ -666,7 +693,7 @@ async function performLoad(s: Source) {
                 fail((e as Error).message);
             }
         };
-        if (csv) s.worker!.postMessage({ type: 'loadCSV', config, bounds, fileUser });
+        if (csv) s.worker!.postMessage({ type: 'loadCSV', config, bounds, fileUser, serverFilters });
         else s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), limit: Number(config.limit), sort: config.sort, fields: schema.fields, filter: serverFilter, timeField: schema.queryFields.time } });
     });
     if (session === s.request)
