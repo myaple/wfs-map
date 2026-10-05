@@ -1,5 +1,5 @@
-import { readCSVText } from './source-storage.ts';
-import { csvDataset, csvImportSummary } from './csv.ts';
+import { readCSVBlob } from './source-storage.ts';
+import { ingestCSV, csvImportSummary } from './csv.ts';
 import type { Config as SourceConfig } from './source-settings.ts';
 import type { QueryBounds } from './wfs-query.ts';
 import { Analyzer, all } from './analysis.ts';
@@ -121,22 +121,22 @@ async function load(c: Config) {
 }
 async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: string) {
     const start = performance.now();
-    if (!config.csvText && config.csvRef) config.csvText = await readCSVText(config.csvRef, fileUser);
-    const dataset = csvDataset(config, bounds), total = dataset.features.length;
-    store = new Store(dataset.fields);
-    post({ type: 'init', capacity: total, total });
-    post({ type: 'fields', fields: store.fields });
-    let pages = 0, clamped = 0;
-    for (let offset = 0; offset < total; offset += 50000) {
-        const features = dataset.features.slice(offset, offset + 50000);
+    if (!config) throw Error('CSV source settings are missing.');
+    const file = config.csvText ? new Blob([config.csvText]) : await readCSVBlob(config.csvRef, fileUser);
+    let pages = 0, clamped = 0, loaded = 0, capacity = 0;
+    const dataset = await ingestCSV(file, config, bounds, (fields, size) => {
+        store = new Store(fields); capacity = size;
+        post({ type: 'init', capacity, total: capacity });
+        post({ type: 'fields', fields });
+    }, features => {
+        const offset = loaded;
         const positions = packPositions(features, count => clamped += count), spatial = spatialPage(positions, offset);
-        store.append(features); pages++;
+        store!.append(features); pages++; loaded += features.length;
         post({ type: 'chunk', offset, positions, ...spatial }, [positions.buffer, spatial.indices.buffer, spatial.groups.buffer]);
-        post({ type: 'progress', loaded: offset + features.length, total, pages, elapsedMs: performance.now() - start });
-        await new Promise(resolve => setTimeout(resolve, 0));
-    }
-    store.finish(); analyzer = new Analyzer(store);
-    post({ type: 'done', loaded: total, total, timeline: timelineExtent(config.timeField), bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false, csvReport: dataset.report, warning: [csvImportSummary(dataset.report), latitudeClampWarning(clamped)].filter(Boolean).join('\n') });
+        post({ type: 'progress', loaded, total: capacity, pages, elapsedMs: performance.now() - start });
+    }, (phase, bytes, rows) => { if (phase === 'scan') post({ type: 'csvScan', bytes, fileBytes: file.size, rows }); });
+    store!.finish(); analyzer = new Analyzer(store!);
+    post({ type: 'done', loaded, total: loaded, timeline: timelineExtent(config.timeField), bounds: store!.bounds, pages, bytes: file.size, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false, csvReport: dataset.report, warning: [csvImportSummary(dataset.report), latitudeClampWarning(clamped)].filter(Boolean).join('\n') });
 }
 function timelineExtent(configured?: string) {
     if (!store || !analyzer) return;

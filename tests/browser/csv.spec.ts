@@ -48,7 +48,7 @@ test('CSV import skips invalid rows, reports reasons and retains valid records a
     await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
     await page.locator('#sourceName').fill('Mixed CSV'); await page.locator('#type').selectOption('csv');
     await page.locator('#csvFile').setInputFiles({ name: 'mixed.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,t,note\n-1,54,2026-10-01,"first\nsecond"\n,54,2026-10-01,missing\n-1,54,bad,time\n-1,54\n-2,53,,') });
-    await expect(page.locator('#csvFileStatus')).toContainText('1 malformed row');
+    await expect(page.locator('#csvFileStatus')).toContainText('Rows are validated during import');
     await page.locator('#csvTime').selectOption('t');
     await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);

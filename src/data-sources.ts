@@ -1,7 +1,7 @@
 import { createUUID } from './uuid.ts';
 import { currentAnalysis } from './saved-analysis.ts';
-import { readCSVText, saveSettings } from './source-storage.ts';
-import { parseCSV } from './csv.ts';
+import { readCSVText, readCSVBlob, stageCSVFile, discardStagedCSVFiles, saveSettings } from './source-storage.ts';
+import { csvHeaders } from './csv.ts';
 import { createBackup, readBackup } from './source-backup.ts';
 import { wfsURL, xmlDocument } from './data.ts';
 import { configKeys, defaultConfig, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
@@ -14,6 +14,8 @@ export class DataSources {
     private discovery?: AbortController;
     private capabilities?: Document;
     private csvText = '';
+    private csvBlob?: Blob;
+    private csvHeaderNames: string[] = [];
     private csvRef = '';
     private saving = false;
     private fileName = '';
@@ -64,7 +66,7 @@ export class DataSources {
         </div><div class="source-dialog-footer"><span class="hint">Save changes on the page to apply.</span><button id="cancelSource" type="button">Cancel</button><button id="updateSource" class="primary" type="submit">Add to list</button></div></form></dialog>`;
         $('type').onchange = () => { this.stopDiscovery(); this.showType(); };
         $('geometryMode').onchange = () => this.showGeometry();
-        $('delimiter').onchange = () => { try { this.csvColumns(); } catch (e) { this.showError(e); } };
+        $('delimiter').onchange = () => { if (this.csvBlob) void this.inspectCSV(this.csvBlob, undefined, ++this.fileRevision); };
         $('csvFile').onchange = () => void this.readCSV();
         $('exportBackup').onclick = () => void this.exportBackup();
         $('importBackup').onclick = () => input('backupFile').click();
@@ -93,7 +95,7 @@ export class DataSources {
         };
         $('discover').onclick = () => void this.discover();
         $('saveSettings').onclick = () => this.save();
-        $('discardSettings').onclick = () => { this.draft = structuredClone(this.saved); input('basemapURL').value = this.draft.background.url; input('basemapAttribution').value = this.draft.background.attribution; this.removed = undefined; this.render(); };
+        $('discardSettings').onclick = () => { this.draft = structuredClone(this.saved); discardStagedCSVFiles([]); input('basemapURL').value = this.draft.background.url; input('basemapAttribution').value = this.draft.background.attribution; this.removed = undefined; this.render(); };
         $('undoRemove').onclick = () => { if (this.removed) this.draft.sources.splice(this.removed.index, 0, this.removed.source); this.removed = undefined; this.render(); };
         $('startTestServer').onclick = () => void this.startTestServer();
         $('addTestSource').onclick = () => this.open({ ...defaultConfig, url: input('testEndpoint').value, layer: 'demo:points' }, 'Test WFS');
@@ -169,6 +171,7 @@ export class DataSources {
         window.onbeforeunload = dirty ? e => { e.preventDefault(); e.returnValue = ''; } : null;
     }
     private render() {
+        discardStagedCSVFiles([...this.draft.sources, ...(this.removed ? [this.removed.source] : [])].map(s => s.config.csvRef));
         const list = $('sourceList');
         list.replaceChildren();
         if (!this.draft.sources.length) {
@@ -201,6 +204,7 @@ export class DataSources {
         this.fileRevision++;
         for (const key of configKeys) if (!['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField'].includes(key)) input(key).value = config[key];
         this.csvRef = config.csvRef; this.csvText = config.csvText; this.fileName = config.fileName;
+        this.csvBlob = undefined; this.csvHeaderNames = [];
         input('csvFile').value = '';
         this.csvColumns(config);
         this.showType();
@@ -213,15 +217,18 @@ export class DataSources {
         $<HTMLDetailsElement>('wfsCompatibility').open = false;
         $<HTMLDialogElement>('sourceDialog').showModal();
         input('sourceName').focus();
-        if (config.type === 'csv' && config.csvRef && !config.csvText) void this.restoreCSV(config, this.fileRevision);
+        if (config.type === 'csv') {
+            if (config.csvText) void this.inspectCSV(new Blob([config.csvText]), config, this.fileRevision);
+            else if (config.csvRef) void this.restoreCSV(config, this.fileRevision);
+        }
     }
     private async restoreCSV(config: Config, revision: number) {
         $<HTMLButtonElement>('updateSource').disabled = true;
         $('csvFileStatus').textContent = `Reading ${config.fileName}…`;
         try {
-            const text = await readCSVText(config.csvRef);
+            const file = await readCSVBlob(config.csvRef);
             if (revision !== this.fileRevision) return;
-            this.csvText = text; this.csvColumns(config);
+            await this.inspectCSV(file, config, revision);
         } catch (e) { if (revision === this.fileRevision) this.showError(e); }
         finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
     }
@@ -229,7 +236,7 @@ export class DataSources {
         this.discovery?.abort(); this.discovery = undefined;
         $<HTMLButtonElement>('discover').disabled = false;
     }
-    private close() { this.fileRevision++; this.csvText = ''; this.editing = undefined; this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
+    private close() { this.fileRevision++; this.csvText = ''; this.csvBlob = undefined; this.csvHeaderNames = []; this.editing = undefined; this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
     private resetLayers(selectCurrent = false) {
         this.capabilities = undefined;
         const name = input('layer').value;
@@ -276,9 +283,8 @@ export class DataSources {
         $<HTMLSelectElement>('csvGeometry').required = !xy;
     }
     private csvColumns(config?: Config) {
-        const parsed = this.csvText ? parseCSV(this.csvText, input('delimiter').value) : undefined;
-        const headers = parsed?.headers ?? [];
-        const restoring = !this.csvText && !!this.csvRef;
+        const headers = this.csvHeaderNames;
+        const restoring = !headers.length && !!this.csvRef;
         for (const id of ['longitudeField', 'latitudeField', 'csvGeometry', 'csvTime']) {
             const select = $<HTMLSelectElement>(id), previous = config ? config[id === 'csvGeometry' ? 'geometryField' : id === 'csvTime' ? 'timeField' : id as 'longitudeField' | 'latitudeField'] : select.value;
             // Preserve saved mappings while IndexedDB loads the file, including
@@ -292,32 +298,40 @@ export class DataSources {
                 select.value = headers.find(h => pattern.test(h)) ?? '';
             }
         }
-        const rejected = parsed?.issues.reduce((n, issue) => n + issue.count, 0) ?? 0;
-        $('csvFileStatus').textContent = this.fileName ? restoring ? `Reading ${this.fileName}…` : `${this.fileName} · ${headers.length} columns${rejected ? ` · ${rejected} malformed row(s) will be skipped; details appear after import.` : ''}` : 'Choose a file to populate its columns.';
+        $('csvFileStatus').textContent = this.fileName ? restoring ? `Reading ${this.fileName}…` : `${this.fileName} · ${headers.length} columns · Rows are validated during import.` : 'Choose a file to populate its columns.';
     }
     private showError(e: unknown) { $('sourceError').textContent = (e as Error).message; $('sourceError').hidden = false; }
+    private async inspectCSV(file: Blob, config?: Config, revision = this.fileRevision) {
+        $<HTMLButtonElement>('updateSource').disabled = true;
+        try {
+            const headers = await csvHeaders(file, input('delimiter').value);
+            if (revision !== this.fileRevision) return;
+            this.csvBlob = file; this.csvHeaderNames = headers;
+            this.csvColumns(config); $('sourceError').hidden = true;
+        } catch (e) { if (revision === this.fileRevision) this.showError(e); }
+        finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
+    }
     private async readCSV() {
         const file = input('csvFile').files?.[0], revision = ++this.fileRevision;
         if (!file) return;
         $<HTMLButtonElement>('updateSource').disabled = true;
         try {
-            const text = await file.text();
+            const headers = await csvHeaders(file, input('delimiter').value);
             if (revision !== this.fileRevision) return;
-            const parsed = parseCSV(text, input('delimiter').value);
             if (this.editing?.config.type === 'csv') {
                 const mapped = ['longitudeField', 'latitudeField', 'geometryField', 'timeField'] as const;
                 const savedFields = currentAnalysis?.state.analyses.find(s => s.id === this.editing!.id)?.fields.map(f => f.name) ?? [];
-                const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields])].filter(k => k && !parsed.headers.includes(k));
+                const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields])].filter(k => k && !headers.includes(k));
                 if (missing.length) throw Error('The chosen CSV is missing configured columns: ' + missing.join(', '));
             }
-            this.csvText = text; this.csvRef = createUUID(); this.fileName = file.name;
+            this.csvText = ''; this.csvBlob = file; this.csvHeaderNames = headers; this.csvRef = createUUID(); this.fileName = file.name;
             this.csvColumns(this.editing?.config); $('sourceError').hidden = true;
         } catch (e) { if (revision === this.fileRevision) this.showError(e); }
         finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
     }
     private config(): Config {
         const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
-        if (config.type === 'csv') Object.assign(config, { csvText: this.csvRef === this.editing?.config.csvRef ? this.editing.config.csvText : this.csvText, csvRef: this.csvRef, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value });
+        if (config.type === 'csv') Object.assign(config, { csvText: this.csvText, csvRef: this.csvRef, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value });
         return config;
     }
     private updateSource() {
@@ -325,6 +339,7 @@ export class DataSources {
             const config = this.config(); validateConfig(config);
             const name = input('sourceName').value.trim();
             if (!name) throw Error('Enter a source name.');
+            if (config.type === 'csv' && this.csvBlob) stageCSVFile(config.csvRef, this.csvBlob);
             if (this.editing) { this.editing.name = name; this.editing.config = config; }
             else if (this.draft.sources.length < 8) this.draft.sources.push({ id: createUUID(), name, config, enabled: true });
             this.close(); this.render();

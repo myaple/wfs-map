@@ -555,6 +555,7 @@ async function performLoad(s: Source) {
             const m = e.data;
             if (m.type === 'chartReply') { const reply = chartReplies.get(m.token); chartReplies.delete(m.token); if (m.error) reply?.reject(Error(m.error)); else reply?.resolve(m.result); return; }
             try {
+                if (m.type === 'csvScan') s.status = `Scanning CSV types… ${Math.round(m.bytes / m.fileBytes * 100)}% · ${m.rows.toLocaleString()} rows checked`;
                 if (m.type === 'init') {
                     s.total = m.total;
                     s.layer.allocate(m.capacity);

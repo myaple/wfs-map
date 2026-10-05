@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCSV, csvDataset, csvImportSummary } from '../src/csv.ts';
+import { parseCSV, csvDataset, csvImportSummary, CSVParser, csvHeaders, streamCSV, ingestCSV } from '../src/csv.ts';
 import { defaultConfig } from '../src/source-settings.ts';
 import { Store } from '../src/store.ts';
 import { packPositions } from '../src/data.ts';
@@ -93,4 +93,39 @@ test('CSV failure reports all rejected rows and bounded examples; broken quoting
     const parsed = parseCSV('a,b\n"bad"extra,"multiple\nlines"\nvalid,record');
     assert.equal(parsed.totalRows, 2); assert.deepEqual(parsed.rows, [['valid', 'record']]);
     assert.deepEqual(parsed.rowLines, [4]); assert.equal(parsed.issues[0].count, 1);
+});
+
+test('incremental CSV handles every character boundary including quotes, multiline CRLF, BOM and UTF-8', async () => {
+    const text = '\uFEFFlon,lat,t,note\r\n-1,54,2026-10-01,"東京, café\r\nsecond ""quote"""\r\n-2,53,,\r\n,54,,bad\r\n-1,54\r\n';
+    const expected = parseCSV(text);
+    for (const width of [1, 2, 3, 7, 64, 1000]) {
+        const rows = [], rowLines = [];
+        const parser = new CSVParser(',', (row, line) => { rows.push(row); rowLines.push(line); });
+        for (let i = 0; i < text.length; i += width) parser.feed(text.slice(i, i + width));
+        const { headers, totalRows, issues } = parser.finish();
+        assert.deepEqual({ headers, rows, rowLines, totalRows, issues }, expected);
+        const streamed = [], lines = [];
+        const metadata = await streamCSV(new Blob([text]), ',', (row, line) => { streamed.push(row); lines.push(line); }, undefined, width);
+        assert.deepEqual(streamed, expected.rows); assert.deepEqual(lines, expected.rowLines);
+        assert.deepEqual(metadata.issues, expected.issues);
+    }
+    assert.deepEqual(await csvHeaders(new Blob([text])), expected.headers);
+    assert.deepEqual(await csvHeaders(new Blob(['"a\nb",c\n"unterminated body'])), ['a\nb', 'c']);
+});
+test('streamed ingestion exactly matches synchronous typing, nulls, bounds, IDs and rejection reports', async () => {
+    const c = config('lon,lat,t,mixed,boolean\n-1,54,2026-10-01,1,true\n-2,53,,text, false \n,54,bad,2,true\n-2,53,bad,2,true\n-1,54\n-3,52,2026-10-03,3,true', { timeField: 't' });
+    for (const bounds of [{}, { time: { start: '2026-10-01', end: '2026-10-02' } }]) {
+        const expected = csvDataset(c, bounds), features = []; let fields;
+        const result = await ingestCSV(new Blob([c.csvText]), c, bounds, f => fields = f, batch => features.push(...batch));
+        assert.deepEqual({ fields, features, report: result.report }, expected);
+    }
+    await assert.rejects(ingestCSV(new Blob(['lon,lat\n,54']), c, {}, () => {}, () => {}), /column "t" was not found/);
+});
+test('streamed ingestion has bounded feature batches and checks whole-file types beyond the first batch', async () => {
+    const c = config('lon,lat,value\n' + '-1,54,1\n'.repeat(50001) + '-1,54,text');
+    const sizes = []; let fields;
+    const { report } = await ingestCSV(new Blob([c.csvText]), c, {}, f => fields = f, batch => sizes.push(batch.length));
+    assert.deepEqual(sizes, [25000, 25000, 2]);
+    assert.equal(fields.find(f => f.name === 'value').kind, 'string');
+    assert.equal(report.imported, 50002);
 });
