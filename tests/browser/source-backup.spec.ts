@@ -78,7 +78,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
         expect(after.sources[1].config.csvRef).not.toBe(before.sources[1].config.csvRef);
         expect(await receiver.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.loaded))).toEqual([17, 3, 0]);
         expect(await receiver.evaluate(() => (window as any).__WFS_MAP__.sources[1].selected)).toBe(3);
-        await receiver.locator('#analysisLink').click(); await expect(receiver.locator('#size')).toHaveValue('4.5');
+        await navigate(receiver, 'analysis'); await expect(receiver.locator('#size')).toHaveValue('4.5');
         const view = await receiver.evaluate(() => { const m = (window as any).__WFS_MAP__.map; return { center: m.getCenter().toArray(), zoom: m.getZoom() }; });
         expect(view.center[0]).toBeCloseTo(-1.54, 7); expect(view.center[1]).toBeCloseTo(53.99, 7); expect(view.zoom).toBeCloseTo(12.5);
         await receiver.reload(); await receiver.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.done);
