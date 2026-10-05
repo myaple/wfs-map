@@ -101,3 +101,20 @@ test('CSV rejects all invalid rows with complete counts and no misleading partia
     await expect(page.locator('#status')).not.toContainText('Partial points are visible');
     expect(errors).toEqual([]);
 });
+
+test('CSV column type override makes numeric codes categorical and survives reload and reconfiguration', async ({ page }) => {
+    await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
+    await page.locator('#sourceName').fill('Codes'); await page.locator('#type').selectOption('csv');
+    await page.locator('#csvFile').setInputFiles({ name: 'codes.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,code,value\n-1,54,001,1\n-2,53,002,100') });
+    await page.locator('#csvTypes summary').click();
+    await page.getByLabel('Type for code', { exact: true }).selectOption('string');
+    await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
+    await page.locator('#analysisLink').click();
+    await page.locator('#colorAttribute').selectOption('code');
+    await expect(page.locator('#categoryColorCount')).toContainText('2 of 2');
+    await expect(page.getByLabel('Colour for 001', { exact: true })).toBeVisible();
+    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
+    await page.locator('#configLink').click(); await page.getByRole('button', { name: 'Configure Codes', exact: true }).click();
+    await expect(page.getByLabel('Type for code', { exact: true })).toHaveValue('string');
+});

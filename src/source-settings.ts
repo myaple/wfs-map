@@ -1,7 +1,7 @@
 import { createUUID } from './uuid.ts';
-export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField'] as const;
+export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField', 'fieldTypes'] as const;
 export type Config = Record<typeof configKeys[number], string>;
-export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '' };
+export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '', fieldTypes: '{}' };
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
@@ -46,8 +46,18 @@ export function readSettings(): Settings {
         return { sources, background: { ...defaultBackground, ...oldBackground }, ...(map ? { map } : {}) };
     } catch { return empty; }
 }
+export type CSVFieldKind = 'string' | 'number' | 'boolean' | 'date';
+export function csvFieldTypes(config: Config): Record<string, CSVFieldKind> {
+    let types: unknown;
+    try { types = JSON.parse(config.fieldTypes || '{}'); } catch { throw Error('Invalid CSV column type overrides.'); }
+    if (!types || typeof types !== 'object' || Array.isArray(types) || Object.values(types).some(v => !['string', 'number', 'boolean', 'date'].includes(v))) throw Error('Invalid CSV column type overrides.');
+    const result = types as Record<string, CSVFieldKind>;
+    if (config.timeField && Object.hasOwn(result, config.timeField) && result[config.timeField] !== 'date') throw Error('The selected CSV time attribute must use Date / time or Automatic.');
+    return result;
+}
 export function validateConfig(config: Config) {
     if (config.type === 'csv') {
+        csvFieldTypes(config);
         if (!config.csvRef && !config.csvText.trim()) throw Error('Choose a CSV file.');
         if (!['xy', 'wkt', 'geojson'].includes(config.geometryMode)) throw Error('Choose a CSV geometry format.');
         if (config.geometryMode === 'xy' ? !config.longitudeField || !config.latitudeField : !config.geometryField) throw Error('Choose the CSV geometry columns.');

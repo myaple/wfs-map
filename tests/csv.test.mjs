@@ -129,3 +129,21 @@ test('streamed ingestion has bounded feature batches and checks whole-file types
     assert.equal(fields.find(f => f.name === 'value').kind, 'string');
     assert.equal(report.imported, 50002);
 });
+
+test('CSV overrides preserve numeric categories and reject invalid explicit types in both ingestion paths', async () => {
+    const c = config('lon,lat,code,value,flag,when\n-1,54,001,2,true,2026-10-01\n-1,54,002,oops,false,2026-10-02\n-1,54,003,3,yes,2026-10-03\n-1,54,,,,', { fieldTypes: JSON.stringify({ code: 'string', value: 'number', flag: 'boolean', when: 'date' }) });
+    const expected = csvDataset(c);
+    assert.equal(expected.fields.find(f => f.name === 'code').kind, 'string');
+    assert.equal(expected.features[0].properties.code, '001');
+    assert.equal(expected.features[0].properties.when, '2026-10-01T00:00:00.000Z');
+    assert.equal(expected.features[1].properties.code, null);
+    assert.deepEqual(expected.report.issues.map(i => i.reason), ['Invalid number in "value"', 'Expected true or false in "flag"']);
+    const features = []; let fields;
+    const { report } = await ingestCSV(new Blob([c.csvText]), c, {}, f => fields = f, batch => features.push(...batch));
+    assert.deepEqual({ fields, features, report }, expected);
+    const store = new Store(fields); store.append(features); store.finish();
+    assert.deepEqual([...(await store.filter([{ field: 'code', op: 'eq', value: '001' }]))], [0]);
+    assert.throws(() => csvDataset({ ...c, fieldTypes: '{' }), /Invalid CSV/);
+    assert.throws(() => csvDataset({ ...c, fieldTypes: '{"absent":"string"}' }), /was not found/);
+    assert.throws(() => csvDataset({ ...c, timeField: 'when', fieldTypes: '{"when":"string"}' }), /time attribute must/);
+});

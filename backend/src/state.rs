@@ -124,10 +124,21 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                 "geometryMode",
                 "longitudeField",
                 "latitudeField",
+                "fieldTypes",
             ],
         )?;
         for value in c.values() {
             string(value)?;
+        }
+        if let Some(types) = c.get("fieldTypes") {
+            let types: Value = serde_json::from_str(types.as_str().ok_or("Invalid CSV column types")?).map_err(|_| "Invalid CSV column types")?;
+            let types = types.as_object().ok_or("Invalid CSV column types")?;
+            for kind in types.values() {
+                if !matches!(kind.as_str(), Some("string" | "number" | "boolean" | "date")) { return Err("Invalid CSV column type"); }
+            }
+            if let Some(time) = c.get("timeField").and_then(Value::as_str) {
+                if types.get(time).is_some_and(|kind| kind.as_str() != Some("date")) { return Err("Invalid CSV time column type"); }
+            }
         }
         if !matches!(
             config.get("type").and_then(Value::as_str),
@@ -330,6 +341,16 @@ mod tests {
         }
         v["analyses"][0]["charts"][0]["series"][0]["rows"] = serde_json::json!([1, 2]);
         assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn validates_csv_column_type_overrides() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"csv","name":"CSV","enabled":true,"config":{"type":"csv","timeField":"t","fieldTypes":"{\"code\":\"string\",\"t\":\"date\"}"}}]);
+        assert!(validate(&v).is_ok());
+        for types in ["{", "[]", "{\"code\":\"bogus\"}", "{\"t\":\"string\"}"] {
+            v["settings"]["sources"][0]["config"]["fieldTypes"] = types.into();
+            assert!(validate(&v).is_err());
+        }
     }
     #[test]
     fn rejects_local_observation_indices_and_deep_filters() {
