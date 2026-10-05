@@ -3,7 +3,24 @@ import assert from 'node:assert/strict';
 import { parseCSV, csvDataset } from '../src/csv.ts';
 import { defaultConfig } from '../src/source-settings.ts';
 import { Store } from '../src/store.ts';
+import { packPositions } from '../src/data.ts';
+import { exportCSV } from '../src/csv-export.ts';
 const config = (csvText, extra = {}) => ({ ...defaultConfig, type: 'csv', csvText, longitudeField: 'lon', latitudeField: 'lat', ...extra });
+test('CSV polar points retain original coordinates in records, filters and exports', async () => {
+    const dataset = csvDataset(config('lon,lat,t\n10,90,2026-10-01\n20,-90,2026-10-02\n30,54,2026-10-03', { timeField: 't' }));
+    const positions = packPositions(dataset.features);
+    assert.equal(positions[1], 0); assert.equal(positions[5], 1);
+    const store = new Store(dataset.fields); store.append(dataset.features); store.finish();
+    assert.deepEqual(store.get(0).coordinates, [10,90]);
+    assert.deepEqual(store.get(1).coordinates, [20,-90]);
+    assert.deepEqual([...(await store.filter([{ field: 'lat', op: 'gt', value: '85' }]))], [0]);
+    const exported = parseCSV(await (await exportCSV(store, null)).text());
+    assert.equal(exported.rows[0][2], '90'); assert.equal(exported.rows[1][2], '-90');
+    const bounded = csvDataset(config('lon,lat\n10,90\n20,54'), { bbox: { west: 0, east: 30, south: 50, north: 85 } });
+    assert.deepEqual(bounded.features.map(f=>f.id), ['csv.3']);
+    for (const [geometryMode, csvText] of [['wkt','geom\nPOINT (10 90)'], ['geojson','geom\n"{""type"":""Point"",""coordinates"":[10,-90]}"']])
+        assert.equal(Math.abs(csvDataset(config(csvText, { geometryMode, geometryField: 'geom' })).features[0].geometry.coordinates[1]),90);
+});
 test('CSV quoting, multiline fields, CRLF, BOM and alternate delimiters', () => {
     assert.deepEqual(parseCSV('\uFEFFname,notes\r\n"a,b","first\nsecond ""quote"""\r\n').rows, [['a,b', 'first\nsecond "quote"']]);
     assert.deepEqual(parseCSV('x;y\n1;2', ';').rows, [['1', '2']]);
@@ -30,7 +47,7 @@ test('CSV Point geometry formats and invalid rows fail with row context', () => 
     for (const [geometryMode, csvText] of [['wkt', 'geom\nPOINT (-1 54)'], ['geojson', 'geom\n"{""type"":""Point"",""coordinates"":[-1,54]}"']]) {
         assert.deepEqual(csvDataset(config(csvText, { geometryMode, geometryField: 'geom' })).features[0].geometry.coordinates, [-1, 54]);
     }
-    for (const csvText of ['lon,lat\n,54', 'lon,lat\n-1,90', 'lon,lat\ninvalid,54']) assert.throws(() => csvDataset(config(csvText)), /CSV row 2/);
+    for (const csvText of ['lon,lat\n,54', 'lon,lat\n-1,91', 'lon,lat\ninvalid,54']) assert.throws(() => csvDataset(config(csvText)), /CSV row 2/);
     assert.throws(() => csvDataset(config('lon,lat,t\n-1,54,bad', { timeField: 't' })), /row 2.*Invalid ISO/);
     assert.throws(() => csvDataset(config('geom\nLINESTRING (0 0, 1 1)', { geometryMode: 'wkt', geometryField: 'geom' })));
 });

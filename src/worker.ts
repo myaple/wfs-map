@@ -4,7 +4,7 @@ import type { Config as SourceConfig } from './source-settings.ts';
 import type { QueryBounds } from './wfs-query.ts';
 import { Analyzer, all } from './analysis.ts';
 import { timeField } from './timeline-data.ts';
-import { decodePage, countFrom, inferFields, packPositions, spatialPage, wfsURL, type Field, type Rule } from './data.ts';
+import { decodePage, countFrom, inferFields, packPositions, latitudeClampWarning, spatialPage, wfsURL, type Field, type Rule } from './data.ts';
 import { Store } from './store.ts';
 import { RecordsIndex, recordsCSV } from './records.ts';
 import { exportCSV } from './csv-export.ts';
@@ -60,7 +60,7 @@ async function load(c: Config) {
         }
     }
     post({ type: 'init', capacity: Math.min(total ?? c.limit, c.limit), total, warning });
-    let loaded = 0, pages = 0, parseMs = 0, bytes = 0, previousSignature = '';
+    let loaded = 0, pages = 0, parseMs = 0, bytes = 0, previousSignature = '', clamped = 0;
     const getPage = (offset: number) => fetchText(wfsURL(c.url, c.version, 'GetFeature', { ...common, outputFormat: c.format, startIndex: String(offset), [countParam]: String(Math.min(c.pageSize, c.limit - offset)) }));
     // One bounded lookahead request overlaps server generation/transfer with column packing.
     // Wrap rejections immediately so a failing prefetched request is never unhandled.
@@ -101,7 +101,7 @@ async function load(c: Config) {
             store = new Store(inferFields(page.features, c.fields));
             post({ type: 'fields', fields: store.fields });
         }
-        const positions = packPositions(page.features);
+        const positions = packPositions(page.features, count => clamped += count);
         const spatial = spatialPage(positions, loaded);
         store.append(page.features);
         parseMs += performance.now() - pstart;
@@ -117,7 +117,7 @@ async function load(c: Config) {
     if (store)
         analyzer = new Analyzer(store);
     post({ type: 'done', loaded, total, timeline: timelineExtent(c.timeField), bounds: store?.bounds, pages, bytes, parseMs, elapsedMs: performance.now() - start,
-        truncated: total !== undefined ? loaded < total : loaded === c.limit, warning: warning + (loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '') });
+        truncated: total !== undefined ? loaded < total : loaded === c.limit, warning: [warning.trim(), loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '', latitudeClampWarning(clamped)].filter(Boolean).join(' ') });
 }
 async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: string) {
     const start = performance.now();
@@ -126,17 +126,17 @@ async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: str
     store = new Store(dataset.fields);
     post({ type: 'init', capacity: total, total });
     post({ type: 'fields', fields: store.fields });
-    let pages = 0;
+    let pages = 0, clamped = 0;
     for (let offset = 0; offset < total; offset += 50000) {
         const features = dataset.features.slice(offset, offset + 50000);
-        const positions = packPositions(features), spatial = spatialPage(positions, offset);
+        const positions = packPositions(features, count => clamped += count), spatial = spatialPage(positions, offset);
         store.append(features); pages++;
         post({ type: 'chunk', offset, positions, ...spatial }, [positions.buffer, spatial.indices.buffer, spatial.groups.buffer]);
         post({ type: 'progress', loaded: offset + features.length, total, pages, elapsedMs: performance.now() - start });
         await new Promise(resolve => setTimeout(resolve, 0));
     }
     store.finish(); analyzer = new Analyzer(store);
-    post({ type: 'done', loaded: total, total, timeline: timelineExtent(config.timeField), bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false });
+    post({ type: 'done', loaded: total, total, timeline: timelineExtent(config.timeField), bounds: store.bounds, pages, bytes: new TextEncoder().encode(config.csvText).byteLength, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false, warning: latitudeClampWarning(clamped) });
 }
 function timelineExtent(configured?: string) {
     if (!store || !analyzer) return;
