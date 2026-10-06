@@ -94,99 +94,14 @@ test('legend tracks palette edits, filters, disabled sources and dark mode', asy
 });
 
 
-test('legend buttons select exact categories, numeric edges and missing values in the owning source without WFS reload', async ({ page }) => {
+test('map legend stays informational: clicking entries neither filters nor hides any source', async ({ page }) => {
     await seed(page);
-    let requests = 0; page.on('request', r => { if (new URL(r.url()).pathname === '/wfs') requests++; });
-    const indices = (id: string) => page.evaluate(id => Array.from((window as any).__WFS_MAP__.sources.find((s: any) => s.id === id).layer.indices ?? []), id);
-    const ready = () => page.waitForFunction(() => (window as any).__WFS_MAP__.sources.every((s: any) => !s.filtering));
-    const clear = async (id: string) => { await page.evaluate(id => { const h = (window as any).__WFS_MAP__; h.sources.find((s: any) => s.id === id).workspace.clearFilters(); }, id); await ready(); };
-    await page.getByRole('button', { name: 'Filter Categories: Category-000', exact: true }).click();
-    await ready(); expect(await indices('categories')).toEqual([0]);
-    expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.find((s: any) => s.id === 'gradient').selected)).toBe(3);
-    await clear('categories');
-    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = 237 * 44);
-    await page.getByRole('button', { name: 'Filter Categories: Missing value', exact: true }).click();
-    await ready(); expect(await indices('categories')).toEqual([240]);
-    await page.getByRole('button', { name: 'Filter Gradient: 0 – 2', exact: true }).focus(); await page.keyboard.press('Enter');
-    await ready(); expect(await indices('gradient')).toEqual([0]);
-    await clear('gradient');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.every((s: any) => !s.filtering));
+    const snapshot = () => page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => ({ id: s.id, enabled: s.enabled, selected: s.selected, request: s.filterRequest, expression: s.workspace.expression(), visible: s.layer.visible })));
+    const before = await snapshot();
+    await page.locator('.map-legend-row').first().click();
     await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
-    await page.locator('#enlargeMap').click();
-    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
-    await page.getByRole('button', { name: 'Filter Gradient: 14 – 16', exact: true }).click();
-    await ready(); expect(await indices('gradient')).toEqual([1]);
-    await clear('gradient');
-    await page.getByRole('button', { name: 'Filter Gradient: Missing value', exact: true }).click();
-    await ready(); expect(await indices('gradient')).toEqual([2]);
-    await page.keyboard.press('Escape');
-    expect(requests).toBe(0);
-});
-
-test('numeric legend bin predicates match colour codes at every edge and Log10 grey values', async ({ page }) => {
-    await page.addInitScript(config => localStorage.setItem('wfs-settings', JSON.stringify({ sources: [{ id: 'edges', name: 'Edges', enabled: true,
-        config: { ...config, type: 'csv', longitudeField: 'lon', latitudeField: 'lat', csvText: 'lon,lat,value\n' + [-1,0,1,2,4,8,16,32,64,128,256,null].map(v => `-1,54,${v ?? ''}`).join('\n') },
-        coloring: { field: 'value', bins: 8, low: '#000000', high: '#ffffff' } }], background: { url: '', attribution: '', enabled: false } })), defaultConfig);
-    await page.goto('/?time=all&autoload=1');
-    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.colorLabels?.length === 8);
-    for (const scale of ['linear', 'log10']) {
-        await page.locator('#colorScale').selectOption(scale);
-        await expect(page.locator('#colorLegend')).toContainText(scale === 'log10' ? 'Log10' : 'grey = missing');
-        const expected = await page.evaluate(() => { const s = (window as any).__WFS_MAP__.sources[0]; return { codes: Array.from(s.layer.colorCodes) as number[], labels: [...s.colorLabels] }; });
-        for (let bin = 0; bin <= 8; bin++) {
-            await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].workspace.clearFilters());
-            await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
-            await page.locator('.map-legend-viewport').evaluate((el, bin) => el.scrollTop = bin * 44, bin);
-            const label = bin < 8 ? expected.labels[bin] : scale === 'log10' ? 'Missing / non-positive value' : 'Missing value';
-            await page.getByRole('button', { name: `Filter Edges: ${label}`, exact: true }).click();
-            await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
-            const actual = await page.evaluate(() => Array.from((window as any).__WFS_MAP__.layer.indices));
-            expect(actual).toEqual(expected.codes.flatMap((code, i) => code === (bin < 8 ? bin : 255) ? [i] : []));
-        }
-    }
-});
-
-test('legend selection isolates the whole map, switches sources including solid colours, and restores visibility without unloading', async ({ page }) => {
-    await seed(page);
-    const visible = () => page.evaluate(() => (window as any).__WFS_MAP__.sources.filter((s: any) => s.layer.visible).map((s: any) => s.id));
-    const baseline = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => ({ id: s.id, enabled: s.enabled, loaded: s.loaded, request: s.request, selected: s.selected })));
-    await expect(page.getByRole('button', { name: 'Show all map sources', exact: true })).toBeHidden();
-    await page.getByRole('button', { name: 'Filter Categories: Category-000', exact: true }).click();
-    await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
-    expect(await visible()).toEqual(['categories']);
-    await expect(page.locator('#sourceSummary')).toContainText('Gradient: hidden on map');
-    await expect(page.locator('#hud')).toHaveText('Categories · 1 points shown');
-    const retained = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => ({ id: s.id, enabled: s.enabled, loaded: s.loaded, request: s.request, selected: s.selected })));
-    expect(retained.map(s => ({ ...s, selected: baseline.find(b => b.id === s.id)!.selected }))).toEqual(baseline);
-    const hiddenPoint = await page.evaluate(() => { const h = (window as any).__WFS_MAP__, p = h.map.project([-2,53]), r = h.map.getCanvas().getBoundingClientRect(); return { x: r.x + p.x, y: r.y + p.y, hits: [...h.sources[1].layer.pickAll(p.x,p.y)] }; });
-    expect(hiddenPoint.hits).toEqual([]);
-    await page.mouse.dblclick(hiddenPoint.x, hiddenPoint.y);
-    await expect(page.locator('.metadata')).toHaveCount(0);
-    await expect(page.getByRole('dialog', { name: /Choose a record/ })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Show all map sources', exact: true }).click();
-    expect(await visible()).toEqual(['categories', 'gradient', 'solid']);
-    await page.locator('#enlargeMap').click();
-    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
-    await page.getByRole('button', { name: 'Filter Solid: All points', exact: true }).click();
-    expect(await visible()).toEqual(['solid']);
-    await page.locator('#fit').click();
-    const center = await page.evaluate(() => (window as any).__WFS_MAP__.map.getCenter());
-    expect(center.lng).toBeCloseTo(-3); expect(center.lat).toBeCloseTo(52);
-    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
-    await page.getByRole('button', { name: 'Filter Gradient: 14 – 16', exact: true }).click();
-    await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[1].filtering);
-    expect(await visible()).toEqual(['gradient']);
-    await expect(page.locator('#hud')).toHaveText('Gradient · 1 points shown');
-    const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds);
-    const b = (await page.locator('#map canvas').boundingBox())!;
-    await page.mouse.dblclick(b.x + b.width * .5, b.y + b.height * .5, { button: 'right', delay: 50 });
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.filter((s: any) => s.enabled).every((s: any) => !s.filtering && s.selected === s.loaded));
-    expect(await visible()).toEqual(['categories', 'gradient', 'solid']);
-    expect(await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds)).toEqual(bounds);
-    await page.keyboard.press('Escape');
-    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = 0);
-    await page.getByRole('button', { name: 'Filter Categories: Category-000', exact: true }).click();
-    await navigate(page, 'configuration'); await page.getByLabel('Enable Categories', { exact: true }).uncheck();
-    await page.locator('#saveSettings').click(); await navigate(page, 'analysis');
-    expect(await visible()).toEqual(['gradient', 'solid']);
-    await expect(page.getByRole('button', { name: 'Show all map sources', exact: true })).toBeHidden();
+    await page.locator('[data-source=gradient]').filter({ hasText: '14 – 16' }).click();
+    expect(await snapshot()).toEqual(before);
+    await expect(page.locator('#mapLegend button')).toHaveCount(0);
 });
