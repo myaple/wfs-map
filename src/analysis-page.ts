@@ -14,8 +14,8 @@ import { MapLegend } from './map-legend.ts';
 import { mountThemeToggle, themeColor } from './theme.ts';
 import { formatUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
-import { configurationState, type SourceAnalysis } from './analysis-state.ts';
-import { currentAnalysis, mountAnalysisControls, rememberBindings } from './saved-analysis.ts';
+import { configurationState, type AnalysisState, type SourceAnalysis } from './analysis-state.ts';
+import { currentAnalysis, mountAnalysisControls, rememberBindings, localAnalysisKey } from './saved-analysis.ts';
 import { fileUser } from './source-storage.ts';
 import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
@@ -41,7 +41,7 @@ $('app').innerHTML = `
 <section id="configuration" hidden></section>
 <section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div><details id="advancedServerFilters" class="server-filter-panel"><summary>Advanced server filters</summary></details></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply to points already loaded for this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
 
-<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">Enlarge</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
+<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">⤢</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section><div id="timelineHost" hidden></div>`;
 mountThemeToggle(document.querySelector('.topbar')!);
@@ -100,8 +100,11 @@ const colors: [
     number,
     number
 ][] = [[.02, .45, .68], [.83, .39, .17], [.5, .31, .71], [.05, .59, .42], [.75, .24, .43], [.35, .4, .55], [.57, .52, .15], [.1, .6, .65]];
+let localAnalysis: AnalysisState | undefined;
+if (!currentAnalysis) { try { localAnalysis = JSON.parse(localStorage.getItem(localAnalysisKey()) ?? 'null') ?? undefined; } catch {} }
+const initialState = currentAnalysis?.state ?? localAnalysis;
 const settings = readSettings();
-const savedAnalyses = new Map((currentAnalysis?.state.analyses ?? []).map(s => [s.id, structuredClone(s)]));
+const savedAnalyses = new Map((initialState?.analyses ?? []).map(s => [s.id, structuredClone(s)]));
 let background = settings.background;
 let mapSettings: MapSettings = settings.map ?? { center: [-3, 54], zoom: 5, pointSize: 2 };
 let preserveMapView = !!settings.map;
@@ -117,7 +120,8 @@ const timeline = new Timeline($('timelineHost'), () => {
     }
     refreshMultiCharts();
 });
-const savedQuery = currentAnalysis?.state.query;
+timeline.restoreWindow(initialState?.timeline);
+const savedQuery = initialState?.query;
 let queryBounds: QueryBounds = savedQuery ? { ...structuredClone(savedQuery.bounds), ...(savedQuery.choice === 'all' ? { time: undefined } : savedQuery.choice !== 'custom' ? { time: timeBounds(Number(savedQuery.choice)) } : {}) } : params.get('time') === 'all' ? {} : { time: timeBounds(24) };
 if (queryBounds.time) queryBounds.time = { start: utcISO(queryBounds.time.start), end: utcISO(queryBounds.time.end) };
 let filterSourceId = '', popup: maplibregl.Popup | undefined, benchmarkRunning = false, mapReady = false, loadSlots = 0;
@@ -405,7 +409,7 @@ function restoreMap() {
     $('map').after($('mapLegend'));
     mapPlaceholder?.replaceWith(mapPanel); mapPlaceholder = undefined;
     dialog.close(); dialog.remove();
-    enlargeMap.textContent = 'Enlarge';
+    enlargeMap.textContent = '⤢';
     enlargeMap.setAttribute('aria-label', 'Enlarge map');
     enlargeMap.setAttribute('aria-expanded', 'false');
     map.resize();
@@ -425,7 +429,7 @@ enlargeMap.onclick = () => {
     document.body.append(dialog); dialog.append(mapPanel);
     window.dispatchEvent(new CustomEvent('timelinehost', { detail: dialog }));
     $('map').append($('mapLegend'));
-    enlargeMap.textContent = 'Return to normal size';
+    enlargeMap.textContent = '⤡';
     enlargeMap.setAttribute('aria-label', 'Return map to normal size');
     enlargeMap.setAttribute('aria-expanded', 'true');
     dialog.addEventListener('close', () => { if (mapDialog === dialog) restoreMap(); });
@@ -438,7 +442,7 @@ new ResizeObserver(() => map.resize()).observe($('map'));
 function status(text: string, error = false) { $('status').textContent = text; $('status').classList.toggle('error', error); }
 function enabled(id: string, on: boolean) { $<HTMLButtonElement>(id).disabled = !on; }
 function state() {
-    timeline.update(sources.filter(s => s.enabled && s.done).map(s => ({ name: s.name, extent: s.timeline, loaded: s.loaded })));
+    timeline.update(sources.filter(s => s.enabled && s.done).map(s => ({ name: s.name, extent: s.timeline, loaded: s.loaded })), loadSlots === 0 && loadQueue.length === 0);
     recordPage.refresh();
     derivedPanel.refresh();
     const s = filterSource(), enabledSources = sources.filter(s => s.enabled);
@@ -1024,6 +1028,10 @@ function savedState() {
         const saved = savedAnalyses.get(s.id);
         return saved && !s.workspace.fields.length ? saved : { id: s.id, fields: s.workspace.fields, expression: s.workspace.expression(), charts: s.workspace.specs };
     });
-    return configurationState(snapshot(), { choice: value('timeWindow'), bounds: queryBounds }, analyses);
+    return configurationState(snapshot(), { choice: value('timeWindow'), bounds: queryBounds }, analyses, timeline.savedWindow);
 }
-mountAnalysisControls(savedState, $('remoteAnalysisControls'));
+mountAnalysisControls(savedState, $('remoteAnalysisControls'), timeline.root.querySelector('.timeline-bar')!, () => {
+    const state = savedState();
+    localStorage.setItem(localAnalysisKey(), JSON.stringify(state));
+    localStorage.setItem(settingsKey, JSON.stringify(state.settings));
+});

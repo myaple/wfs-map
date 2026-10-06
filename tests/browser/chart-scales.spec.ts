@@ -57,7 +57,7 @@ test('Independent Log10 axes, fitted filtering, brush membership, enlargement an
     await page.mouse.move(b.x + rect.right - 1, b.y + rect.bottom - 1); await page.mouse.up({ button: 'right' });
     await page.locator('#apply').click(); await expect(page.locator('#filterStatus')).toContainText('2 matches');
     await navigate(page, 'configuration');
-    await page.getByRole('button', { name: 'Save analysis', exact: true }).click();
+    await page.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save analysis', exact: true }).click();
     await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     await navigate(page, 'analysis');

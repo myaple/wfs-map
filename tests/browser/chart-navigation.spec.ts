@@ -132,6 +132,7 @@ test('pie and time charts share zoom/select gestures; removing an enlarged chart
     await expect(page.locator('#rules .selection')).toHaveCount(1);
     await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
     await page.locator('.chart-card').first().getByRole('button', { name: 'Enlarge', exact: true }).click();
+    page.once('dialog', dialog => dialog.accept());
     await page.getByRole('dialog').getByRole('button', { name: 'Remove chart', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.chart-card')).toHaveCount(2);

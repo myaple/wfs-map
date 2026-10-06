@@ -30,7 +30,7 @@ async function attach(page: Page, text: string) {
     await navigate(page, 'analysis');
 }
 const save = async (page: Page) => {
-    await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Save analysis', exact: true }).click();
+    await navigate(page, 'configuration'); await page.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save analysis', exact: true }).click();
     await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
 };
 
@@ -104,7 +104,7 @@ test('real browser tabs restore independent WFS analyses, map views and filters 
         await expect(stale.locator('#filterStatus')).toContainText('4 matches');
         await page.getByLabel('Analysis name', { exact: true }).fill('Updated alpha');
         await save(page);
-        await navigate(stale, 'configuration'); await stale.getByRole('button', { name: 'Save analysis', exact: true }).click();
+        await navigate(stale, 'configuration'); await stale.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save analysis', exact: true }).click();
         await expect(stale.locator('.saved-analysis-bar')).toContainText('newer version');
         expect((await (await request.get('/api/analyses/' + alpha.id)).json()).name).toBe('Updated alpha');
         await other.reload();
@@ -137,9 +137,9 @@ test('CSV files stay local and isolated across users in one browser; shared atta
         await expect(page.locator('#app')).toContainText('Analysis not found');
         await page.goto(sharedURL.pathname + sharedURL.search);
         await expect(page.locator('#status')).toContainText('file is missing');
-        await expect(page.getByRole('button', { name: 'Save analysis', exact: true })).toHaveCount(0);
+        await expect(page.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save analysis', exact: true })).toHaveCount(0);
         // A copy also cannot pick up the owner's cached reference.
-        await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Save a copy', exact: true }).click();
+        await navigate(page, 'configuration'); await page.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save a copy', exact: true }).click();
         await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue(doc.name + ' (copy)');
         copyID = new URL(page.url()).searchParams.get('analysis')!;
         await expect(page.locator('#status')).toContainText('file is missing');
@@ -149,7 +149,7 @@ test('CSV files stay local and isolated across users in one browser; shared atta
         await page.reload();
         await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
         await remove(request, copyID, 'bob'); copyID = undefined;
-        await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Save a copy', exact: true }).click();
+        await navigate(page, 'configuration'); await page.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save a copy', exact: true }).click();
         await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue(doc.name + ' (copy)');
         copyID = new URL(page.url()).searchParams.get('analysis')!;
         await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
@@ -183,7 +183,7 @@ test('Save, Share and Save a copy refuse row selections without changing existin
         await expect(page.locator('#filterStatus')).toContainText('1 matches');
         for (const label of ['Save analysis', 'Share', 'Save a copy']) {
             await navigate(page, 'configuration');
-            await page.getByRole('button', { name: label, exact: true }).click();
+            await page.locator('#remoteAnalysisControls').getByRole('button', { name: label, exact: true }).click();
             await expect(page.locator('.saved-analysis-bar')).toContainText('Individual-observation selections cannot be saved');
             expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children[0])).toEqual(expr);
             expect((await (await request.get('/api/analyses/' + doc.id)).json()).revision).toBe(1);

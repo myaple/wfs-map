@@ -64,3 +64,24 @@ test('shared logarithmic domains align unequal source ranges and fit the union o
     const r = combineSeries(spec, [{ sourceId: 'a', name: 'A', color: '#2463d4', result: ar }, { sourceId: 'b', name: 'B', color: '#d45b24', result: br }]);
     assert.deepEqual([...r.raw.extent], [0, 0, 1, 1]); assert.equal(r.missing, 1); assert.equal(r.raw.rows.length, 4);
 });
+
+test('hidden sources leave original data intact and contribute no counts, percentages or raw selections', async () => {
+    const { visibleSeries } = await import('../src/multi-charts.ts');
+    const a = build([{name:'x',kind:'number'},{name:'y',kind:'number'}], [{x:1,y:2},{x:3,y:4}]);
+    const b = build([{name:'x',kind:'number'},{name:'y',kind:'number'}], [{x:5,y:6}]);
+    const domains = { x: sharedDomain(await Promise.all([a.domain('x'),b.domain('x')])), y: sharedDomain(await Promise.all([a.domain('y'),b.domain('y')])) };
+    for (const binned of [true,false]) {
+        const spec = {id:'c',type:'scatter',x:'x',y:'y',bins:8,binned,hiddenSources:['a']};
+        const ar = (await a.run(all([]), [spec], undefined, domains)).charts[0], br = (await b.run(all([]), [spec], undefined, domains)).charts[0];
+        const original = combineSeries(spec, [{sourceId:'a',name:'A',color:'#2463d4',result:ar},{sourceId:'b',name:'B',color:'#d45b24',result:br}]);
+        const visible = visibleSeries(spec, original);
+        assert.deepEqual(visible.series.map(s=>s.sourceId), ['b']);
+        if (binned) assert.equal(visible.counts.reduce((a,b)=>a+b), 1);
+        else { assert.equal(visible.raw.series.reduce((n,s)=>n+s.end-s.start,0),1); assert.equal(visible.raw.series[0].sourceId,'b'); assert.equal(visible.raw.positions,original.raw.positions); assert.equal(visible.raw.rows,original.raw.rows); }
+        const empty = visibleSeries({...spec, hiddenSources:['a','b']}, original);
+        assert.equal(empty.counts.reduce((a,b)=>a+b,0), 0); assert.deepEqual(empty.series, []);
+        if (!binned) assert.deepEqual(empty.raw.series,[]);
+        assert.equal(original.series.length,2);
+        assert.equal(visibleSeries({...spec,hiddenSources:[]},original),original);
+    }
+});
