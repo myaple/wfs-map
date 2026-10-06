@@ -35,8 +35,9 @@ export class DataSources {
           <section class="settings-card" aria-labelledby="backupTitle"><h3 id="backupTitle">Backup &amp; share</h3><p class="hint">Download the current list, including unsaved changes and disabled sources, as a .tar.gz. Includes complete CSV files, WFS connection settings, source colours, and map background, view and point size. WFS features are fetched again when loaded.</p><div class="row"><button id="exportBackup">Download backup</button><button id="importBackup">Import backup</button><input id="backupFile" type="file" accept=".tar.gz,.tgz,application/gzip" hidden aria-label="Choose backup archive"></div><p id="backupStatus" class="hint" role="status"></p><p id="backupError" class="error" role="alert" hidden></p></section>
           <details class="settings-card" id="testServer"><summary>Optional test WFS server</summary><p class="hint">Start a local server with generated points to try the app. Add its endpoint using the same connection settings as any WFS source.</p><div class="test-fields"><div><label for="points">Generated point count</label><input id="points" type="number" min="1" max="50000000" value="1000000" required></div><div><label for="distribution">Point distribution</label><select id="distribution"><option value="uk">UK spread</option><option value="world">Worldwide</option><option value="dense">Dense 2 km square</option></select></div></div><div class="row"><button id="startTestServer">Start test server</button><button id="addTestSource" disabled>Add as data source</button></div><p id="testServerStatus" class="hint" role="status">Requires the app’s Node server. The test endpoint stays running until that server restarts.</p><label for="testEndpoint" hidden id="testEndpointLabel">Test WFS endpoint</label><input id="testEndpoint" readonly hidden></details>
           <section id="analysisSave" class="settings-card analysis-save" aria-labelledby="analysisSaveTitle"><h3 id="analysisSaveTitle">Save analysis</h3>
-            <section aria-labelledby="localSaveTitle"><h4 id="localSaveTitle">Save locally</h4><div class="settings-save"><div><strong id="saveState" role="status">All changes saved</strong><p class="hint">Apply source changes and keep them in this browser. CSV files stay on this workstation. Save local changes before saving remotely.</p><p id="saveError" class="error" role="alert" hidden></p></div><div class="row"><button id="discardSettings" disabled>Discard changes</button><button id="saveSettings" class="primary" disabled>Save changes</button></div></div></section>
-            <section aria-labelledby="remoteSaveTitle"><h4 id="remoteSaveTitle">Save remotely &amp; share</h4><div id="remoteAnalysisControls"></div></section>
+            <p class="hint">Save source changes, filters, charts and map settings together. CSV files stay on this workstation.</p>
+            <p id="saveError" class="error" role="alert" hidden></p>
+            <div id="remoteAnalysisControls"></div>
           </section>
         </div>
         <dialog id="backupDialog" class="source-dialog backup-dialog" aria-labelledby="backupDialogTitle"><h2 id="backupDialogTitle">Restore backup</h2><p>This replaces your current source list and map settings, including unsaved changes. Dataset filters and charts are reset. CSV files will be saved in this browser.</p><p id="backupSummary"></p><ul id="backupSources"></ul><p id="restoreError" class="error" role="alert" hidden></p><div class="row"><button id="cancelBackup">Cancel</button><button id="restoreBackup" class="primary">Replace sources &amp; restore</button></div></dialog>
@@ -68,7 +69,7 @@ export class DataSources {
             <p class="hint">The imported file is saved in this browser with its settings. Available storage depends on your browser and device; a save error leaves your existing saved sources intact.</p>
           </fieldset>
           <p id="sourceError" class="error" role="alert" hidden></p>
-        </div><div class="source-dialog-footer"><span class="hint">Save changes on the page to apply.</span><button id="cancelSource" type="button">Cancel</button><button id="updateSource" class="primary" type="submit">Add to list</button></div></form></dialog>`;
+        </div><div class="source-dialog-footer"><span class="hint">Save analysis to apply.</span><button id="cancelSource" type="button">Cancel</button><button id="updateSource" class="primary" type="submit">Add to list</button></div></form></dialog>`;
         $('type').onchange = () => { this.stopDiscovery(); this.showType(); };
         $('geometryMode').onchange = () => this.showGeometry();
         $('delimiter').onchange = () => { if (this.csvBlob) void this.inspectCSV(this.csvBlob, undefined, ++this.fileRevision); };
@@ -99,8 +100,6 @@ export class DataSources {
             else input('layer').focus();
         };
         $('discover').onclick = () => void this.discover();
-        $('saveSettings').onclick = () => this.save();
-        $('discardSettings').onclick = () => { this.draft = structuredClone(this.saved); discardStagedCSVFiles([]); input('basemapURL').value = this.draft.background.url; input('basemapAttribution').value = this.draft.background.attribution; this.removed = undefined; this.render(); };
         $('undoRemove').onclick = () => { if (this.removed) this.draft.sources.splice(this.removed.index, 0, this.removed.source); this.removed = undefined; this.render(); };
         $('startTestServer').onclick = () => void this.startTestServer();
         $('addTestSource').onclick = () => this.open({ ...defaultConfig, url: input('testEndpoint').value, layer: 'demo:points' }, 'Test WFS');
@@ -108,7 +107,7 @@ export class DataSources {
     }
     async addDerivedSource(source: SavedSource, blob: Blob, base: Settings) {
         if (this.saving || this.backupBusy) throw Error('Wait for the Data sources operation to finish, then retry.');
-        if (JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved))) throw Error('Save or discard your pending changes in Data sources before saving a joined dataset.');
+        if (JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved))) throw Error('Save your pending changes in Data sources before saving a joined dataset.');
         if (base.sources.length >= 8) throw Error('Remove a source in Data sources to free a slot before saving.');
         validateConfig(source.config);
         this.saving = true; document.querySelector<HTMLElement>('.sources-page')!.inert = true;
@@ -190,15 +189,9 @@ export class DataSources {
         } catch (e) { $('restoreError').textContent = `Could not restore backup: ${(e as Error).message}`; $('restoreError').hidden = false; }
         finally { this.setBackupBusy(false); }
     }
-    assertSaved() {
-        if (this.saving || this.backupBusy) throw Error('Wait for the local save or backup to finish before saving remotely.');
-        if (JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved))) throw Error('Save or discard your local source changes before saving remotely.');
-    }
+    pendingSettings(): Settings { return structuredClone(this.draft); }
     private updateState() {
         const dirty = JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved));
-        $('saveState').textContent = dirty ? 'Unsaved changes' : 'All changes saved';
-        $<HTMLButtonElement>('saveSettings').disabled = this.saving || !dirty;
-        $<HTMLButtonElement>('discardSettings').disabled = this.saving || !dirty;
         $('saveError').hidden = true;
         window.onbeforeunload = dirty ? e => { e.preventDefault(); e.returnValue = ''; } : null;
     }
@@ -389,12 +382,13 @@ export class DataSources {
             this.close(); this.render();
         } catch (e) { $('sourceError').textContent = (e as Error).message; $('sourceError').hidden = false; }
     }
-    private async save() {
-        if (this.saving) return;
+    async save() {
+        if (this.saving || this.backupBusy) throw Error('Wait for the source save or backup to finish, then retry.');
+        if (JSON.stringify(settingsMetadata(this.draft)) === JSON.stringify(settingsMetadata(this.saved)) && !this.draft.sources.some(s => s.config.type === 'csv' && s.config.csvText)) return;
         this.saving = true;
-        // Prevent edits/discard while the file transaction is pending.
+        // Prevent source edits while the file transaction is pending.
         document.querySelector<HTMLElement>('.sources-page')!.inert = true;
-        this.updateState(); $('saveState').textContent = 'Saving changes…';
+        this.updateState();
         try {
             for (const s of this.draft.sources) validateConfig(s.config);
             validateBackground(this.draft.background);
@@ -403,17 +397,14 @@ export class DataSources {
             this.saved = structuredClone(this.draft); this.removed = undefined;
             this.csvText = '';
             this.apply(structuredClone(this.saved)); this.render();
-            $('saveState').textContent = 'Saved in this browser';
         } catch (e) {
             this.updateState();
             $('saveError').textContent = `Could not save changes: ${(e as Error).message}`; $('saveError').hidden = false;
             input('basemapURL').setAttribute('aria-invalid', String(!this.validBackground()));
+            throw e;
         } finally {
             this.saving = false;
             document.querySelector<HTMLElement>('.sources-page')!.inert = false;
-            const dirty = JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved));
-            $<HTMLButtonElement>('saveSettings').disabled = !dirty;
-            $<HTMLButtonElement>('discardSettings').disabled = !dirty;
         }
     }
     private validBackground() { try { validateBackground(this.draft.background); return true; } catch { return false; } }
@@ -462,7 +453,7 @@ export class DataSources {
             const url = new URL(result.endpoint, location.href); url.searchParams.set('points', points.value); url.searchParams.set('distribution', input('distribution').value);
             input('testEndpoint').value = url.pathname + url.search;
             input('testEndpoint').hidden = $('testEndpointLabel').hidden = false;
-            $('testServerStatus').textContent = 'Test server is running. Add this endpoint as a data source, then save changes.';
+            $('testServerStatus').textContent = 'Test server is running. Add this endpoint as a data source, then save the analysis.';
             $('startTestServer').textContent = 'Update test endpoint';
             this.render();
         } catch (e) { $('testServerStatus').textContent = `Could not start the test server (${(e as Error).message}). Run the app’s Node server, or add a WFS endpoint directly.`; }

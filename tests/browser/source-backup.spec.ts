@@ -45,7 +45,7 @@ test('share a full backup into a fresh browser and reload its files, colours, WF
     await page.locator('#backgroundSettings summary').click();
     await page.locator('#basemapURL').fill('https://tiles.example/{z}/{x}/{y}.png');
     await page.locator('#basemapAttribution').fill('Shared basemap ©');
-    await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
+    await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toContainText('Saved in this browser');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[1]?.done);
     await navigate(page, 'analysis');
     const activeID = (await saved(page)).sources[1].id;
@@ -92,7 +92,7 @@ test('draft export, cancelled restore, invalid archive and failed storage preser
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.map.loaded());
     await addCSV(page, 'Unsaved CSV', small);
     const archive = await downloadedBackup(page);
-    await page.locator('#discardSettings').click();
+    await page.reload();
     const empty = await saved(page);
     await page.locator('#backupFile').setInputFiles(archive);
     await expect(page.locator('#backupDialog')).toBeVisible(); await page.locator('#cancelBackup').click();

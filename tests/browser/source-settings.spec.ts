@@ -8,7 +8,7 @@ async function add(page: Page, name = 'Stations', url = '/wfs?points=128&vendor=
     await page.getByRole('button', { name: 'Add to list', exact: true }).click();
 }
 const sourceStorage = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('wfs-settings') ?? 'null'));
-test('clean first visit has a generic empty list; drafts, cancel and discard never autosave', async ({ page }) => {
+test('clean first visit has a generic empty list; drafts and cancel never autosave', async ({ page }) => {
     const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto('/?time=all#configuration');
     await expect(page.locator('#sourceList')).toContainText('No data sources yet');
@@ -28,7 +28,7 @@ test('clean first visit has a generic empty list; drafts, cancel and discard nev
     expect(await sourceStorage(page)).toBeNull();
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.length)).toBe(0);
     await navigate(page, 'analysis'); await expect(page.locator('#load')).toBeDisabled();
-    await navigate(page, 'configuration'); await page.locator('#discardSettings').click();
+    await navigate(page, 'configuration'); await page.reload();
     await expect(page.locator('.source-row')).toHaveCount(0);
     await expect(page.locator('#saveSettings')).toBeDisabled();
     expect(errors).toEqual([]);
@@ -39,7 +39,7 @@ test('save applies sources and background atomically; configuration pops out and
     await page.locator('#backgroundSettings summary').click();
     await page.locator('#basemapURL').fill(''); await page.locator('#basemapAttribution').fill('Offline');
     await page.locator('#saveSettings').click();
-    await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
+    await expect(page.locator('#saveState')).toContainText('Saved in this browser');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0]?.done);
     const saved = await sourceStorage(page);
     expect(saved.sources[0].config.url).toBe('/wfs?points=128&vendor=keep');
@@ -110,7 +110,7 @@ test('validation and storage failure leave drafts available without changing run
     await page.evaluate(() => { (window as any).__setItem = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw new DOMException('Storage full', 'QuotaExceededError'); }; });
     await page.locator('#saveSettings').click(); await expect(page.locator('#saveError')).toContainText('Storage full');
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.length)).toBe(0);
-    await expect(page.locator('#saveState')).toHaveText('Unsaved changes');
+    await expect(page.locator('#saveState')).toContainText('Storage full');
     await page.evaluate(() => Storage.prototype.setItem = (window as any).__setItem);
     await page.locator('#saveSettings').click(); expect((await sourceStorage(page)).sources).toHaveLength(1);
 });
@@ -145,7 +145,7 @@ test('source limit, keyboard editor focus and narrow layouts remain usable', asy
         expect(await page.locator('#sourceDialog').evaluate(dialog => dialog.scrollWidth <= dialog.clientWidth)).toBe(true);
         await page.keyboard.press('Escape'); await expect(opener).toBeFocused();
     }
-    await page.locator('#discardSettings').click();
+    await page.reload();
 });
 test('failed discovery allows manual configuration; unavailable test hosting reports an actionable error', async ({ page }) => {
     await page.route('**/api/test-wfs/start', route => route.fulfill({ status: 404 }));
@@ -155,7 +155,7 @@ test('failed discovery allows manual configuration; unavailable test hosting rep
     await page.locator('#addSource').click(); await page.locator('#sourceName').fill('Manual'); await page.locator('#url').fill('/external-wfs');
     await page.locator('#discover').click(); await expect(page.locator('#discoveryStatus')).toContainText('Discovery failed');
     await page.locator('#layer').fill('vendor:manual'); await page.locator('#updateSource').click();
-    await expect(page.locator('.source-row')).toContainText('vendor:manual'); await page.locator('#discardSettings').click();
+    await expect(page.locator('.source-row')).toContainText('vendor:manual');
 });
 
 test('closing or changing endpoints aborts discovery and cannot populate another editor', async ({ page }) => {
