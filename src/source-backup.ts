@@ -1,3 +1,4 @@
+import { colourSchemes } from './colour-schemes.ts';
 import { validateServerFilters } from './server-filters.ts';
 import { createUUID } from './uuid.ts';
 import { packArchive, unpackArchive } from './backup-archive.ts';
@@ -26,6 +27,7 @@ function validateSettings(input: unknown): asserts input is Settings {
         const hex = (v: unknown) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
         if (coloring !== undefined) {
             if (!object(coloring) || typeof coloring.field !== 'string' || !Number.isInteger(coloring.bins) || coloring.bins < 1 || coloring.bins > 256 || !hex(coloring.low) || !hex(coloring.high)) throw Error('Invalid point colouring settings.');
+            if (coloring.scheme !== undefined && !colourSchemes.some(s => s.id === coloring.scheme)) throw Error('Invalid colour scheme.');
             if (coloring.scale !== undefined && !['linear', 'log10'].includes(coloring.scale)) throw Error('Invalid colour bin scale.');
             if (coloring.categories !== undefined && (!object(coloring.categories) || Object.values(coloring.categories).some(values => !object(values) || Object.values(values).some(v => !hex(v))))) throw Error('Invalid category colours.');
         }

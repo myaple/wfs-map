@@ -260,7 +260,15 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
         if let Some(coloring) = o.get("coloring") {
             let c = object(
                 coloring,
-                &["field", "bins", "low", "high", "categories", "scale"],
+                &[
+                    "field",
+                    "bins",
+                    "low",
+                    "high",
+                    "categories",
+                    "scale",
+                    "scheme",
+                ],
             )?;
             for k in ["field", "low", "high"] {
                 if let Some(v) = c.get(k) {
@@ -274,6 +282,14 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                 .is_some_and(|v| !matches!(v.as_str(), Some("linear" | "log10")))
             {
                 return Err("Invalid colour bin scale");
+            }
+            if c.get("scheme").is_some_and(|v| {
+                !matches!(
+                    v.as_str(),
+                    Some("viridis" | "cividis" | "inferno" | "ocean" | "blue-red")
+                )
+            }) {
+                return Err("Invalid colour scheme");
             }
             if let Some(categories) = c.get("categories") {
                 let fields = categories
@@ -530,6 +546,18 @@ mod tests {
             assert!(validate(&bad).is_err());
         }
         v["timeline"]["end"] = 0.into();
+        assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn validates_colour_schemes() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"a","name":"A","enabled":true,"config":{"type":"csv"},"coloring":{"field":"value","bins":8,"low":"#112233","high":"#445566"}}]);
+        assert!(validate(&v).is_ok());
+        for scheme in ["viridis", "cividis", "inferno", "ocean", "blue-red"] {
+            v["settings"]["sources"][0]["coloring"]["scheme"] = scheme.into();
+            assert!(validate(&v).is_ok());
+        }
+        v["settings"]["sources"][0]["coloring"]["scheme"] = "invalid".into();
         assert!(validate(&v).is_err());
     }
     #[test]

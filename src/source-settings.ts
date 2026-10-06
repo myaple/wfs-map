@@ -1,4 +1,5 @@
 import { validateServerFilters, type ServerFilter } from './server-filters.ts';
+import type { ColourScheme } from './colour-schemes.ts';
 import { createUUID } from './uuid.ts';
 export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField', 'fieldTypes'] as const;
 export type Config = Record<typeof configKeys[number], string>;
@@ -7,7 +8,7 @@ export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
     serverFilters?: ServerFilter[];
-    coloring?: { scale?: 'linear' | 'log10'; field: string; bins: number; low: string; high: string; categories?: Record<string, Record<string, string>> };
+    coloring?: { scheme?: ColourScheme; scale?: 'linear' | 'log10'; field: string; bins: number; low: string; high: string; categories?: Record<string, Record<string, string>> };
 };
 export type Background = { url: string; attribution: string; enabled: boolean };
 export type MapSettings = { center: [number, number]; zoom: number; pointSize: number };

@@ -25,7 +25,7 @@ export function configurationState(settings: Settings, query: AnalysisState['que
                 serverFilters: structuredClone(s.serverFilters ?? []),
                 config: Object.fromEntries(configKeys.filter(k => k !== 'csvText').map(k => [k, s.config[k]])) as Settings['sources'][number]['config'],
                 ...(s.color ? { color: [...s.color] as [number, number, number] } : {}),
-                ...(s.coloring ? { coloring: { ...(s.coloring.scale ? { scale: s.coloring.scale } : {}), field: s.coloring.field, bins: s.coloring.bins, low: s.coloring.low, high: s.coloring.high, ...(s.coloring.categories ? { categories: structuredClone(s.coloring.categories) } : {}) } } : {})
+                ...(s.coloring ? { coloring: { ...(s.coloring.scheme ? { scheme: s.coloring.scheme } : {}), ...(s.coloring.scale ? { scale: s.coloring.scale } : {}), field: s.coloring.field, bins: s.coloring.bins, low: s.coloring.low, high: s.coloring.high, ...(s.coloring.categories ? { categories: structuredClone(s.coloring.categories) } : {}) } } : {})
             })),
             background: { url: settings.background.url, attribution: settings.background.attribution, enabled: settings.background.enabled },
             ...(settings.map ? { map: { center: [...settings.map.center] as [number, number], zoom: settings.map.zoom, pointSize: settings.map.pointSize } } : {})

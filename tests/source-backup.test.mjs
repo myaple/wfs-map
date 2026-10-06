@@ -11,7 +11,7 @@ const csv = '\uFEFFlon;lat;name;notes\r\n-1;54;"a;b";"first\nsecond ""quote"" ca
 const settings = () => ({
     sources: [
         { id: 'csv-one', name: 'Points', enabled: true, color: [0.1, 0.2, 0.3],
-            coloring: { scale: 'log10', field: 'name', bins: 24, low: '#112233', high: '#445566', categories: { name: { 'a;b': '#abcdef', other: '#123456' } } },
+            coloring: { scheme: 'cividis', scale: 'log10', field: 'name', bins: 24, low: '#112233', high: '#445566', categories: { name: { 'a;b': '#abcdef', other: '#123456' } } },
             config: { ...defaultConfig, type: 'csv', csvRef: 'local-ref', fileName: 'shared.csv', delimiter: ';', longitudeField: 'lon', latitudeField: 'lat' } },
         { id: 'disabled-csv', name: 'Disabled file', enabled: false,
             config: { ...defaultConfig, type: 'csv', csvText: 'geom\tvalue\nPOINT (-2 53)\t99\n', fileName: 'wkt.tsv', delimiter: '\t', geometryMode: 'wkt', geometryField: 'geom' } },

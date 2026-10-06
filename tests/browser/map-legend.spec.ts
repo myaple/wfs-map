@@ -6,7 +6,7 @@ async function seed(page: Page) {
     const config = { ...defaultConfig, type: 'csv', longitudeField: 'lon', latitudeField: 'lat', timeField: '' };
     await page.addInitScript(({ config }) => localStorage.setItem('wfs-settings', JSON.stringify({ sources: [
         { id: 'categories', name: 'Categories', enabled: true, config: { ...config, csvText: 'lon,lat,label\n' + Array.from({ length: 240 }, (_, i) => `-1,54,Category-${String(i).padStart(3, '0')}`).join('\n') + '\n-1,54,' }, coloring: { field: 'label', bins: 8, low: '#000000', high: '#ffffff', categories: { label: { 'Category-000': '#ff0000' } } } },
-        { id: 'gradient', name: 'Gradient', enabled: true, config: { ...config, csvText: 'lon,lat,value\n-2,53,0\n-2,53,16\n-2,53,' }, coloring: { field: 'value', bins: 8, low: '#000000', high: '#ffffff' } },
+        { id: 'gradient', name: 'Gradient', enabled: true, config: { ...config, csvText: 'lon,lat,value\n-2,53,0\n-2,53,16\n-2,53,' }, coloring: { scheme: 'viridis', field: 'value', bins: 8, low: '#000000', high: '#ffffff' } },
         { id: 'solid', name: 'Solid', enabled: true, color: [0, 1, 0], config: { ...config, csvText: 'lon,lat,value\n-3,52,1' } },
         { id: 'disabled', name: 'Disabled', enabled: false, config: { ...config, csvText: 'lon,lat,value\n-3,52,1' } }
     ], background: { url: '', attribution: '', enabled: false } })), { config });
@@ -34,7 +34,7 @@ test('legend shows exact colours for every enabled source, scrolls all values an
     await viewport.evaluate(el => el.scrollTop = el.scrollHeight);
     await expect(legend).toContainText('Solid');
     await expect(legend.locator('[data-source=solid] .map-legend-swatch')).toHaveCSS('background-color', 'rgb(0, 255, 0)');
-    await expect(legend.locator('[data-source=gradient]').filter({ hasText: '14 – 16' }).locator('.map-legend-swatch')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(legend.locator('[data-source=gradient]').filter({ hasText: '14 – 16' }).locator('.map-legend-swatch')).toHaveCSS('background-color', 'rgb(253, 231, 37)');
     await expect(legend.locator('[data-source=disabled]')).toHaveCount(0);
     await viewport.evaluate(el => el.scrollTop = 0);
     await page.locator('#enlargeMap').click();
@@ -88,7 +88,20 @@ test('legend tracks palette edits, filters, disabled sources and dark mode', asy
     const lowestBin = page.locator('[data-source=gradient]').filter({ has: page.getByText('0 – 2', { exact: true }) });
     await expect(lowestBin).toBeVisible();
     await page.locator('#colorSource').selectOption('gradient');
-    await page.locator('#colorLow').fill('#ff0000'); await page.locator('#colorLow').dispatchEvent('change');
-    await expect(lowestBin.locator('.map-legend-swatch')).toHaveCSS('background-color', 'rgb(255, 0, 0)');
+    await page.locator('#colorScheme').selectOption('inferno');
+    await expect(lowestBin.locator('.map-legend-swatch')).toHaveCSS('background-color', 'rgb(0, 0, 4)');
     await expect(page.locator('.map-legend-viewport')).toHaveJSProperty('scrollTop', 0);
+});
+
+
+test('map legend stays informational: clicking entries neither filters nor hides any source', async ({ page }) => {
+    await seed(page);
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.every((s: any) => !s.filtering));
+    const snapshot = () => page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => ({ id: s.id, enabled: s.enabled, selected: s.selected, request: s.filterRequest, expression: s.workspace.expression(), visible: s.layer.visible })));
+    const before = await snapshot();
+    await page.locator('.map-legend-row').first().click();
+    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
+    await page.locator('[data-source=gradient]').filter({ hasText: '14 – 16' }).click();
+    expect(await snapshot()).toEqual(before);
+    await expect(page.locator('#mapLegend button')).toHaveCount(0);
 });

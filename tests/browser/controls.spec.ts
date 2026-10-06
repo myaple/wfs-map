@@ -166,8 +166,8 @@ test('right-drag map box matches geographic bounds and point colours keep IDs an
     await expect(page.locator('#filterStatus')).toContainText(`${expected.toLocaleString()} matches`);
     expect(expected).toBeGreaterThan(0);
     expect(expected).toBeLessThan(4096);
-    await page.getByLabel('Low value colour').fill('#ff0000');
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.layer.palette[0] === 1);
+    await page.getByLabel('Colour scheme', { exact: true }).selectOption('inferno');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.layer.palette[0] === 0);
     await page.getByLabel('Point colour attribute').selectOption('');
     await page.waitForFunction(() => !(window as any).__WFS_MAP__.layer.colorCodes);
     await expect(page.locator('#filterStatus')).toContainText(`${expected.toLocaleString()} matches`);
