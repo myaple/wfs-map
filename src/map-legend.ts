@@ -23,19 +23,28 @@ export class MapLegend {
     private signature: unknown[] = [];
     private total = 0;
     private extent = 0;
-    constructor(private root: HTMLElement, private select: (sourceId: string, expression: Expression) => void) {
+    private isolatedSourceId?: string;
+    private showAll = document.createElement('button');
+    private visibility = document.createElement('p');
+    constructor(private root: HTMLElement, private select: (sourceId: string, expression?: Expression) => void, restore: () => void) {
         const title = document.createElement('h2'); title.textContent = 'Map legend';
-        const help = document.createElement('p'); help.className = 'hint'; help.textContent = 'Click a value to filter its data source · clear in Dataset filters';
+        const help = document.createElement('p'); help.className = 'hint'; help.textContent = 'Click an entry to show only its points on the map';
+        this.showAll.type = 'button'; this.showAll.textContent = 'Show all map sources'; this.showAll.hidden = true; this.showAll.onclick = restore;
+        this.visibility.className = 'hint'; this.visibility.setAttribute('role', 'status'); this.visibility.hidden = true;
         this.viewport.className = 'map-legend-viewport'; this.viewport.tabIndex = 0;
         this.viewport.setAttribute('role', 'list'); this.viewport.setAttribute('aria-label', 'Point colours for enabled data sources');
         this.space.className = 'map-legend-space'; this.rows.className = 'map-legend-rows';
-        this.space.append(this.rows); this.viewport.append(this.space); root.append(title, help, this.viewport);
+        this.space.append(this.rows); this.viewport.append(this.space); root.append(title, help, this.showAll, this.visibility, this.viewport);
         this.viewport.addEventListener('scroll', () => this.render());
         new ResizeObserver(() => this.render()).observe(this.viewport);
     }
-    update(sources: LegendSource[]) {
+    update(sources: LegendSource[], isolatedSourceId?: string) {
+        this.isolatedSourceId = isolatedSourceId;
+        const isolated = sources.find(s => s.id === isolatedSourceId);
+        this.showAll.hidden = this.visibility.hidden = !isolated;
+        this.visibility.textContent = isolated ? `Showing only ${isolated.name} on map` : '';
         const enabled = sources.filter(s => s.enabled);
-        const signature = enabled.flatMap(s => [s.id, s.name, s.done, s.color, s.coloring, s.colorCategories, s.colorLabels, s.colorLegend]);
+        const signature = [isolatedSourceId, ...enabled.flatMap(s => [s.id, s.name, s.done, s.color, s.coloring, s.colorCategories, s.colorLabels, s.colorLegend])];
         if (signature.length === this.signature.length && signature.every((value, i) => value === this.signature[i])) return;
         this.signature = signature; this.total = 0;
         this.groups = enabled.map(source => {
@@ -72,6 +81,7 @@ export class MapLegend {
                 color = offset < s.colorLabels.length ? rgb(s.layer.palette.subarray(offset * 3, offset * 3 + 3)) : '#808080';
             } else label = s.colorLegend || 'Updating colours…';
             const row = document.createElement('div'); row.className = 'map-legend-row'; row.dataset.source = s.id;
+            row.classList.toggle('map-legend-hidden-source', !!this.isolatedSourceId && s.id !== this.isolatedSourceId);
             row.setAttribute('role', 'listitem'); row.setAttribute('aria-setsize', String(this.total)); row.setAttribute('aria-posinset', String(index + 1));
             let expression: Expression | undefined;
             if (field && s.done && color) {
@@ -81,12 +91,13 @@ export class MapLegend {
                     ? { op: 'or', children: [{ field, op: 'null' }, { field, op: 'lte', value: '0' }] }
                     : { field, op: 'null' };
             }
-            const button = document.createElement(expression ? 'button' : 'div');
+            const selectable = !!expression || !field && s.done;
+            const button = document.createElement(selectable ? 'button' : 'div');
             button.className = 'map-legend-value';
-            if (expression) {
+            if (selectable) {
                 (button as HTMLButtonElement).type = 'button';
                 button.setAttribute('aria-label', `Filter ${s.name}: ${label}`);
-                button.onclick = () => this.select(s.id, expression!);
+                button.onclick = () => this.select(s.id, expression);
             }
             const swatch = document.createElement('span'); swatch.className = 'map-legend-swatch'; swatch.setAttribute('aria-hidden', 'true');
             if (color) swatch.style.backgroundColor = color; else swatch.hidden = true;

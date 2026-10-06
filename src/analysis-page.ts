@@ -53,8 +53,13 @@ derivedPage.append(derivedHeading); $('app').append(derivedPage);
 const mapLegend = new MapLegend($('mapLegend'), (sourceId, expression) => {
     const s = sources.find(s => s.id === sourceId);
     if (!s?.done || !s.enabled) return;
+    isolatedMapSourceId = s.id;
+    clearInspection();
     switchFilters(s.id);
-    s.workspace.select(expression, 'Map legend selection');
+    if (expression) s.workspace.select(expression, 'Map legend selection');
+}, () => {
+    isolatedMapSourceId = undefined;
+    clearInspection(); state();
 });
 type Source = {
     id: string;
@@ -132,6 +137,7 @@ const savedQuery = initialState?.query;
 let queryBounds: QueryBounds = savedQuery ? { ...structuredClone(savedQuery.bounds), ...(savedQuery.choice === 'all' ? { time: undefined } : savedQuery.choice !== 'custom' ? { time: timeBounds(Number(savedQuery.choice)) } : {}) } : params.get('time') === 'all' ? {} : { time: timeBounds(24) };
 if (queryBounds.time) queryBounds.time = { start: utcISO(queryBounds.time.start), end: utcISO(queryBounds.time.end) };
 let localMapBounds: MapBounds | undefined = initialState?.localMapBounds ? structuredClone(initialState.localMapBounds) : undefined;
+let isolatedMapSourceId: string | undefined;
 let filterSourceId = '', popup: maplibregl.Popup | undefined, benchmarkRunning = false, mapReady = false, loadSlots = 0;
 const loadQueue: Source[] = [];
 const layerOrder: Source[] = [];
@@ -209,7 +215,7 @@ const pointColors = new PointColors(() => sources, (source, previous) => {
     sourceSettings.syncColoring(s); persist();
     if (s.fields.find(f => f.name === s.coloring.field)?.kind === 'number' && s.layer.colorCodes && previous.field === s.coloring.field && previous.bins === s.coloring.bins && (previous.scale ?? 'linear') === (s.coloring.scale ?? 'linear')) s.layer.setPalette(colourStops(s.coloring.scheme));
     else applyColors(s);
-    mapLegend.update(sources);
+    mapLegend.update(sources, isolatedMapSourceId);
     map.triggerRepaint();
 });
 const serverFilterPanel = new ServerFilterPanel($<HTMLDetailsElement>('advancedServerFilters'), () => sources,
@@ -229,7 +235,7 @@ const serverFilterPanel = new ServerFilterPanel($<HTMLDetailsElement>('advancedS
         loadSource(s); state();
     });
 function applySettings(next: Settings, restore = false) {
-    if (restore) setLocalMapBounds(undefined);
+    if (restore) { isolatedMapSourceId = undefined; setLocalMapBounds(undefined); }
     for (const s of [...sources]) if (restore || !next.sources.some(n => n.id === s.id)) {
         clearSource(s); s.workspace.reset(); sources.splice(sources.indexOf(s), 1);
     }
@@ -451,6 +457,13 @@ new ResizeObserver(() => map.resize()).observe($('map'));
 function status(text: string, error = false) { $('status').textContent = text; $('status').classList.toggle('error', error); }
 function enabled(id: string, on: boolean) { $<HTMLButtonElement>(id).disabled = !on; }
 function state() {
+    if (isolatedMapSourceId && !sources.some(s => s.enabled && s.id === isolatedMapSourceId)) isolatedMapSourceId = undefined;
+    let visibilityChanged = false;
+    for (const source of sources) {
+        const visible = source.enabled && (!isolatedMapSourceId || source.id === isolatedMapSourceId);
+        if (source.layer.visible !== visible) { source.layer.visible = visible; visibilityChanged = true; }
+    }
+    if (visibilityChanged) map.triggerRepaint();
     timeline.update(sources.filter(s => s.enabled && s.done).map(s => ({ name: s.name, extent: s.timeline, loaded: s.loaded })), loadSlots === 0 && loadQueue.length === 0);
     recordPage.refresh();
     derivedPanel.refresh();
@@ -466,7 +479,7 @@ function state() {
     $('filterOwner').textContent = s ? `Filters for ${s.name} · ${s.loading ? 'loading…' : !s.done ? 'load source to edit filters' : s.selected.toLocaleString() + ' matching points'}` : 'Add or enable a data source to build filters.';
     $('rules').setAttribute('aria-label', s ? `Filters for ${s.name}` : 'Dataset filters');
     $('rules').inert = !s?.enabled || !s.done;
-    $('sourceSummary').textContent = sources.map(s => `${s.name}: ${s.enabled ? s.loading ? 'loading' : s.selected.toLocaleString() + ' displayed' : 'disabled'}`).join(' · ');
+    $('sourceSummary').textContent = sources.map(s => `${s.name}: ${s.enabled ? !s.layer.visible ? 'hidden on map' : s.loading ? 'loading' : s.selected.toLocaleString() + ' displayed' : 'disabled'}`).join(' · ');
     const progress = $<HTMLProgressElement>('progress');
     if (enabledSources.some(s => s.loading)) progress.removeAttribute('value');
     else progress.value = enabledSources.length && enabledSources.every(s => s.done) ? 1 : 0;
@@ -476,7 +489,7 @@ function state() {
     if (exportSource?.enabled && exportSource.done && exportSource.metrics.truncated) csvStatus += ' · load limit reached; exports loaded points only';
     $('csvExportStatus').textContent = csvStatus;
     pointColors.update();
-    mapLegend.update(sources);
+    mapLegend.update(sources, isolatedMapSourceId);
     hud();
 }
 function endpoint(config: Config) { return new URL(config.url, location.href).href; }
@@ -534,6 +547,7 @@ function clearSource(s: Source) {
     if (mapReady && map.getLayer(s.layer.id))
         map.removeLayer(s.layer.id);
     s.layer = new PointsLayer('source-' + s.id, s.color);
+    s.layer.visible = s.enabled && (!isolatedMapSourceId || s.id === isolatedMapSourceId);
     s.layer.pointSize = Number(value('size'));
     s.loaded = s.selected = 0;
     s.loading = s.done = false;
@@ -741,7 +755,7 @@ async function performLoad(s: Source) {
         s.complete = undefined;
 }
 function fit() {
-    const bounds = sources.filter(s => s.enabled && s.loaded && s.metrics.bounds?.every(Number.isFinite)).map(s => s.metrics.bounds);
+    const bounds = sources.filter(s => s.enabled && s.layer.visible && s.loaded && s.metrics.bounds?.every(Number.isFinite)).map(s => s.metrics.bounds);
     if (!bounds.length)
         return;
     map.fitBounds([[Math.min(...bounds.map(b => b[0])), clampMapLatitude(Math.min(...bounds.map(b => b[1])))], [Math.max(...bounds.map(b => b[2])), clampMapLatitude(Math.max(...bounds.map(b => b[3])))]], { padding: 35, duration: 0 });
@@ -827,7 +841,7 @@ function showMetadata(data: any, source: Source) {
 map.on('dblclick', e => {
     e.preventDefault();
     const refs: RecordRef[] = [];
-    for (const s of layerOrder) if (s.enabled && s.done && !s.filtering) for (const index of s.layer.pickAll(e.point.x, e.point.y)) refs.push({ sourceId: s.id, index });
+    for (const s of layerOrder) if (s.enabled && s.layer.visible && s.done && !s.filtering) for (const index of s.layer.pickAll(e.point.x, e.point.y)) refs.push({ sourceId: s.id, index });
     inspectionToken++; chooseRecords(refs);
 });
 map.on('webglcontextlost', () => status('GPU context lost; waiting for restoration.', true));
@@ -847,7 +861,8 @@ function quantile(values: number[], q: number) {
 }
 function hud() {
     const loaded = sources.filter(s => s.enabled).reduce((n, s) => n + s.loaded, 0);
-    $('hud').textContent = `Loaded ${loaded.toLocaleString()} points`;
+    const isolated = sources.find(s => s.id === isolatedMapSourceId);
+    $('hud').textContent = isolated ? `${isolated.name} · ${isolated.selected.toLocaleString()} points shown` : `Loaded ${loaded.toLocaleString()} points`;
 }
 async function benchmark() {
     if (benchmarkRunning)
@@ -891,7 +906,7 @@ $('load').onclick = () => void load();
 $('cancel').onclick = clear;
 $('addChart').onclick = () => { const s = sources.find(s => s.id === value('chartSource')); if (s) { s.workspace.addChart(); filter(undefined, s); } };
 $('apply').onclick = () => filter();
-$('reset').onclick = () => filterSource()?.workspace.clearFilters();
+$('reset').onclick = () => { isolatedMapSourceId = undefined; filterSource()?.workspace.clearFilters(); state(); };
 $('fit').onclick = fit;
 $('benchmark').onclick = () => void benchmark();
 $('size').oninput = () => {
@@ -1031,6 +1046,7 @@ $('drawArea').onclick = () => {
     if (drawingLoadArea) { location.hash = '#analysis'; mapCanvas.focus(); }
 };
 function clearDatasetFilters() {
+    isolatedMapSourceId = undefined;
     localMapBounds = undefined;
     showLocalMapBounds(); clearInspection(); chartGeneration++;
     for (const s of sources) {

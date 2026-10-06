@@ -144,3 +144,49 @@ test('numeric legend bin predicates match colour codes at every edge and Log10 g
         }
     }
 });
+
+test('legend selection isolates the whole map, switches sources including solid colours, and restores visibility without unloading', async ({ page }) => {
+    await seed(page);
+    const visible = () => page.evaluate(() => (window as any).__WFS_MAP__.sources.filter((s: any) => s.layer.visible).map((s: any) => s.id));
+    const baseline = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => ({ id: s.id, enabled: s.enabled, loaded: s.loaded, request: s.request, selected: s.selected })));
+    await expect(page.getByRole('button', { name: 'Show all map sources', exact: true })).toBeHidden();
+    await page.getByRole('button', { name: 'Filter Categories: Category-000', exact: true }).click();
+    await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
+    expect(await visible()).toEqual(['categories']);
+    await expect(page.locator('#sourceSummary')).toContainText('Gradient: hidden on map');
+    await expect(page.locator('#hud')).toHaveText('Categories · 1 points shown');
+    const retained = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => ({ id: s.id, enabled: s.enabled, loaded: s.loaded, request: s.request, selected: s.selected })));
+    expect(retained.map(s => ({ ...s, selected: baseline.find(b => b.id === s.id)!.selected }))).toEqual(baseline);
+    const hiddenPoint = await page.evaluate(() => { const h = (window as any).__WFS_MAP__, p = h.map.project([-2,53]), r = h.map.getCanvas().getBoundingClientRect(); return { x: r.x + p.x, y: r.y + p.y, hits: [...h.sources[1].layer.pickAll(p.x,p.y)] }; });
+    expect(hiddenPoint.hits).toEqual([]);
+    await page.mouse.dblclick(hiddenPoint.x, hiddenPoint.y);
+    await expect(page.locator('.metadata')).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: /Choose a record/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Show all map sources', exact: true }).click();
+    expect(await visible()).toEqual(['categories', 'gradient', 'solid']);
+    await page.locator('#enlargeMap').click();
+    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
+    await page.getByRole('button', { name: 'Filter Solid: All points', exact: true }).click();
+    expect(await visible()).toEqual(['solid']);
+    await page.locator('#fit').click();
+    const center = await page.evaluate(() => (window as any).__WFS_MAP__.map.getCenter());
+    expect(center.lng).toBeCloseTo(-3); expect(center.lat).toBeCloseTo(52);
+    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
+    await page.getByRole('button', { name: 'Filter Gradient: 14 – 16', exact: true }).click();
+    await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[1].filtering);
+    expect(await visible()).toEqual(['gradient']);
+    await expect(page.locator('#hud')).toHaveText('Gradient · 1 points shown');
+    const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds);
+    const b = (await page.locator('#map canvas').boundingBox())!;
+    await page.mouse.dblclick(b.x + b.width * .5, b.y + b.height * .5, { button: 'right', delay: 50 });
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.filter((s: any) => s.enabled).every((s: any) => !s.filtering && s.selected === s.loaded));
+    expect(await visible()).toEqual(['categories', 'gradient', 'solid']);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds)).toEqual(bounds);
+    await page.keyboard.press('Escape');
+    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = 0);
+    await page.getByRole('button', { name: 'Filter Categories: Category-000', exact: true }).click();
+    await navigate(page, 'configuration'); await page.getByLabel('Enable Categories', { exact: true }).uncheck();
+    await page.locator('#saveSettings').click(); await navigate(page, 'analysis');
+    expect(await visible()).toEqual(['gradient', 'solid']);
+    await expect(page.getByRole('button', { name: 'Show all map sources', exact: true })).toBeHidden();
+});
