@@ -162,3 +162,26 @@ test('Log10 colours use equal logarithmic bins, stable full-data domains and gre
     if (values[0] === 0) assert.deepEqual([...log.codes], [255, 255, 255]);
   }
 });
+
+test('map visibility distinguishes text values from missing, even with duplicate display colours, across chunks', async()=>{
+  const rows=Array.from({length:150},(_,i)=>({...feature(i),properties:{label:[null,'','missing','A','B'][i%5]}}));
+  const a=build(rows), expression={field:'label',op:'eq',value:'A'};
+  const before=await a.run(expression,[]);
+  const mask=await a.mapVisibility('label',8,['category:','category:missing','missing']);
+  assert.deepEqual([...mask],rows.map(f=>Number(['A','B'].includes(f.properties.label))));
+  const after=await a.run(expression,[]);assert.deepEqual([...after.indices],[...before.indices]);
+  assert.deepEqual([...await a.mapVisibility('label',8,[])],rows.map(()=>1));
+  await assert.rejects(a.mapVisibility('label',8,['category:A'],'linear',()=>true),/Superseded/);
+});
+
+test('map visibility uses the exact numeric colour bins, including Log10 and missing/non-positive values', async()=>{
+  const rows=[null,-1,0,1,10,100,1000].map((n,i)=>({...feature(i),properties:{n}}));
+  const a=build(rows);
+  for(const scale of ['linear','log10']) {
+    const colours=await a.colors('n',8,()=>false,{},scale);
+    const mask=await a.mapVisibility('n',8,['bin:0','bin:7','missing'],scale);
+    assert.deepEqual([...mask],[...colours.codes].map(c=>Number(![0,7,255].includes(c))));
+  }
+  const empty=build(rows.map(f=>({...f,properties:{n:0}})));
+  assert.deepEqual([...await empty.mapVisibility('n',8,['missing'],'log10')],rows.map(()=>0));
+});

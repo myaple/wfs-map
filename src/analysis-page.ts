@@ -53,16 +53,26 @@ derivedPage.append(derivedHeading); $('app').append(derivedPage);
 const mapLegend = new MapLegend($('mapLegend'), (id, visible) => {
     const s = sources.find(s => s.id === id);
     if (!s) return;
-    s.mapVisible = s.layer.visible = visible;
+    s.mapVisible = visible;
+    s.layer.visible = visible && (!s.mapHidden.size || !!s.layer.mapMask);
     if (!visible && inspection?.sourceId === id) { popup?.remove(); marker?.remove(); }
     mapLegend.update(sources);
     map.triggerRepaint();
+}, (id, key, visible) => {
+    const s = sources.find(s => s.id === id);
+    if (!s) return;
+    visible ? s.mapHidden.delete(key) : s.mapHidden.add(key);
+    refreshMapMask(s);
+    mapLegend.update(sources);
 });
 type Source = {
     id: string;
     name: string;
     enabled: boolean;
     mapVisible: boolean;
+    mapHidden: Set<string>;
+    mapMaskRequest: number;
+    mapMaskPending: boolean;
     color: [
         number,
         number,
@@ -159,7 +169,7 @@ function createSource(input: {
     const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, serverFilters: structuredClone(input.serverFilters ?? []), layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, filtering: false, exportRequest: 0, exporting: false, exportStatus: '', colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
     s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, enabled: source.enabled, available: source.enabled && source.done })), expression => inspectExpression(s, expression));
     sources.push(s);
-    s.mapVisible = true;
+    s.mapVisible = true; s.mapHidden = new Set(); s.mapMaskRequest = 0; s.mapMaskPending = false;
     const saved = savedAnalyses.get(id);
     if (saved) {
         s.fields = structuredClone(saved.fields);
@@ -210,6 +220,9 @@ const pointColors = new PointColors(() => sources, (source, previous) => {
     const s = sources.find(s => s.id === source.id)!;
     s.layer.color = s.color;
     sourceSettings.syncColoring(s); persist();
+    if (previous.field !== s.coloring.field || previous.bins !== s.coloring.bins || (previous.scale ?? 'linear') !== (s.coloring.scale ?? 'linear')) {
+        s.mapHidden.clear(); refreshMapMask(s);
+    }
     if (s.fields.find(f => f.name === s.coloring.field)?.kind === 'number' && s.layer.colorCodes && previous.field === s.coloring.field && previous.bins === s.coloring.bins && (previous.scale ?? 'linear') === (s.coloring.scale ?? 'linear')) s.layer.setPalette(colourStops(s.coloring.scheme));
     else applyColors(s);
     mapLegend.update(sources);
@@ -526,6 +539,7 @@ function clearSource(s: Source) {
     s.request++;
     s.filterRequest++;
     s.colorRequest++;
+    s.mapMaskRequest++; s.mapMaskPending = false;
     s.abort?.abort();
     s.worker?.terminate();
     s.worker = undefined;
@@ -537,7 +551,7 @@ function clearSource(s: Source) {
     if (mapReady && map.getLayer(s.layer.id))
         map.removeLayer(s.layer.id);
     s.layer = new PointsLayer('source-' + s.id, s.color);
-    s.layer.visible = s.mapVisible;
+    s.layer.visible = s.mapVisible && !s.mapHidden.size;
     s.layer.pointSize = Number(value('size'));
     s.loaded = s.selected = 0;
     s.loading = s.done = false;
@@ -694,7 +708,15 @@ async function performLoad(s: Source) {
                     s.colorCategories = m.categories;
                     s.colorLabels = m.categories ? undefined : m.axis.labels;
                     s.layer.setColors(m.codes, colourStops(s.coloring.scheme), m.axis.labels.length, !!m.categories);
+                    refreshMapMask(s);
                     s.colorLegend = m.categories ? `${m.categories.length.toLocaleString()} unique values · grey = missing` : `${s.coloring.scale === 'log10' ? 'Log10 · ' : ''}${m.axis.labels.length ? `${m.axis.labels[0]} … ${m.axis.labels.at(-1)}` : s.coloring.scale === 'log10' ? 'No positive values' : 'No values'} · grey = ${s.coloring.scale === 'log10' ? `missing or non-positive · ${(m.excluded ?? 0).toLocaleString()} non-positive values` : 'missing'}`;
+                }
+                if (m.type === 'mapVisibility' && m.request === s.mapMaskRequest) {
+                    s.mapMaskPending = false; s.layer.setMapMask(m.mask); s.layer.visible = s.mapVisible;
+                }
+                if (m.type === 'mapVisibilityError' && m.request === s.mapMaskRequest) {
+                    s.mapMaskPending = false; s.mapHidden.clear(); s.layer.setMapMask(undefined); s.layer.visible = s.mapVisible;
+                    status('Could not update map visibility: ' + m.message, true);
                 }
                 if (m.type === 'colorError' && m.request === s.colorRequest) {
                     s.colorLegend = m.message;
@@ -943,13 +965,23 @@ function applyBackground() {
 function ensureSourcesLoaded() {
     for (const s of sources) if (s.enabled && !s.error) loadSource(s);
 }
+function refreshMapMask(s: Source) {
+    const request = ++s.mapMaskRequest;
+    s.mapMaskPending = false;
+    if (!s.mapHidden.size || !s.coloring.field) {
+        s.layer.setMapMask(undefined); s.layer.visible = s.mapVisible; return;
+    }
+    if (!s.done || !s.worker) return;
+    s.mapMaskPending = true;
+    s.worker.postMessage({ type: 'mapVisibility', request, field: s.coloring.field, bins: s.coloring.bins, scale: s.coloring.scale, hidden: [...s.mapHidden] });
+}
 function applyColors(s: Source) {
     const request = ++s.colorRequest;
     s.colorCategories = s.colorLabels = undefined;
     if (s.done && s.coloring.field && !s.fields.some(f => f.name === s.coloring.field && ['number', 'string'].includes(f.kind))) {
         s.coloring = { ...s.coloring, field: '' }; sourceSettings.syncColoring(s); persist();
     }
-    if (!s.coloring.field) { s.layer.setColors(undefined); s.colorLegend = ''; }
+    if (!s.coloring.field) { s.mapHidden.clear(); refreshMapMask(s); s.layer.setColors(undefined); s.colorLegend = ''; }
     else if (s.done) {
         s.colorLegend = 'Updating colours…';
         s.worker?.postMessage({ type: 'colors', request, field: s.coloring.field, bins: s.coloring.bins, scale: s.coloring.scale, categories: s.coloring.categories?.[s.coloring.field] });

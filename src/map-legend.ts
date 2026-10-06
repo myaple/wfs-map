@@ -6,7 +6,7 @@ import { colourStops } from './colour-schemes.ts';
 
 type LegendSource = Pick<SavedSource, 'id' | 'name' | 'enabled'> & {
     color: [number, number, number]; coloring: NonNullable<SavedSource['coloring']>;
-    fields: Field[]; done: boolean; colorLegend: string; mapVisible: boolean;
+    fields: Field[]; done: boolean; colorLegend: string; mapVisible: boolean; mapHidden: Set<string>;
     colorCategories?: string[]; colorLabels?: string[];
     layer: Pick<PointsLayer, 'palette'>;
 };
@@ -24,7 +24,7 @@ class LegendValues {
     private total = 0;
     private extent = 0;
     private observer: ResizeObserver;
-    constructor(private root: HTMLElement) {
+    constructor(private root: HTMLElement, private visibility: (id: string, key: string, visible: boolean) => void) {
         this.viewport.className = 'map-legend-viewport'; this.viewport.tabIndex = 0;
         this.viewport.setAttribute('role', 'list'); this.viewport.setAttribute('aria-label', 'Point colours for enabled data sources');
         this.space.className = 'map-legend-space'; this.rows.className = 'map-legend-rows';
@@ -37,7 +37,7 @@ class LegendValues {
     update(sources: LegendSource[]) {
         const enabled = sources.filter(s => s.enabled);
         const signature = enabled.flatMap(s => [s.id, s.name, s.done, s.color, s.coloring, s.colorCategories, s.colorLabels, s.colorLegend]);
-        if (signature.length === this.signature.length && signature.every((value, i) => value === this.signature[i])) return;
+        if (signature.length === this.signature.length && signature.every((value, i) => value === this.signature[i])) { this.syncVisibility(); return; }
         this.signature = signature; this.total = 0;
         this.groups = enabled.map(source => {
             const count = !source.coloring.field || !source.done ? 1 : source.colorCategories ? source.colorCategories.length + 1 : source.colorLabels ? source.colorLabels.length + 1 : 1;
@@ -50,6 +50,14 @@ class LegendValues {
         this.viewport.scrollTop = Math.min(this.viewport.scrollTop, Math.max(0, this.extent - this.viewport.clientHeight));
         this.root.hidden = !enabled.length;
         this.render();
+    }
+    private syncVisibility() {
+        for (const row of this.rows.querySelectorAll<HTMLElement>('[data-key]')) {
+            const source = this.groups.find(g => g.source.id === row.dataset.source)!.source;
+            const visible = !source.mapHidden.has(row.dataset.key!);
+            row.classList.toggle('map-legend-value-hidden', !visible);
+            row.querySelector<HTMLInputElement>('input')!.checked = visible;
+        }
     }
     private render() {
         const visible = Math.max(1, Math.ceil(this.viewport.clientHeight / rowHeight));
@@ -79,7 +87,19 @@ class LegendValues {
             const text = document.createElement('div'), value = document.createElement('span'), owner = document.createElement('small');
             value.textContent = label; owner.textContent = `${s.name}${field ? ' · ' + field : ''}`;
             row.title = `${owner.textContent}: ${label}`;
-            text.append(value, owner); row.append(swatch, text); this.rows.append(row);
+            text.append(value, owner); row.append(swatch, text);
+            if (field && s.done && (s.colorCategories || s.colorLabels)) {
+                const key = s.colorCategories ? offset < s.colorCategories.length ? 'category:' + s.colorCategories[offset] : 'missing' : offset < s.colorLabels!.length ? 'bin:' + offset : 'missing';
+                row.dataset.key = key;
+                const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.className = 'map-legend-toggle map-legend-value-toggle'; toggle.setAttribute('role', 'switch');
+                toggle.setAttribute('aria-label', `Show ${label} for ${s.name} on map`);
+                toggle.title = 'Show or hide these points on the map only';
+                toggle.checked = !s.mapHidden.has(key);
+                toggle.addEventListener('change', () => this.visibility(s.id, key, toggle.checked));
+                row.classList.toggle('map-legend-value-hidden', !toggle.checked);
+                row.append(toggle);
+            }
+            this.rows.append(row);
         }
     }
 }
@@ -95,7 +115,7 @@ type Entry = {
 export class MapLegend {
     private entries = new Map<string, Entry>();
     private list = document.createElement('div');
-    constructor(private root: HTMLElement, private visibility: (id: string, visible: boolean) => void) {
+    constructor(private root: HTMLElement, private visibility: (id: string, visible: boolean) => void, private valueVisibility: (id: string, key: string, visible: boolean) => void) {
         const title = document.createElement('h2'); title.textContent = 'Map legend';
         this.list.className = 'map-legend-sources';
         this.list.setAttribute('role', 'list');
@@ -121,7 +141,7 @@ export class MapLegend {
                 const body = document.createElement('div'); details.append(body);
                 const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.className = 'map-legend-toggle'; toggle.setAttribute('role', 'switch');
                 container.append(details, toggle); this.list.append(container);
-                entry = { root: container, details, summary, preview, name, mode, toggle, values: new LegendValues(body), source };
+                entry = { root: container, details, summary, preview, name, mode, toggle, values: new LegendValues(body, this.valueVisibility), source };
                 const current = entry;
                 details.addEventListener('toggle', () => { if (details.open) current.values.update([current.source]); });
                 toggle.addEventListener('change', () => this.visibility(current.source.id, toggle.checked));

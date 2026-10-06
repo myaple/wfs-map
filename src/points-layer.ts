@@ -6,6 +6,8 @@ precision highp float;
 precision highp int;
 layout(location=0) in vec4 a_position;
 layout(location=1) in uvec3 a_bin;
+layout(location=2) in uint a_visible;
+flat out uint v_visible;
 uniform bool u_colored;
 uniform bool u_categorical;
 uniform vec3 u_palette[64];
@@ -25,17 +27,21 @@ void main() {
   if(u_pick) clip=(clip-u_pickCenter)*u_pickScale;
   gl_Position=vec4(clip,0.0,1.0);
   gl_PointSize=u_size;
+  v_visible=a_visible;
   v_color=u_colored?(u_categorical?vec3(a_bin)/255.0:(a_bin.x==255u?vec3(.5):u_palette[min(a_bin.x,63u)])):u_color;
   uint id=uint(gl_VertexID)+1u;
   v_id=vec4(float(id&255u),float((id>>8u)&255u),float((id>>16u)&255u),float((id>>24u)&255u))/255.0;
 }`;
 const fragment = `#version 300 es
 precision highp float;
+precision highp int;
 uniform bool u_pick;
 flat in vec3 v_color;
 flat in vec4 v_id;
+flat in uint v_visible;
 out vec4 color;
 void main() {
+  if(v_visible==0u) discard;
   if(length(gl_PointCoord-vec2(.5))>.5) discard;
   color=u_pick?v_id:vec4(v_color,1.0);
 }`;
@@ -63,6 +69,8 @@ export class PointsLayer implements CustomLayerInterface {
     spatialBuffer!: WebGLBuffer;
     colorBuffer!: WebGLBuffer;
     colorCodes?: Uint8Array;
+    mapMask?: Uint8Array;
+    private mapMaskBuffer!: WebGLBuffer;
     palette = new Float32Array(64 * 3);
     private paletteBins = 24;
     categorical = false;
@@ -133,6 +141,8 @@ export class PointsLayer implements CustomLayerInterface {
             gl.disableVertexAttribArray(1);
             gl.vertexAttribI4ui(1, 255, 0, 0, 0);
         }
+        this.mapMaskBuffer = gl.createBuffer()!;
+        this.uploadMapMask();
         gl.bindVertexArray(null);
         this.framebuffer = undefined;
         this.texture = undefined;
@@ -212,6 +222,21 @@ export class PointsLayer implements CustomLayerInterface {
         }
         gl.bindVertexArray(null);
         this.map.triggerRepaint();
+    }
+    setMapMask(mask?: Uint8Array) {
+        this.mapMask = mask;
+        if (this.gl) this.uploadMapMask();
+        this.map?.triggerRepaint();
+    }
+    private uploadMapMask() {
+        const gl = this.gl;
+        gl.bindVertexArray(this.vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.mapMaskBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, this.mapMask ?? new Uint8Array(1), gl.STATIC_DRAW);
+        gl.vertexAttribIPointer(2, 1, gl.UNSIGNED_BYTE, 1, 0);
+        if (this.mapMask) gl.enableVertexAttribArray(2);
+        else { gl.disableVertexAttribArray(2); gl.vertexAttribI4ui(2, 1, 0, 0, 0); }
+        gl.bindVertexArray(null);
     }
     setPalette(stops: readonly string[]) {
         this.palette.set(numericPalette(stops, this.paletteBins));
@@ -312,7 +337,7 @@ export class PointsLayer implements CustomLayerInterface {
             const groups = chunk.groups;
             if (groups[g + 2] > x + margin || groups[g + 4] < x - margin || groups[g + 3] > y + margin || groups[g + 5] < y - margin) continue;
             for (let k = groups[g] - chunk.offset, end = k + groups[g + 1]; k < end; k++) {
-                const index = chunk.indices[k]; if (selected && !selected.has(index)) continue;
+                const index = chunk.indices[k]; if (selected && !selected.has(index) || this.mapMask && !this.mapMask[index]) continue;
                 const i = (index - chunk.offset) * 4, p = chunk.positions;
                 if (Math.hypot((p[i] + p[i + 2] - x) * world, (p[i + 1] + p[i + 3] - y) * world) <= radius) hits.push(index);
             }
@@ -390,10 +415,11 @@ export class PointsLayer implements CustomLayerInterface {
         gl.deleteBuffer(this.indexBuffer);
         gl.deleteBuffer(this.spatialBuffer);
         gl.deleteBuffer(this.colorBuffer);
+        gl.deleteBuffer(this.mapMaskBuffer);
         if (this.framebuffer)
             gl.deleteFramebuffer(this.framebuffer);
         if (this.texture)
             gl.deleteTexture(this.texture);
     }
-    get gpuBytes() { return this.capacity * 20 + (this.colorCodes?.byteLength ?? 0) + (this.indices?.byteLength ?? 0); }
+    get gpuBytes() { return this.capacity * 20 + (this.colorCodes?.byteLength ?? 0) + (this.indices?.byteLength ?? 0) + (this.mapMask?.byteLength ?? 0); }
 }

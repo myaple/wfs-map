@@ -25,7 +25,7 @@ type Config = {
     timeField?: string;
 };
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
-let store: Store | undefined, revision = 0, colorRevision = 0, analyzer: Analyzer | undefined;
+let store: Store | undefined, revision = 0, colorRevision = 0, mapRevision = 0, analyzer: Analyzer | undefined;
 const chartRevisions = new Map<string, number>();
 let applied: Uint32Array | null = null, records: RecordsIndex | undefined, recordsRevision = 0;
 function post(message: unknown, transfers: Transferable[] = []) { ctx.postMessage(message, transfers); }
@@ -195,6 +195,13 @@ ctx.onmessage = (event: MessageEvent) => {
         catch (e) {
             post({ type: 'error', message: (e as Error).message });
         }
+    }
+    if (m.type === 'mapVisibility' && store) {
+        const r = ++mapRevision;
+        analyzer ??= new Analyzer(store);
+        void analyzer.mapVisibility(m.field, m.bins, m.hidden, m.scale, () => r !== mapRevision).then(mask => {
+            if (r === mapRevision) post({ type: 'mapVisibility', request: m.request, mask }, [mask.buffer]);
+        }).catch(e => { if (r === mapRevision) post({ type: 'mapVisibilityError', request: m.request, message: (e as Error).message }); });
     }
     if (m.type === 'colors' && store) {
         const r = ++colorRevision;

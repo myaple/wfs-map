@@ -964,3 +964,8 @@ html { scroll-padding-bottom: var(--workspace-dock-height, 48px); }
 .map-dialog .map-legend-sources { min-height: 0; max-height: none; }
 .map-dialog .map-legend-viewport { max-height: 220px; }
 @media(max-width:600px) { .map-dialog .map-legend-viewport { max-height: 180px; } .map-legend-preview { width: 36px; } }
+
+.map-legend-value-toggle { position: static; margin-left: auto; flex: none; }
+.map-legend-row > div { flex: 1; }
+.map-legend-value-hidden .map-legend-swatch { opacity: .35; }
+.map-legend-value-hidden > div > span { text-decoration: line-through; color: var(--muted); }

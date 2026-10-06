@@ -138,3 +138,74 @@ test('eight datasets produce eight collapsed entries even with categorical domai
     await expect(page.getByRole('switch')).toHaveCount(8);
     await page.locator('#mapLegend').screenshot({ path: 'docs/screenshots/eight-dataset-map-legend.png' });
 });
+
+const settledMask = async (page: Page, id: string) => page.waitForFunction(id => !(window as any).__WFS_MAP__.sources.find((s: any) => s.id === id).mapMaskPending, id);
+const valueToggle = (page: Page, name: string) => page.getByRole('switch', { name, exact: true });
+
+test('category switches hide exact values, preserve focus, and survive scrolling, palette edits and source switches', async ({ page }) => {
+    await seed(page); await expand(page, 'categories');
+    await page.locator('#colorSource').selectOption('categories');
+    // Sharing an RGB colour must not merge two category visibility choices.
+    await page.getByLabel('Colour for Category-001', { exact: true }).fill('#ff0000');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.find((s: any) => s.id === 'categories').layer.colorCodes[3] === 255);
+    const snapshot = () => page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => ({ id: s.id, enabled: s.enabled, count: s.selected, expression: s.workspace.expression(), request: s.filterRequest, charts: s.workspace.specs })));
+    const before = await snapshot();
+    const toggle = valueToggle(page, 'Show Category-000 for Categories on map');
+    await toggle.focus(); await page.keyboard.press('Space'); await settledMask(page, 'categories');
+    await expect(toggle).toBeFocused();
+    const hits = () => page.evaluate(() => { const app = (window as any).__WFS_MAP__, p = app.map.project([-1,54]); return Array.from(app.sources.find((s: any) => s.id === 'categories').layer.pickAll(p.x,p.y)); });
+    expect(await hits()).not.toContain(0); expect(await hits()).toContain(1); expect(await hits()).toHaveLength(240);
+    const viewport = source(page,'categories').locator('.map-legend-viewport');
+    await viewport.evaluate(el => el.scrollTop = el.scrollHeight);
+    await valueToggle(page,'Show Missing value for Categories on map').uncheck(); await settledMask(page,'categories');
+    expect(await hits()).toHaveLength(239);
+    await viewport.evaluate(el => el.scrollTop = 0); await expect(toggle).not.toBeChecked();
+    await valueToggle(page,'Show Categories on map').uncheck(); expect(await hits()).toHaveLength(0);
+    await valueToggle(page,'Show Categories on map').check(); expect(await hits()).toHaveLength(239);
+    expect(await snapshot()).toEqual(before);
+    await page.getByLabel('Colour for Category-000',{exact:true}).fill('#00ffff'); await settledMask(page,'categories');
+    await expect(toggle).not.toBeChecked(); expect(await hits()).not.toContain(0);
+    await page.locator('#enlargeMap').click(); await expect(toggle).not.toBeChecked();
+    await page.locator('#mapLegend').screenshot({ path:'docs/screenshots/expanded-map-legend.png' });
+    await page.keyboard.press('Escape');
+    await page.locator('#cancel').click(); await page.locator('#load').click();
+    await page.waitForFunction(() => { const s=(window as any).__WFS_MAP__.sources.find((s:any)=>s.id==='categories');return s.done && s.layer.mapMask && !s.mapMaskPending; });
+    expect(await hits()).toHaveLength(239); await expect(toggle).not.toBeChecked();
+    await toggle.check(); await settledMask(page,'categories'); expect(await hits()).toHaveLength(240);
+});
+
+test('numeric and missing switches compose with filters but preserve chart, record and export selections', async ({ page }) => {
+    await seed(page); await expand(page,'gradient');
+    const picks=()=>page.evaluate(()=>{const app=(window as any).__WFS_MAP__,s=app.sources.find((s:any)=>s.id==='gradient'),p=app.map.project([-2,53]);return {cpu:Array.from(s.layer.pickAll(p.x,p.y)),gpu:s.layer.pick(p.x,p.y),selected:s.selected,filter:s.filterRequest};});
+    const before=await picks();expect(before.cpu).toEqual([0,1,2]);
+    await valueToggle(page,'Show 0 – 2 for Gradient on map').uncheck(); await settledMask(page,'gradient');
+    expect((await picks()).cpu).toEqual([1,2]); expect((await picks()).filter).toBe(before.filter);
+    await source(page,'gradient').locator('.map-legend-viewport').evaluate(el=>el.scrollTop=el.scrollHeight);
+    await valueToggle(page,'Show 14 – 16 for Gradient on map').uncheck(); await settledMask(page,'gradient');
+    await valueToggle(page,'Show Missing value for Gradient on map').uncheck(); await settledMask(page,'gradient');
+    expect((await picks()).cpu).toEqual([]); expect((await picks()).gpu).toBeNull(); expect((await picks()).selected).toBe(3);
+    await page.locator('#exportSource').selectOption('gradient');
+    const download=page.waitForEvent('download'); await page.locator('#exportCSV').click();
+    const file=await download;const {readFile}=await import('node:fs/promises');
+    expect((await readFile((await file.path())!,'utf8')).trim().split('\n')).toHaveLength(4);
+    await page.evaluate(()=>(window as any).__WFS_MAP__.filterSource('gradient',[{field:'value',op:'gte',value:'10'}]));
+    await page.waitForFunction(()=>{const s=(window as any).__WFS_MAP__.sources.find((s:any)=>s.id==='gradient');return !s.filtering&&s.selected===1;});
+    expect((await picks()).cpu).toEqual([]);
+    await valueToggle(page,'Show 14 – 16 for Gradient on map').check(); await settledMask(page,'gradient');
+    expect((await picks()).cpu).toEqual([1]);expect((await picks()).gpu).toBe(1);expect((await picks()).selected).toBe(1);
+    await navigate(page,'records');await page.locator('#recordsSource').selectOption('gradient');
+    await expect(page.locator('#records [role=status]')).toContainText('1 table rows · 1 applied matches');
+});
+
+test('rapid subcategory changes settle on the latest mask, preserve palette edits and reset for a new bin domain', async({page})=>{
+    await seed(page);await expand(page,'gradient');
+    const toggle=valueToggle(page,'Show 0 – 2 for Gradient on map');
+    await toggle.uncheck();await toggle.check();await toggle.uncheck();await settledMask(page,'gradient');
+    expect(await page.evaluate(()=>Array.from((window as any).__WFS_MAP__.sources.find((s:any)=>s.id==='gradient').layer.mapMask))).toEqual([0,1,1]);
+    await page.locator('#colorSource').selectOption('gradient');await page.locator('#colorScheme').selectOption('inferno');
+    await expect(toggle).not.toBeChecked();
+    await page.locator('#colorBins').selectOption('24');
+    await page.waitForFunction(()=>{const s=(window as any).__WFS_MAP__.sources.find((s:any)=>s.id==='gradient');return s.colorLabels?.length===24;});
+    expect(await page.evaluate(()=>(window as any).__WFS_MAP__.sources.find((s:any)=>s.id==='gradient').layer.mapMask)).toBeUndefined();
+    await expect(source(page,'gradient').locator('.map-legend-row input').first()).toBeChecked();
+});
