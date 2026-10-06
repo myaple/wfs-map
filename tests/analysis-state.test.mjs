@@ -34,3 +34,15 @@ test('portable nested filters round-trip with their exact group semantics',()=>{
     saved.children.pop();
     assert.equal(e.children.length,2);
 });
+
+test('shared local map bounds persist separately from load bounds and source OR groups', () => {
+    const bounds = { west: -5, east: 1, south: 50, north: 55, rows: ['not configuration'] };
+    const expression = { op: 'or', children: [{ field: 'category', op: 'eq', value: 'A' }] };
+    const saved = configurationState(emptyState().settings, { choice: 'all', bounds: { bbox: { west: -10, east: 10, south: 40, north: 60 } } }, [{ id: 'a', fields: [], expression, charts: [] }], undefined, bounds);
+    assert.deepEqual(saved.localMapBounds, { west: -5, east: 1, south: 50, north: 55 });
+    assert.deepEqual(saved.analyses[0].expression, expression);
+    assert.equal(saved.query.bounds.bbox.west, -10);
+    bounds.west = -8;
+    assert.equal(saved.localMapBounds.west, -5);
+    assert(!JSON.stringify(saved).includes('not configuration'));
+});

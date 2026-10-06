@@ -121,3 +121,27 @@ test('CSV column type override makes numeric codes categorical and survives relo
     await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure Codes', exact: true }).click();
     await expect(page.getByLabel('Type for code', { exact: true })).toHaveValue('string');
 });
+
+test('local map area filters CSV without importing again and newly added WFS sources inherit it', async ({ page }) => {
+  await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
+  await page.locator('#sourceName').fill('Map CSV'); await page.locator('#type').selectOption('csv');
+  await page.locator('#csvFile').setInputFiles({ name: 'map.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,value\n-3,54,7\n-3,54,9\n0,52,10') });
+  await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+  await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done && !(window as any).__WFS_MAP__.sources[0].filtering);
+  await navigate(page, 'analysis');
+  await page.evaluate(() => (window as any).__WFS_MAP__.map.jumpTo({ center: [-3, 54], zoom: 7 }));
+  const before = await page.evaluate(() => { const s = (window as any).__WFS_MAP__.sources[0]; return { request: s.request, report: s.metrics.csvReport }; });
+  const canvas = page.locator('#map canvas'); const b = (await canvas.boundingBox())!;
+  await page.mouse.move(b.x + b.width * .25, b.y + b.height * .25); await page.mouse.down({ button: 'right' });
+  await page.mouse.move(b.x + b.width * .75, b.y + b.height * .75, { steps: 4 }); await page.mouse.up({ button: 'right' });
+  await expect(page.locator('#filterStatus')).toContainText('2 matches');
+  expect(await page.evaluate(() => { const s = (window as any).__WFS_MAP__.sources[0]; return { request: s.request, report: s.metrics.csvReport }; })).toEqual(before);
+  await navigate(page, 'records'); await expect(page.locator('.record-row')).toHaveCount(2);
+  await navigate(page, 'configuration'); await page.locator('#addSource').click();
+  await page.locator('#sourceName').fill('Later WFS'); await page.locator('#url').fill('/wfs?points=4096'); await page.locator('#layer').fill('demo:points');
+  await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+  await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.length === 2 && (window as any).__WFS_MAP__.sources.every((s: any) => s.done && !s.filtering));
+  expect(await page.evaluate(() => { const s = (window as any).__WFS_MAP__.sources[1]; return s.loaded === 4096 && s.selected < s.loaded; })).toBe(true);
+  await navigate(page, 'analysis'); await openFilters(page); await page.locator('#clearLocalArea').click();
+  await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.every((s: any) => !s.filtering && s.selected === s.loaded));
+});

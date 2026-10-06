@@ -2,9 +2,9 @@ import { configKeys, defaultConfig, type Settings } from './source-settings.ts';
 import type { Field } from './data.ts';
 import type { ChartSpec, Expression } from './analysis.ts';
 import type { TimeWindow } from './timeline-data.ts';
-import type { QueryBounds } from './wfs-query.ts';
+import type { QueryBounds, MapBounds } from './wfs-query.ts';
 export type SourceAnalysis = { id: string; fields: Field[]; expression: Expression; charts: ChartSpec[] };
-export type AnalysisState = { schemaVersion: 1; settings: Settings; query: { choice: string; bounds: QueryBounds }; analyses: SourceAnalysis[]; timeline?: TimeWindow };
+export type AnalysisState = { schemaVersion: 1; settings: Settings; query: { choice: string; bounds: QueryBounds }; analyses: SourceAnalysis[]; timeline?: TimeWindow; localMapBounds?: MapBounds };
 export type AnalysisDocument = { id: string; name: string; state: AnalysisState; revision: number; updatedAt: string; readOnly: boolean; shared: boolean };
 export type AnalysisSummary = Omit<AnalysisDocument, 'state' | 'readOnly'>;
 export function shareExpression(expression: Expression): Expression {
@@ -14,9 +14,10 @@ export function shareExpression(expression: Expression): Expression {
     if (hasRow(expression)) throw Error('Individual-observation selections cannot be saved. Remove those selection chips from Dataset filters, then save again. Your other filters and current selection have not changed.');
     return structuredClone(expression);
 }
-export function configurationState(settings: Settings, query: AnalysisState['query'], analyses: SourceAnalysis[], timeline?: TimeWindow): AnalysisState {
+export function configurationState(settings: Settings, query: AnalysisState['query'], analyses: SourceAnalysis[], timeline?: TimeWindow, localMapBounds?: MapBounds): AnalysisState {
     return {
         schemaVersion: 1,
+        ...(localMapBounds ? { localMapBounds: { west: localMapBounds.west, east: localMapBounds.east, south: localMapBounds.south, north: localMapBounds.north } } : {}),
         ...(timeline ? { timeline: { ...timeline } } : {}),
         settings: {
             sources: settings.sources.map(s => ({

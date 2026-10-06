@@ -212,3 +212,22 @@ test('Configuration has a single save action and fits desktop and narrow layouts
         await expect(page.locator('#saveSettings')).toBeVisible();
     }
 });
+
+test('local map area enables Save and restores for all sources separately from request bounds', async ({ context, page }) => {
+  const doc = document('map-area', 4096); const db = await service(context, [doc]);
+  await page.goto('/?analysis=map-area'); await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
+  const canvas = page.locator('#map canvas'), b = (await canvas.boundingBox())!;
+  await page.mouse.move(b.x + b.width * .25, b.y + b.height * .25); await page.mouse.down({ button: 'right' });
+  await page.mouse.move(b.x + b.width * .75, b.y + b.height * .75, { steps: 4 }); await page.mouse.up({ button: 'right' });
+  await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
+  const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds);
+  const selected = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected);
+  expect(selected).toBeLessThan(4096); expect(selected).toBeGreaterThan(0);
+  await expect(page.locator('#dockSaveAnalysis')).toBeEnabled(); await page.locator('#dockSaveAnalysis').click();
+  await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
+  expect(db.docs.get('map-area')?.state.localMapBounds).toEqual(bounds);
+  expect(db.docs.get('map-area')?.state.query.bounds.bbox).toBeUndefined();
+  await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done && !(window as any).__WFS_MAP__.sources[0].filtering);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds)).toEqual(bounds);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(selected);
+});

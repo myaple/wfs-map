@@ -159,9 +159,9 @@ test('right-drag map box matches geographic bounds and point colours keep IDs an
     await expect(page.locator('.geo-box')).toBeVisible();
     await page.mouse.up({ button: 'right' });
     await expect(page.locator('.geo-box')).toBeHidden();
-    await expect(page.locator('#areaSummary')).toContainText('Map area:');
+    await expect(page.locator('#localAreaSummary')).toContainText('Local map area:');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.done);
-    const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox);
+    const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds);
     const expected = Array.from({ length: 4096 }, (_, i) => feature(i)).filter(f => { const [x, y] = f.geometry.coordinates; return x >= bounds.west && x <= bounds.east && y >= bounds.south && y <= bounds.north; }).length;
     await expect(page.locator('#filterStatus')).toContainText(`${expected.toLocaleString()} matches`);
     expect(expected).toBeGreaterThan(0);

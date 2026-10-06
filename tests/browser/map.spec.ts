@@ -100,7 +100,7 @@ test('map enlargement preserves the live map, data and view, resizes on narrow s
   expect(requests).toEqual([]); expect(errors).toEqual([]);
 });
 
-test('enlarged map right-drag still bounds WFS requests and retains its area after restoration', async ({ page }) => {
+test('enlarged map right-drag filters loaded points and retains its area after restoration', async ({ page }) => {
   await page.goto('/?time=all&points=1024&autoload=1');
   await page.waitForFunction(() => (window as any).__WFS_MAP__?.metrics.analysisCharts);
   await page.locator('#enlargeMap').click();
@@ -111,17 +111,18 @@ test('enlarged map right-drag still bounds WFS requests and retains its area aft
   await page.mouse.up({ button: 'right' });
   await page.waitForFunction(() => {
     const h = (window as any).__WFS_MAP__;
-    return h.queryBounds.bbox && h.sources[0].done && !h.sources[0].loading;
+    return h.localMapBounds && h.sources[0].done && !h.sources[0].filtering;
   });
-  const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox);
+  const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds);
   const expected = Array.from({ length: 1024 }, (_, i) => feature(i)).filter(f => {
     const [x, y] = f.geometry.coordinates;
     return x >= bounds.west && x <= bounds.east && y >= bounds.south && y <= bounds.north;
   }).length;
   expect(expected).toBeGreaterThan(0); expect(expected).toBeLessThan(1024);
-  await expect(page.locator('#hud')).toHaveText(`Loaded ${expected.toLocaleString()} points`);
+  await expect(page.locator('#hud')).toHaveText('Loaded 1,024 points');
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].selected)).toBe(expected);
   await page.keyboard.press('Escape');
   await openFilters(page);
-  await expect(page.locator('#clearArea')).toBeVisible();
-  expect(await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox)).toEqual(bounds);
+  await expect(page.locator('#clearLocalArea')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds)).toEqual(bounds);
 });
