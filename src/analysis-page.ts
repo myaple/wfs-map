@@ -50,11 +50,19 @@ const updateNavigation = mountPageNavigation($('workspaceNavigation'));
 const derivedPage = document.createElement('section'); derivedPage.id = 'derived'; derivedPage.className = 'derived-page'; derivedPage.hidden = true;
 const derivedHeading = document.createElement('h2'); derivedHeading.textContent = 'Derived datasets';
 derivedPage.append(derivedHeading); $('app').append(derivedPage);
-const mapLegend = new MapLegend($('mapLegend'));
+const mapLegend = new MapLegend($('mapLegend'), (id, visible) => {
+    const s = sources.find(s => s.id === id);
+    if (!s) return;
+    s.mapVisible = s.layer.visible = visible;
+    if (!visible && inspection?.sourceId === id) { popup?.remove(); marker?.remove(); }
+    mapLegend.update(sources);
+    map.triggerRepaint();
+});
 type Source = {
     id: string;
     name: string;
     enabled: boolean;
+    mapVisible: boolean;
     color: [
         number,
         number,
@@ -151,6 +159,7 @@ function createSource(input: {
     const s = { id, name: input.name ?? `Source ${sources.length + 1}`, enabled: input.enabled ?? false, color, config: { ...defaultConfig, ...input.config }, serverFilters: structuredClone(input.serverFilters ?? []), layer: new PointsLayer('source-' + id, color), rules, charts, fields: [], loaded: 0, selected: 0, loading: false, done: false, request: 0, filterRequest: 0, filtering: false, exportRequest: 0, exporting: false, exportStatus: '', colorRequest: 0, coloring: { field: '', bins: 24, low: '#2463d4', high: '#ee5539', ...input.coloring }, colorLegend: '', metrics: {}, status: 'Ready. Load this source to analyze it.', error: false, filterStatus: '' } as unknown as Source;
     s.workspace = new Workspace(() => filter(undefined, s), rules, charts, id, () => sources.map(source => ({ id: source.id, name: source.name, workspace: source.workspace, enabled: source.enabled, available: source.enabled && source.done })), expression => inspectExpression(s, expression));
     sources.push(s);
+    s.mapVisible = true;
     const saved = savedAnalyses.get(id);
     if (saved) {
         s.fields = structuredClone(saved.fields);
@@ -528,6 +537,7 @@ function clearSource(s: Source) {
     if (mapReady && map.getLayer(s.layer.id))
         map.removeLayer(s.layer.id);
     s.layer = new PointsLayer('source-' + s.id, s.color);
+    s.layer.visible = s.mapVisible;
     s.layer.pointSize = Number(value('size'));
     s.loaded = s.selected = 0;
     s.loading = s.done = false;
