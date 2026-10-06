@@ -14,7 +14,7 @@ import { MapLegend } from './map-legend.ts';
 import { mountThemeToggle, themeColor } from './theme.ts';
 import { formatUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
-import { configurationState, type AnalysisState, type SourceAnalysis } from './analysis-state.ts';
+import { configurationState, localSettings, type AnalysisState, type SourceAnalysis } from './analysis-state.ts';
 import { currentAnalysis, mountAnalysisControls, rememberBindings, localAnalysisKey } from './saved-analysis.ts';
 import { fileUser } from './source-storage.ts';
 import * as maplibregl from 'maplibre-gl';
@@ -1023,15 +1023,26 @@ showQueryBounds();
 map.on('load', showQueryBounds);
 
 function savedState() {
-    sourceSettings.assertSaved();
-    const analyses: SourceAnalysis[] = sources.map(s => {
+    const pending = sourceSettings.pendingSettings();
+    const analyses: SourceAnalysis[] = sources.filter(s => {
+        const next = pending.sources.find(source => source.id === s.id);
+        // Applying replacement/disabled sources clears load-specific selections.
+        // Validate unchanged sources now; serialize changed ones after application.
+        return next && next.enabled === s.enabled && configIdentity(next.config) === configIdentity(s.config);
+    }).map(s => {
         const saved = savedAnalyses.get(s.id);
         return saved && !s.workspace.fields.length ? saved : { id: s.id, fields: s.workspace.fields, expression: s.workspace.expression(), charts: s.workspace.specs };
     });
-    return configurationState(snapshot(), { choice: value('timeWindow'), bounds: queryBounds }, analyses, timeline.savedWindow);
+    // A newly added source has no schema yet. Omitting its uninitialized workspace
+    // lets loading create the usual default charts instead of restoring an empty set.
+    return configurationState(pending, { choice: value('timeWindow'), bounds: queryBounds }, analyses.filter(s => s.fields.length || savedAnalyses.has(s.id)), timeline.savedWindow);
 }
-mountAnalysisControls(savedState, $('remoteAnalysisControls'), timeline.root.querySelector('.timeline-bar')!, () => {
+mountAnalysisControls(savedState, $('remoteAnalysisControls'), timeline.root.querySelector('.timeline-bar')!, async () => {
+    // Validate portable filters before committing sources, then persist the complete state.
+    savedState();
+    await sourceSettings.save();
     const state = savedState();
     localStorage.setItem(localAnalysisKey(), JSON.stringify(state));
-    localStorage.setItem(settingsKey, JSON.stringify(state.settings));
+    localStorage.setItem(settingsKey, JSON.stringify(localSettings(state)));
+    return state;
 });

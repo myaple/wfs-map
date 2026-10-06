@@ -28,7 +28,7 @@ test('200 MB CSV with two million rows, 16 columns and two unique text columns i
         expect(await page.evaluate(() => (window as any).__csvFullTextReads)).toBe(0);
         await page.locator('#csvTime').selectOption('timestamp');
         await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
-        await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
+        await expect(page.locator('#saveState')).toContainText('Saved in this browser');
         await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done && !(window as any).__WFS_MAP__.sources[0].filtering, undefined, { timeout: 120_000 });
         const source = await page.evaluate(() => { const s = (window as any).__WFS_MAP__.sources[0]; return { loaded: s.loaded, fields: s.fields, report: s.metrics.csvReport }; });
         expect(source.loaded).toBe(2_000_000); expect(source.fields).toHaveLength(16);

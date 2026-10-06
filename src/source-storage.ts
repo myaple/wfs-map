@@ -13,7 +13,7 @@ export function discardStagedCSVFiles(keep: Iterable<string>) {
 const storeName = 'csv';
 // Named analyses/copies may reuse immutable files within one user, but never
 // resolve another user's references or the unauthenticated legacy cache.
-export function setFileUser(user: string) {
+export function setFileUser(user: string | undefined) {
     fileUser = user;
 }
 function openFiles(user = fileUser): Promise<IDBDatabase> {

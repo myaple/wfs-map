@@ -42,19 +42,20 @@ test('million-row CSV saves beyond localStorage quota and reloads from IndexedDB
         await navigate(page, 'configuration');
         await importFile(page, file, 'Million points');
         await page.locator('#saveSettings').click();
-        await expect(page.locator('#saveState')).toHaveText('Saved in this browser', { timeout: 120_000 });
+        await expect(page.locator('#saveState')).toContainText('Saved in this browser', { timeout: 120_000 });
         await expect(page.locator('#saveError')).toBeHidden();
         const settings = await saved(page), ref = settings.sources[0].config.csvRef;
         expect(settings.sources[0].config.csvText).toBe(''); expect(ref).toBeTruthy();
         expect(await page.evaluate(() => localStorage.getItem('wfs-settings')!.length)).toBeLessThan(10_000);
         expect(await keys(page)).toEqual([ref]);
-        await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done, undefined, { timeout: 120_000 });
+        await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done && !(window as any).__WFS_MAP__.sources[0].filtering, undefined, { timeout: 120_000 });
         expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(1_000_000);
         await page.reload();
-        await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done, undefined, { timeout: 120_000 });
+        await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done && !(window as any).__WFS_MAP__.sources[0].filtering, undefined, { timeout: 120_000 });
         expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(1_000_000);
         await navigate(page, 'records');
         await expect(page.locator('#records > [role=status]')).toContainText('1,000,000 table rows');
+        await expect(page.locator('.records-scroll')).toBeVisible();
         await page.locator('.records-scroll').focus(); await page.keyboard.press('End');
         await expect.poll(() => page.evaluate(() => (window as any).__WFS_MAP__.inspection?.index)).toBe(999999);
         await expect(page.locator('.record-row').last()).toHaveAttribute('data-record-index', '999999');
@@ -67,7 +68,7 @@ test('million-row CSV saves beyond localStorage quota and reloads from IndexedDB
         await page.getByRole('button', { name: 'Configure Million points', exact: true }).click();
         await expect(page.locator('#csvFileStatus')).toContainText(/\d+ columns/, { timeout: 120_000 });
         await page.locator('#sourceName').fill('Renamed million'); await page.locator('#updateSource').click();
-        await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
+        await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toContainText('Saved in this browser');
         expect((await saved(page)).sources[0].config.csvRef).toBe(ref);
         expect(await keys(page)).toEqual([ref]); expect(errors).toEqual([]);
     } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -78,7 +79,7 @@ test('failed CSV replacement preserves the old file, supports retry, and cleans 
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.map.loaded());
     await navigate(page, 'configuration');
     await importFile(page, smallCSV(1)); await page.locator('#saveSettings').click();
-    await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
+    await expect(page.locator('#saveState')).toContainText('Saved in this browser');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     const before = await saved(page), ref = before.sources[0].config.csvRef;
     await page.getByRole('button', { name: 'Configure CSV', exact: true }).click();
@@ -99,7 +100,7 @@ test('failed CSV replacement preserves the old file, supports retry, and cleans 
     expect(await saved(page)).toEqual(before); expect(await keys(page)).toEqual([ref]);
     await expect(page.locator('#saveSettings')).toBeEnabled();
     await page.evaluate(() => Storage.prototype.setItem = (window as any).__setItem);
-    await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
+    await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toContainText('Saved in this browser');
     const replacement = (await saved(page)).sources[0].config.csvRef;
     expect(replacement).not.toBe(ref); expect(await keys(page)).toEqual([replacement]);
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
@@ -109,7 +110,7 @@ test('failed CSV replacement preserves the old file, supports retry, and cleans 
     await page.getByRole('button', { name: 'Remove CSV', exact: true }).click();
     await page.locator('#undoRemove').click(); expect(await keys(page)).toEqual([replacement]);
     await page.getByRole('button', { name: 'Remove CSV', exact: true }).click();
-    await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
+    await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toContainText('Saved in this browser');
     expect(await keys(page)).toEqual([]);
 });
 
@@ -128,7 +129,7 @@ test('inline CSV settings migrate on save and IndexedDB failures leave drafts in
     await page.locator('#saveSettings').click(); await expect(page.locator('#saveError')).toContainText('File storage full');
     expect((await saved(page)).sources[0].config.csvText).toContain('54,7');
     await page.evaluate(() => indexedDB.open = (window as any).__open);
-    await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
+    await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toContainText('Saved in this browser');
     expect((await saved(page)).sources[0].config.csvText).toBe('');
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources[0]?.done);
     expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].loaded)).toBe(1);

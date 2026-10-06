@@ -77,37 +77,40 @@ test('CSV attachment and saved filters/charts round-trip locally without sending
     expect(db.payloads.length).toBeGreaterThan(0);
     for (const payload of db.payloads) { expect(payload).not.toContain('SENSITIVE_ROW'); expect(payload).not.toContain('csvText'); expect(payload).not.toContain('metrics'); expect(payload).not.toContain('results'); }
 });
-test('a shared setup can attach a local CSV and retain that binding on reload before saving a personal copy', async ({ context, page }) => {
+test('saving a shared setup applies its CSV attachment and creates a personal copy', async ({ context, page }) => {
     const doc = document('shared'); doc.state.settings.sources = [{ id: 'csv-source', name: 'Shared CSV', enabled: true, config: { ...defaultConfig, type: 'csv', csvRef: 'remote-reference', fileName: 'stations.csv', longitudeField: 'lon', latitudeField: 'lat' } }];
     const db = await service(context, [doc]); await page.goto('/?share=token-shared');
     await expect(page.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save analysis', exact: true })).toHaveCount(0);
     await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Configure Shared CSV', exact: true }).click();
     await page.locator('#csvFile').setInputFiles({ name: 'stations.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,value\n-1,54,9') });
     await expect(page.locator('#csvFileStatus')).toContainText('3 columns'); await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
-    await navigate(page, 'analysis'); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
-    await page.reload(); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
+    await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue('Analysis shared (copy)');
+    await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
     expect(db.docs.get('shared')?.state.settings.sources[0].config.csvRef).toBe('remote-reference');
-    await navigate(page, 'configuration'); await page.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save a copy', exact: true }).click(); await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue('Analysis shared (copy)'); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
+    expect(db.docs.get('created-1')?.state.settings.sources[0].config.csvRef).not.toBe('remote-reference');
+    await page.reload(); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
 });
 
-test('local and remote saves share one Configuration card and remote saving rejects unapplied source changes', async ({ context, page }) => {
+test('one Configuration save applies source drafts and persists the complete analysis locally and remotely', async ({ context, page }) => {
  const db=await service(context,[document('save-layout')]); await page.goto('/?analysis=save-layout');
  await expect(page.locator('.topbar .saved-analysis-bar')).toHaveCount(0);
  await expect(page.getByRole('link',{name:'All analyses',exact:true})).toBeHidden();
  await expect(page.locator('#remoteAnalysisControls').getByRole('button',{name:'Save analysis',exact:true})).toBeHidden();
  await navigate(page,'configuration');
- await expect(page.locator('#analysisSave')).toContainText('Save locally'); await expect(page.locator('#analysisSave')).toContainText('Save remotely & share');
+ await expect(page.locator('#analysisSave')).not.toContainText('Save locally');
+ await expect(page.locator('#analysisSave')).not.toContainText('Save remotely');
+ await expect(page.locator('#discardSettings')).toHaveCount(0);
+ await expect(page.locator('#analysisSave').getByRole('button', { name: 'Save analysis', exact: true })).toHaveCount(1);
  await expect(page.locator('#analysisSave #saveSettings')).toBeVisible();
  await expect(page.locator('#analysisSave .saved-analysis-bar')).toBeVisible();
  await page.getByRole('button',{name:'Configure Source save-layout',exact:true}).click();
  await page.locator('#sourceName').fill('Revised source'); await page.locator('#updateSource').click();
  await page.locator('#remoteAnalysisControls').getByRole('button',{name:'Save analysis',exact:true}).click();
- await expect(page.locator('.saved-analysis-bar')).toContainText('Save or discard your local source changes');
- expect(db.payloads).toHaveLength(0);
- await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toContainText('Saved in this browser');
- await page.locator('#remoteAnalysisControls').getByRole('button',{name:'Save analysis',exact:true}).click();
  await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
  expect(db.docs.get('save-layout')?.state.settings.sources[0].name).toBe('Revised source');
+ const cached = await page.evaluate(() => JSON.parse(localStorage.getItem('wfs-analysis-settings:analyst:save-layout:analysis')!));
+ expect(cached).toEqual(db.docs.get('save-layout')?.state);
+ await page.reload(); await expect(page.locator('#sourceList')).toContainText('Revised source');
 });
 
 test('dock save tracks edits, retries failures, and preserves edits made during a pending save', async ({ context, page }) => {
@@ -133,4 +136,79 @@ test('dock save tracks edits, retries failures, and preserves edits made during 
     await page.reload(); await expect(page.locator('#hud')).toHaveText('Loaded 7 points');
     await page.locator('#toggleTimeline').click(); await expect(page.locator('.timeline-toggle')).toBeChecked();
     await navigate(page, 'configuration'); await page.getByLabel('Analysis name', { exact: true }).fill('New name'); await expect(save).toBeEnabled();
+});
+
+test('dock save applies pending source edits; remote failure retains the browser copy and can be retried', async ({ context, page }) => {
+    const db = await service(context, [document('pending')]);
+    await page.goto('/?analysis=pending'); await expect(page.locator('#hud')).toHaveText('Loaded 7 points');
+    await page.locator('#dockSaveAnalysis').click(); await expect(page.locator('#dockSaveAnalysis')).toBeDisabled();
+    await navigate(page, 'configuration');
+    await page.getByRole('button', { name: 'Configure Source pending', exact: true }).click();
+    await page.locator('#sourceName').fill('Pending source edit'); await page.locator('#updateSource').click();
+    await page.getByLabel('Enable Pending source edit', { exact: true }).uncheck();
+    await navigate(page, 'analysis');
+    await page.route('**/api/analyses/pending', route => route.request().method() === 'PUT' ? route.fulfill({ status: 503, body: 'Server offline' }) : route.fallback());
+    await page.locator('#dockSaveAnalysis').click();
+    await expect(page.locator('.dock-save-status')).toContainText('Saved in this browser · Remote save failed');
+    await expect(page.locator('#dockSaveAnalysis')).toBeEnabled();
+    const cached = await page.evaluate(() => JSON.parse(localStorage.getItem('wfs-analysis-settings:analyst:pending:analysis')!));
+    expect(cached.settings.sources[0]).toMatchObject({ name: 'Pending source edit', enabled: false });
+    expect(db.docs.get('pending')?.state.settings.sources[0].enabled).toBe(true);
+    await page.unroute('**/api/analyses/pending'); await page.locator('#dockSaveAnalysis').click();
+    await expect(page.locator('#dockSaveAnalysis')).toBeDisabled();
+    expect(db.docs.get('pending')?.state).toEqual(cached);
+});
+
+test('invalid source drafts prevent remote publication and remain editable', async ({ context, page }) => {
+    const db = await service(context, [document('invalid')]);
+    await page.goto('/?analysis=invalid#configuration');
+    await page.locator('#backgroundSettings summary').click(); await page.locator('#basemapURL').fill('javascript:bad');
+    await page.locator('#saveSettings').click(); await expect(page.locator('#saveError')).toContainText('XYZ tile URL');
+    expect(db.payloads).toHaveLength(0); await expect(page.locator('#dockSaveAnalysis')).toBeEnabled();
+    await page.locator('#basemapURL').fill(''); await page.locator('#saveSettings').click();
+    await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
+    expect(db.payloads).toHaveLength(1);
+});
+
+test('standalone Save creates a remote analysis and retains its CSV in the authenticated browser cache', async ({ context, page }) => {
+    const db = await service(context);
+    await page.goto('/?time=all#configuration');
+    await page.locator('#addSource').click(); await page.locator('#sourceName').fill('Private CSV');
+    await page.locator('#type').selectOption('csv');
+    await page.locator('#csvFile').setInputFiles({ name: 'private.csv', mimeType: 'text/csv', buffer: Buffer.from('lon,lat,secret\n-1,54,PRIVATE_ROW') });
+    await expect(page.locator('#csvFileStatus')).toContainText('3 columns'); await page.locator('#updateSource').click();
+    await page.getByLabel('Analysis name', { exact: true }).fill('Regional observations'); await page.locator('#saveSettings').click();
+    await expect(page).toHaveURL(/analysis=created-1/); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
+    expect(db.docs.get('created-1')?.name).toBe('Regional observations');
+    expect(db.payloads).toHaveLength(1); expect(db.payloads[0]).not.toContain('PRIVATE_ROW');
+    await page.reload(); await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
+});
+
+test('Share saves pending source settings through the same action', async ({ context, page }) => {
+    const db = await service(context, [document('share-draft')]);
+    await page.goto('/?analysis=share-draft#configuration');
+    await page.getByRole('button', { name: 'Configure Source share-draft', exact: true }).click();
+    await page.locator('#sourceName').fill('Shared revised source'); await page.locator('#updateSource').click();
+    await page.getByRole('button', { name: 'Share', exact: true }).click(); await expect(page.getByLabel('Shared analysis link')).toBeVisible();
+    expect(db.docs.get('share-draft')?.state.settings.sources[0].name).toBe('Shared revised source');
+});
+
+test('Configuration has a single save action and fits desktop and narrow layouts', async ({ context, page }) => {
+    const doc = document('configuration-preview'); doc.name = 'Regional observations'; doc.state.settings.sources[0].name = 'Weather stations';
+    doc.state.settings.sources.push({ id: 'csv-preview', name: 'Survey observations', enabled: false, config: { ...defaultConfig, type: 'csv', csvRef: 'preview', fileName: 'observations.csv', longitudeField: 'lon', latitudeField: 'lat' } });
+    await service(context, [doc]); await page.goto('/?analysis=configuration-preview#configuration');
+    await expect(page.locator('#analysisSave #saveSettings')).toBeVisible();
+    if (process.env.CONFIGURATION_SCREENSHOT) {
+        await page.setViewportSize({ width: 1440, height: 1200 });
+        await page.locator('#load').click(); await expect(page.locator('#hud')).toHaveText('Loaded 7 points');
+        await navigate(page, 'configuration');
+        await page.locator('#saveSettings').click(); await expect(page.locator('#saveState')).toContainText('Analysis configuration saved');
+        await expect(page.locator('#saveSettings')).toBeEnabled();
+        await page.screenshot({ path: process.env.CONFIGURATION_SCREENSHOT, fullPage: true });
+    }
+    for (const width of [820, 375]) {
+        await page.setViewportSize({ width, height: 900 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await expect(page.locator('#saveSettings')).toBeVisible();
+    }
 });

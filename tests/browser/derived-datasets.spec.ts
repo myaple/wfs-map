@@ -122,14 +122,14 @@ test('WFS and CSV join on a shared numeric field, and failed storage never publi
  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[2].loaded)).toBe(2);
 });
 
-test('saving a join preserves pending Data sources edits until they are explicitly saved or discarded', async ({ page }) => {
+test('saving a join preserves pending Data sources edits until they are explicitly saved', async ({ page }) => {
  await csvPair(page);
  await navigate(page, 'configuration'); await page.getByRole('button', {name:'Configure Left input', exact:true}).click();
  await page.locator('#sourceName').fill('Renamed input'); await page.locator('#updateSource').click();
  await navigate(page, 'derived');
  await page.getByRole('button', {name:'Preview join', exact:true}).click(); await expect(page.locator('#joinStatus')).toContainText('3 output rows');
  await page.getByRole('button', {name:'Save joined dataset', exact:true}).click();
- await expect(page.locator('#derivedDatasets [role=alert]')).toContainText('Save or discard your pending changes');
+ await expect(page.locator('#derivedDatasets [role=alert]')).toContainText('Save your pending changes');
  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.length)).toBe(2);
  await navigate(page, 'configuration'); await expect(page.locator('#sourceList')).toContainText('Renamed input');
  await expect(page.locator('#saveSettings')).toBeEnabled(); await page.locator('#saveSettings').click();

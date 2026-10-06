@@ -910,9 +910,6 @@ html { scroll-padding-bottom: var(--workspace-dock-height, 48px); }
 .timeline-summary { overflow-wrap: anywhere; }
 .workspace-dock .timeline-body { order: 2; flex: 1 1 auto; min-height: 0; max-height: 40dvh; overflow: auto; padding: 10px 16px 12px; }
 .map-dialog > .workspace-dock, .chart-dialog > .workspace-dock { flex: none; padding: 0; max-height: 55%; overflow: hidden; }
-.analysis-save h4 { margin: 16px 0 8px; }
-.analysis-save > section + section { border-top: 1px solid var(--border); margin-top: 16px; }
-.analysis-save .settings-save { position: static; padding: 0; border: 0; box-shadow: none; background: transparent; }
 .analysis-save .saved-analysis-bar { padding: 0; background: transparent; border: 0; }
 .analysis-save .saved-analysis-bar input { min-width: 0; max-width: 100%; }
 @container workspace (max-width: 800px) { .dashboard-footer { grid-template-columns: minmax(0, 1fr); gap: 0; } }
