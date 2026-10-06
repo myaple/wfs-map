@@ -5,6 +5,9 @@ export class Timeline {
     readonly root = document.createElement('section');
     window?: TimeWindow;
     private extent?: TimeWindow;
+    private pendingWindow?: TimeWindow;
+    get savedWindow() { return this.pendingWindow ?? this.window; }
+    restoreWindow(window?: TimeWindow) { this.pendingWindow = window ? { ...window } : undefined; }
     private signature = '';
     private frame = 0;
     private track: HTMLElement;
@@ -86,20 +89,22 @@ export class Timeline {
         });
         this.paint();
     }
-    update(sources: { name: string; extent?: TimelineExtent; loaded: number }[]) {
-        const signature = JSON.stringify(sources);
+    update(sources: { name: string; extent?: TimelineExtent; loaded: number }[], restoreComplete = true) {
+        const signature = JSON.stringify([sources, restoreComplete]);
         if (signature === this.signature) return;
         this.signature = signature;
         const dated = sources.filter(s => s.extent?.valid), previous = this.window;
         this.extent = dated.length ? { start: Math.min(...dated.map(s => s.extent!.start)), end: Math.max(...dated.map(s => s.extent!.end)) } : undefined;
+        if (this.extent && this.pendingWindow) { this.window = { ...this.pendingWindow }; if (restoreComplete) this.pendingWindow = undefined; }
         if (!this.extent) this.window = undefined;
         else if (this.window) this.window = { start: Math.max(this.extent.start, Math.min(this.extent.end, this.window.start)), end: Math.max(this.extent.start, Math.min(this.extent.end, this.window.end)) };
         const untimed = sources.filter(s => s.loaded && !s.extent?.valid).map(s => s.name);
         const missing = sources.reduce((n, s) => n + (s.extent?.missing ?? 0), 0);
         this.root.querySelector('.timeline-status')!.textContent = !this.extent ? 'Load data with a time attribute to use the timeline. Choose the time attribute in Data sources when needed.' : `${dated.length} timed source${dated.length === 1 ? '' : 's'}${missing ? ` · ${missing.toLocaleString()} missing/invalid times excluded when active` : ''}${untimed.length ? ` · No valid times (shown unchanged): ${untimed.join(', ')}` : ''}`;
-        if (JSON.stringify(previous) !== JSON.stringify(this.window)) this.commit(); else this.paint();
+        if (JSON.stringify(previous) !== JSON.stringify(this.window)) this.commit(true); else this.paint();
     }
-    private commit() {
+    private commit(restoring = false) {
+        if (!restoring) this.pendingWindow = undefined;
         if (this.window) this.window = { start: Math.round(this.window.start), end: Math.round(this.window.end) };
         this.root.querySelector<HTMLElement>('.timeline-error')!.hidden = true;
         this.paint();

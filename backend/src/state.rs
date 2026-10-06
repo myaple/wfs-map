@@ -80,7 +80,20 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
     {
         return Err("Workspace configuration exceeds 1 MiB");
     }
-    object(v, &["schemaVersion", "settings", "query", "analyses"])?;
+    object(
+        v,
+        &["schemaVersion", "settings", "query", "analyses", "timeline"],
+    )?;
+    if let Some(timeline) = v.get("timeline") {
+        object(timeline, &["start", "end"])?;
+        finite(required(timeline, "start")?)?;
+        finite(required(timeline, "end")?)?;
+        let start = timeline["start"].as_f64().unwrap();
+        let end = timeline["end"].as_f64().unwrap();
+        if start > end {
+            return Err("Invalid timeline window");
+        }
+    }
     if v.get("schemaVersion").and_then(Value::as_u64) != Some(1) {
         return Err("Unsupported workspace version");
     }
@@ -330,6 +343,8 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                     "xScale",
                     "yScale",
                     "series",
+                    "pointSize",
+                    "hiddenSources",
                 ],
             )?;
             for k in ["id", "x", "y"] {
@@ -356,6 +371,30 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                     string(required(mapping, "x")?)?;
                     if let Some(y) = m.get("y") {
                         string(y)?;
+                    }
+                }
+            }
+            if let Some(size) = c.get("pointSize") {
+                finite(size)?;
+                let size = size.as_f64().unwrap();
+                if !(1.0..=12.0).contains(&size) {
+                    return Err("Invalid chart point size");
+                }
+            }
+            if let Some(hidden) = c.get("hiddenSources") {
+                let mut seen = std::collections::HashSet::new();
+                for source in array(hidden, 8)? {
+                    let source = source.as_str().ok_or("Invalid hidden chart source")?;
+                    let member = source == id
+                        || c.get("series")
+                            .and_then(Value::as_array)
+                            .is_some_and(|series| {
+                                series.iter().any(|m| {
+                                    m.get("sourceId").and_then(Value::as_str) == Some(source)
+                                })
+                            });
+                    if !member || !seen.insert(source) {
+                        return Err("Invalid or duplicate hidden chart source");
                     }
                 }
             }
@@ -421,6 +460,32 @@ mod tests {
             assert!(validate(&bad).is_err());
         }
         v["analyses"][0]["charts"][0]["series"][0]["rows"] = serde_json::json!([1, 2]);
+        assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn validates_chart_presentation_and_timeline() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([
+            {"id":"a","name":"A","enabled":true,"config":{"type":"csv"}},
+            {"id":"b","name":"B","enabled":true,"config":{"type":"csv"}}
+        ]);
+        v["timeline"] = serde_json::json!({"start":1000,"end":2000});
+        v["analyses"] = serde_json::json!([{"id":"a","fields":[],"expression":{"op":"and","children":[]},"charts":[{"id":"c","type":"scatter","x":"x","y":"y","bins":24,"pointSize":5,"hiddenSources":["b"],"series":[{"sourceId":"b","x":"x","y":"y"}]}]}]);
+        assert!(validate(&v).is_ok());
+        for size in [0, 13] {
+            let mut bad = v.clone();
+            bad["analyses"][0]["charts"][0]["pointSize"] = size.into();
+            assert!(validate(&bad).is_err());
+        }
+        for hidden in [
+            serde_json::json!(["missing"]),
+            serde_json::json!(["b", "b"]),
+        ] {
+            let mut bad = v.clone();
+            bad["analyses"][0]["charts"][0]["hiddenSources"] = hidden;
+            assert!(validate(&bad).is_err());
+        }
+        v["timeline"]["end"] = 0.into();
         assert!(validate(&v).is_err());
     }
     #[test]

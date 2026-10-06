@@ -33,6 +33,7 @@ test('every chart collapses all settings while keeping enlargement and removal a
         const after = await page.evaluate(() => ({ specs: (window as any).__WFS_MAP__.workspace.specs, filters: (window as any).__WFS_MAP__.sources[0].filterRequest }));
         expect(after).toEqual(before);
     }
+    page.once('dialog', dialog => dialog.accept());
     await card.getByRole('button', { name: 'Remove chart' }).click();
     await expect(cards).toHaveCount(2);
 });

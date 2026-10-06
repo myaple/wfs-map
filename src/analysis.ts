@@ -29,6 +29,8 @@ export type ChartSpec = {
     xScale?: Scale;
     yScale?: Scale;
     series?: ChartSeries[];
+    pointSize?: number;
+    hiddenSources?: string[];
     aggregate?: 'count' | 'sum' | 'mean' | 'min' | 'max';
 };
 export type Axis = {

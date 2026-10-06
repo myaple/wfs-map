@@ -12,7 +12,8 @@ async function setup(page: Page) {
     await navigate(page, 'analysis');
 }
 async function comparison(page: Page, index: number) {
-    const chart = page.locator('.chart-card').nth(index);
+    const id = await page.locator('.chart-card').nth(index).getAttribute('data-chart-id');
+    const chart = page.locator(`.chart-card[data-chart-id="${id}"]`);
     await chart.getByRole('button',{name:'Settings',exact:true}).click();
     await chart.getByRole('button',{name:'+ Add source',exact:true}).click();
     await expect(chart.locator('.hint').last()).toContainText('19 plotted');
@@ -93,4 +94,61 @@ test('text scatter shares labels on both axes in bins and raw points, including 
     await page.keyboard.press('Escape');await page.setViewportSize({width:375,height:900});
     const fits=await chart.locator('.chart-series-row select').evaluateAll(nodes=>nodes.every(n=>{const a=n.getBoundingClientRect(),b=n.closest('.chart-card')!.getBoundingClientRect();return a.left>=b.left&&a.right<=b.right;}));expect(fits).toBe(true);
     await page.setViewportSize({width:1440,height:900});await chart.screenshot({path:'/tmp/multi-source-chart.png'});
+});
+
+test('source legend toggles every chart type, including empty charts and raw keyboard selection', async ({ page }) => {
+    await setup(page);
+    const chart = await comparison(page, 0);
+    const legend = chart.getByLabel('Chart source legend');
+    for (const type of ['bar', 'pie', 'time', 'scatter']) {
+        await chart.getByLabel('Chart type', { exact: true }).selectOption(type);
+        await chart.getByLabel('Source 2 X attribute', { exact: true }).selectOption(type === 'time' ? 'day' : type === 'scatter' ? 'reading' : 'label');
+        if (type === 'scatter') {
+            await chart.getByLabel('X attribute', { exact: true }).selectOption('value');
+            await chart.getByLabel('Y attribute', { exact: true }).selectOption('value');
+            await chart.getByLabel('Source 2 Y attribute', { exact: true }).selectOption('lat');
+        }
+        await expect(chart.locator('.hint').last()).toContainText('19 plotted');
+        const other = legend.getByRole('button', { name: 'Other observations', exact: true });
+        await other.click();
+        await expect(other).toHaveAttribute('aria-pressed', 'false');
+        await expect(chart.locator('.hint').last()).toContainText('16 plotted');
+        await legend.getByRole('button', { name: 'WFS source', exact: true }).click();
+        await expect(chart.locator('.hint').last()).toContainText('0 plotted');
+        await other.click(); await expect(chart.locator('.hint').last()).toContainText('3 plotted');
+        await legend.getByRole('button', { name: 'WFS source', exact: true }).click();
+    }
+    await chart.getByLabel('Binning', { exact: true }).selectOption('exact');
+    await expect(chart.locator('.hint').last()).toContainText('19 plotted');
+    await chart.getByLabel('Chart selection action').selectOption('inspect');
+    await legend.getByRole('button', { name: 'WFS source', exact: true }).click();
+    await expect(chart.locator('.hint').last()).toContainText('3 plotted');
+    const canvas = chart.locator('.raw-scatter canvas:not(.raw-scatter-axes)');
+    await canvas.press('Enter');
+    await navigate(page, 'records');
+    await expect(page.getByLabel('Record inspector')).toContainText('reading');
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.selected))).toEqual([16, 3]);
+    await navigate(page, 'analysis');
+    await chart.getByRole('button', { name: 'Enlarge', exact: true }).click();
+    await legend.getByRole('button', { name: 'WFS source', exact: true }).click();
+    await expect(chart.locator('.hint').last()).toContainText('19 plotted');
+    await page.keyboard.press('Escape');
+    await legend.getByRole('button', { name: 'WFS source', exact: true }).click();
+    await page.locator('#dockSaveAnalysis').click(); await expect(page.locator('#dockSaveAnalysis')).toBeDisabled();
+    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done));
+    await expect(legend.getByRole('button', { name: 'WFS source', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await expect(chart.locator('.hint').last()).toContainText('3 plotted');
+});
+
+test('a saved timeline spanning sources survives their separate load completion', async ({ page }) => {
+    await setup(page);
+    await page.locator('#toggleTimeline').click();
+    await page.locator('.timeline-toggle').check();
+    const start = await page.locator('.timeline-start').inputValue(), end = await page.locator('.timeline-end').inputValue();
+    await page.locator('#dockSaveAnalysis').click(); await expect(page.locator('#dockSaveAnalysis')).toBeDisabled();
+    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done));
+    await page.locator('#toggleTimeline').click();
+    await expect(page.locator('.timeline-toggle')).toBeChecked();
+    await expect(page.locator('.timeline-start')).toHaveValue(start);
+    await expect(page.locator('.timeline-end')).toHaveValue(end);
 });

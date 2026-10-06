@@ -1,5 +1,5 @@
 import { transform, axisBounds, type Scale } from './scales.ts';
-import { seriesColors } from './multi-charts.ts';
+import { seriesColors, visibleSeries } from './multi-charts.ts';
 import { themeColor } from './theme.ts';
 import { parseUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
@@ -17,7 +17,7 @@ const option = (value: string, label = value) => { const e = element('option', l
 let nextChartControl = 0;
 let nextFilterGroup = 0;
 export type ChartSource = { id: string; name: string; workspace: Workspace; enabled: boolean; available: boolean };
-function chartField(select: HTMLSelectElement, name: string, help: string) {
+function chartField(select: HTMLSelectElement | HTMLInputElement, name: string, help: string) {
     const root = element('div'), label = element('label', name), hint = element('div', help);
     root.className = 'chart-field';
     select.id = `chart-control-${++nextChartControl}`;
@@ -363,6 +363,9 @@ class ChartView {
     private focus = 0;
     private onThemeChange = () => this.draw();
     private hit = new Float32Array(0);
+    private fullResult?: ChartResult;
+    private pointSize = element('input');
+    private pointSizeField = chartField(this.pointSize, 'Point size', 'Size of scatter points; binned circles retain relative counts.');
     private action = element('select');
     constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string, inspection?: boolean, sourceId?: string) => void, sourceChanged: (id: string) => void) {
         this.changed = changed;
@@ -388,7 +391,9 @@ class ChartView {
         });
         settings.setAttribute('aria-controls', head.id);
         settings.setAttribute('aria-expanded', 'false');
-        const removeButton = button('×', remove);
+        const removeButton = button('×', () => {
+            if (confirm('Delete this attribute chart?')) remove();
+        });
         removeButton.setAttribute('aria-label', 'Remove chart');
         removeButton.title = 'Remove chart';
         removeButton.className = 'chart-icon';
@@ -410,7 +415,7 @@ class ChartView {
         this.sourceName.className = 'hint chart-source-name';
         const heading = element('div'); heading.append(this.title, this.sourceName);
         header.append(heading, actions);
-        head.append(chartField(this.action, 'Selection action', 'Inspect records without changing filters, or add selected values to filters.').root, sourceField.root, typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.xScaleField.root, this.yScaleField.root, this.binsField.root);
+        head.append(chartField(this.action, 'Selection action', 'Inspect records without changing filters, or add selected values to filters.').root, sourceField.root, typeField.root, this.xField.root, this.aggregateField.root, this.yField.root, this.xScaleField.root, this.yScaleField.root, this.binsField.root, this.pointSizeField.root);
         this.seriesControls.className = 'chart-series-controls';
         this.seriesLegend.className = 'chart-series-legend'; this.seriesLegend.setAttribute('aria-label', 'Chart source legend');
         this.addSeries.type = 'button';
@@ -435,6 +440,8 @@ class ChartView {
         target.append(this.root);
         this.xScale.append(option('linear', 'Linear'), option('log10', 'Log10'));
         this.yScale.append(option('linear', 'Linear'), option('log10', 'Log10'));
+        this.pointSize.type = 'range'; this.pointSize.min = '1'; this.pointSize.max = '12'; this.pointSize.step = '0.5';
+        this.pointSize.oninput = () => { spec.pointSize = Number(this.pointSize.value); this.raw?.setPointSize(spec.pointSize); this.draw(); window.dispatchEvent(new Event('analysischange')); };
         this.configure();
         this.type.onchange = () => { spec.type = this.type.value as ChartSpec['type']; this.configure(); changed(); };
         this.x.onchange = () => { spec.x = this.x.value; this.refreshSettings(); changed(); };
@@ -541,12 +548,31 @@ class ChartView {
         }
         this.addSeries.disabled = !this.sources.some(s => s.enabled && s.available && s.id !== this.root.dataset.sourceId && !this.spec.series?.some(m => m.sourceId === s.id));
         this.seriesLegend.replaceChildren();
-        const mappings = [{ sourceId: this.root.dataset.sourceId }, ...(this.spec.series ?? [])];
-        mappings.forEach((m, i) => { const item = element('span'), swatch = element('span'); const mapping = i === 0 ? this.spec : this.spec.series![i - 1]; item.title = `X: ${mapping.x} · Y: ${this.spec.type === 'scatter' || this.spec.type === 'time' && this.spec.aggregate !== 'count' ? mapping.y : 'Point count'}`; swatch.className = 'chart-series-swatch'; swatch.style.background = seriesColors[i]; item.append(swatch, document.createTextNode(this.sources.find(s => s.id === m.sourceId)?.name ?? 'Unavailable source')); this.seriesLegend.append(item); });
+        const validSources = new Set([this.root.dataset.sourceId, ...(this.spec.series ?? []).map(s => s.sourceId)]);
+        if (this.spec.hiddenSources && this.root.dataset.sourceId) this.spec.hiddenSources = this.spec.hiddenSources.filter(id => validSources.has(id));
+        const mappings = [{ sourceId: this.root.dataset.sourceId! }, ...(this.spec.series ?? [])];
+        mappings.forEach((m, i) => {
+            const item = button('', () => {
+                const hidden = new Set(this.spec.hiddenSources ?? []);
+                if (hidden.has(m.sourceId)) hidden.delete(m.sourceId); else hidden.add(m.sourceId);
+                this.spec.hiddenSources = [...hidden]; this.renderSeries();
+                if (this.fullResult) this.renderResult(visibleSeries(this.spec, this.fullResult));
+                window.dispatchEvent(new Event('analysischange'));
+            });
+            const swatch = element('span'), mapping = i === 0 ? this.spec : this.spec.series![i - 1];
+            const visible = !this.spec.hiddenSources?.includes(m.sourceId);
+            item.setAttribute('aria-pressed', String(visible));
+            item.dataset.sourceId = m.sourceId;
+            item.title = `${visible ? 'Hide' : 'Show'} this source · X: ${mapping.x} · Y: ${this.spec.type === 'scatter' || this.spec.type === 'time' && this.spec.aggregate !== 'count' ? mapping.y : 'Point count'}`;
+            swatch.className = 'chart-series-swatch'; swatch.style.background = seriesColors[i]; swatch.setAttribute('aria-hidden', 'true');
+            item.append(swatch, document.createTextNode(this.sources.find(s => s.id === m.sourceId)?.name ?? 'Unavailable source'));
+            this.seriesLegend.append(item);
+        });
         this.seriesLegend.hidden = !this.spec.series?.length;
     }
     error(message: string) { this.suspend(); this.note.textContent = message; }
     private configure() {
+        this.fullResult = undefined;
         this.interaction?.reset();
         if (this.spec.type !== 'scatter')
             this.spec.binned = true;
@@ -573,6 +599,8 @@ class ChartView {
     }
     private refreshSettings() {
         this.title.textContent = this.type.selectedOptions[0].textContent;
+        this.pointSizeField.root.hidden = this.spec.type !== 'scatter';
+        this.pointSize.value = String(this.spec.pointSize ?? 2);
         const scatter = this.spec.type === 'scatter', time = this.spec.type === 'time';
         const kind = this.fields.find(f => f.name === this.spec.x)?.kind;
         const categorical = kind === 'string' || kind === 'boolean';
@@ -598,6 +626,10 @@ class ChartView {
         this.binsField.hint.textContent = scatter ? this.spec.binned === false ? 'Draw every observation as a point, without grouping.' : 'Group nearby points into cells; circle size shows the point count. More bins give finer detail.' : time ? 'Split the full time span into equal intervals. More intervals give finer detail.' : 'Split the full value range into equal bins. More bins give finer detail.';
     }
     update(result: ChartResult) {
+        this.fullResult = result;
+        this.renderResult(visibleSeries(this.spec, result));
+    }
+    private renderResult(result: ChartResult) {
         if (this.result && (this.result.x.field !== result.x.field || this.result.y?.field !== result.y?.field))
             this.interaction.reset();
         const nx = result.x.labels.length, ny = result.y?.labels.length ?? 1;
@@ -620,7 +652,7 @@ class ChartView {
             this.raw = undefined;
             this.draw();
         }
-        const total = result.raw?.rows.length ?? result.counts.reduce((a, b) => a + b, 0);
+        const total = result.raw ? result.raw.series?.reduce((n, s) => n + s.end - s.start, 0) ?? result.raw.rows.length : result.counts.reduce((a, b) => a + b, 0);
         this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing${this.spec.xScale === 'log10' || this.spec.yScale === 'log10' ? ' · Log10 omits non-positive values' : ''}`;
         this.help.textContent = `${result.raw ? 'Individual observations.' : result.y ? 'Counted scatter bins.' : 'Click a segment to filter.'} Left-drag to zoom; right-drag to select; double-click to reset.`;
         this.canvas.setAttribute('aria-label', `${result.type} chart of ${result.x.field}${result.y ? ' against ' + result.y.field : ''}. Arrow keys choose a bin; Enter filters it.`);
@@ -639,6 +671,7 @@ class ChartView {
             this.raw ??= new RawScatter((expr, label, sourceId) => this.select(expr, label, this.action.value === 'inspect', sourceId), () => this.root.dataset.sourceId ?? '');
             if (!this.raw.container.isConnected)
                 this.canvas.after(this.raw.container);
+            this.raw.setPointSize(this.spec.pointSize ?? 2);
             this.raw.update(r);
         }
         else {
@@ -834,7 +867,7 @@ class ChartView {
             else if (dataset.counts[i]) {
                 ctx.globalAlpha = .35 + .65 * Math.sqrt(dataset.counts[i] / max);
                 ctx.beginPath();
-                ctx.arc(x, y, Math.max(1, Math.min(dx, dy) * .48 * Math.sqrt(dataset.counts[i] / max)), 0, Math.PI * 2);
+                ctx.arc(x, y, Math.max(1, Math.min(dx, dy) * .48 * Math.sqrt(dataset.counts[i] / max) * (this.spec.pointSize ?? 2) / 2), 0, Math.PI * 2);
                 ctx.fill();
                 ctx.globalAlpha = 1;
             }
@@ -869,6 +902,6 @@ class ChartView {
         this.expand.focus();
         this.draw();
     }
-    suspend() { this.raw?.destroy(); this.raw = undefined; this.canvas.hidden = false; this.result = undefined; this.list.replaceChildren(); this.note.textContent = 'Load this source to calculate charts.'; this.draw(); }
+    suspend() { this.fullResult = undefined; this.raw?.destroy(); this.raw = undefined; this.canvas.hidden = false; this.result = undefined; this.list.replaceChildren(); this.note.textContent = 'Load this source to calculate charts.'; this.draw(); }
     destroy() { window.removeEventListener('themechange', this.onThemeChange); this.restoreSize(); this.interaction.destroy(); this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
 }

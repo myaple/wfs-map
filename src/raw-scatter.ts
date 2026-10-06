@@ -9,6 +9,7 @@ export class RawScatter {
     private axes = document.createElement('canvas');
     private labels = document.createElement('div');
     private focus = 0;
+    private pointSize = 2;
     private gl: WebGL2RenderingContext;
     private program!: WebGLProgram;
     private buffer!: WebGLBuffer;
@@ -43,11 +44,13 @@ export class RawScatter {
         this.observer.observe(this.canvas);
         this.canvas.onkeydown = e => {
             const rows = this.result?.raw?.rows;
-            if (!rows?.length)
+            if (!rows?.length || this.focus < 0)
                 return;
             if (['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp'].includes(e.key)) {
                 e.preventDefault();
-                this.focus = Math.max(0, Math.min(rows.length - 1, this.focus + (['ArrowRight', 'ArrowUp'].includes(e.key) ? 1 : -1)));
+                const direction = ['ArrowRight', 'ArrowUp'].includes(e.key) ? 1 : -1;
+                const next = this.visibleObservation(this.focus + direction, direction);
+                if (next >= 0) this.focus = next;
                 this.labels.textContent = `Observation ${rows[this.focus] + 1}. Enter to select.`;
             }
             else if (e.key === 'Enter' || e.key === ' ') {
@@ -58,8 +61,7 @@ export class RawScatter {
         this.canvas.addEventListener('webglcontextlost', e => e.preventDefault());
         this.canvas.addEventListener('webglcontextrestored', () => {
             this.initialize();
-            if (this.result)
-                this.update(this.result);
+            if (this.result) { const result = this.result; this.result = undefined; this.update(result); }
         });
     }
     private initialize() {
@@ -82,6 +84,15 @@ export class RawScatter {
         if (!gl.getProgramParameter(this.program, gl.LINK_STATUS))
             throw Error(gl.getProgramInfoLog(this.program)!);
         this.buffer = gl.createBuffer()!;
+    }
+    private visibleObservation(index: number, direction: number) {
+        const raw = this.result?.raw;
+        if (!raw?.rows.length) return -1;
+        if (!raw.series) return Math.max(0, Math.min(raw.rows.length - 1, index));
+        const ranges = direction > 0 ? raw.series : [...raw.series].reverse();
+        const range = ranges.find(s => s.end > s.start && (direction > 0 ? s.end > index : s.start <= index));
+        if (!range) return -1;
+        return direction > 0 ? Math.max(index, range.start) : Math.min(index, range.end - 1);
     }
     private member(index: number) { return this.result?.raw?.series?.find(s => index >= s.start && index < s.end); }
     private brush(a: Point, b: Point) {
@@ -119,6 +130,7 @@ export class RawScatter {
     update(r: ChartResult) {
         if (this.result && (this.result.x.field !== r.x.field || this.result.y?.field !== r.y?.field))
             this.interaction.reset();
+        const samePositions = this.result?.raw?.positions === r.raw!.positions;
         this.result = r;
         const extent = r.raw!.extent;
         const view: View = [0, 0, 1, 1];
@@ -127,11 +139,12 @@ export class RawScatter {
             view[i] = extent[i] - pad; view[i + 2] = extent[i + 2] + pad;
         }
         this.interaction.setFit(view);
-        this.focus = Math.min(this.focus, Math.max(0, r.raw!.rows.length - 1));
+        const validFocus = this.focus >= 0 && this.focus < r.raw!.rows.length && (!r.raw!.series || !!this.member(this.focus));
+        if (!validFocus) this.focus = this.visibleObservation(0, 1);
         this.labels.textContent = '';
         const gl = this.gl;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, r.raw!.positions, gl.STATIC_DRAW);
+        if (!samePositions) gl.bufferData(gl.ARRAY_BUFFER, r.raw!.positions, gl.STATIC_DRAW);
         this.draw();
     }
     private draw(picking = false) {
@@ -160,7 +173,7 @@ export class RawScatter {
         gl.uniform1i(gl.getUniformLocation(this.program, 'picking'), Number(picking));
         const color = themeColor('chart-point');
         gl.uniform3f(gl.getUniformLocation(this.program, 'pointColor'), ...([1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16) / 255) as [number, number, number]));
-        gl.uniform1f(gl.getUniformLocation(this.program, 'size'), picking ? 6 * d : 2 * d);
+        gl.uniform1f(gl.getUniformLocation(this.program, 'size'), (picking ? Math.max(6, this.pointSize) : this.pointSize) * d);
         gl.disable(gl.DITHER);
         const members = this.result.raw.series;
         if (members) for (const member of members) {
@@ -185,6 +198,7 @@ export class RawScatter {
             this.canvas.dataset.axisY = this.result.y?.kind ?? 'number';
         }
     }
+    setPointSize(size: number) { if (this.pointSize === size) return; this.pointSize = size; this.draw(); }
     fit() { this.interaction.reset(); }
     destroy() { window.removeEventListener('recordinspection', this.onInspection); window.removeEventListener('themechange', this.onThemeChange); this.observer.disconnect(); this.interaction.destroy(); this.gl.deleteBuffer(this.buffer); this.gl.deleteProgram(this.program); this.result = undefined; this.container.remove(); this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
 }

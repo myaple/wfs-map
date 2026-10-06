@@ -22,3 +22,23 @@ export function combineSeries(spec: ChartSpec, series: NonNullable<ChartResult['
     }
     return result;
 }
+
+/** Hide series from counts, percentages and selection without changing dataset filters. */
+export function visibleSeries(spec: ChartSpec, result: ChartResult): ChartResult {
+    if (!result.series || !spec.hiddenSources?.length) return result;
+    const series = result.series.filter(s => !spec.hiddenSources!.includes(s.sourceId));
+    if (result.raw) {
+        // Keep the existing contiguous buffer; hide GPU draw ranges rather than
+        // copying millions of positions when a legend entry is toggled.
+        const extent = new Float64Array([Infinity, Infinity, -Infinity, -Infinity]);
+        for (const s of series) if (s.result.raw?.extent) {
+            const e = s.result.raw.extent;
+            extent[0] = Math.min(extent[0], e[0]); extent[1] = Math.min(extent[1], e[1]);
+            extent[2] = Math.max(extent[2], e[2]); extent[3] = Math.max(extent[3], e[3]);
+        }
+        return { ...result, series, missing: series.reduce((n, s) => n + s.result.missing, 0),
+            raw: { ...result.raw, series: result.raw.series?.filter(s => !spec.hiddenSources!.includes(s.sourceId)), extent } };
+    }
+    if (series.length) return combineSeries(spec, series);
+    return { ...result, series: [], counts: new Uint32Array(result.counts.length), missing: 0 };
+}
