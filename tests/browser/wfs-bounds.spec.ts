@@ -191,3 +191,64 @@ test('load-area drawing can be cancelled and leaves the independent local area u
   await page.locator('#clearArea').click(); await filtered(page);
   expect(await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds)).toEqual(local);
 });
+
+for (const enlarged of [false, true]) test(`double-right-click clears every source's dataset filters and local area while preserving global bounds${enlarged ? ' in the enlarged map' : ''}`, async ({ page }) => {
+  await seed(page, true);
+  await page.addInitScript(() => {
+    const settings = JSON.parse(localStorage.getItem('wfs-settings')!);
+    settings.sources.push({ ...settings.sources[0], id: 'disabled', name: 'Disabled', enabled: false });
+    localStorage.setItem('wfs-settings', JSON.stringify(settings));
+  });
+  await page.goto('/?autoload=1');
+  await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.filter((s: any) => s.enabled).every((s: any) => s.done && !s.filtering));
+  await page.evaluate(() => (window as any).__WFS_MAP__.map.jumpTo({ center: [-3, 54.5], zoom: 5 }));
+  await openFilters(page); await page.locator('#drawArea').click(); await dragArea(page, 'left');
+  await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.filter((s: any) => s.enabled).every((s: any) => s.done && !s.filtering));
+  await page.evaluate(() => {
+    const h = (window as any).__WFS_MAP__;
+    for (const s of h.sources) {
+      s.workspace.restore({ op: 'and', children: [{ op: 'or', children: [{ field: 'category', op: 'eq', value: 'sensor' }, { field: 'category', op: 'eq', value: 'event' }] }] }, s.workspace.specs);
+      if (s.enabled) s.workspace.select({ field: 'quality', op: 'gte', value: '50' }, 'Chart selection');
+    }
+  });
+  await dragArea(page, 'right', .3, .6);
+  await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.filter((s: any) => s.enabled).every((s: any) => !s.filtering));
+  const before = await page.evaluate(() => { const h = (window as any).__WFS_MAP__; return { bounds: h.queryBounds, requests: h.sources.map((s: any) => s.request), specs: h.sources.map((s: any) => s.workspace.specs) }; });
+  expect(before.bounds.bbox).toBeDefined(); expect(before.bounds.time).toBeDefined();
+  let requests = 0; page.on('request', r => { if (new URL(r.url()).searchParams.get('request') === 'GetFeature') requests++; });
+  if (enlarged) await page.locator('#enlargeMap').click();
+  const b = (await page.locator('#map canvas').boundingBox())!;
+  await page.mouse.dblclick(b.x + b.width * .5, b.y + b.height * .5, { button: 'right', delay: 50 });
+  await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.filter((s: any) => s.enabled).every((s: any) => !s.filtering && s.selected === s.loaded));
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds)).toBeUndefined();
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.workspace.expression()))).toEqual(Array(3).fill({ op: 'and', children: [] }));
+  expect(await page.evaluate(() => { const h = (window as any).__WFS_MAP__; return { bounds: h.queryBounds, requests: h.sources.map((s: any) => s.request), specs: h.sources.map((s: any) => s.workspace.specs) }; })).toEqual(before);
+  expect(requests).toBe(0);
+  if (enlarged) await page.keyboard.press('Escape');
+  await navigate(page, 'configuration');
+  await page.getByRole('checkbox', { name: 'Enable Disabled', exact: true }).check();
+  await page.locator('#saveSettings').click();
+  await page.waitForFunction(() => {
+    const s = (window as any).__WFS_MAP__.sources.find((s: any) => s.id === 'disabled');
+    return s.enabled && s.done && !s.filtering && s.selected === s.loaded;
+  });
+  expect(await page.evaluate(() => {
+    const s = (window as any).__WFS_MAP__.sources.find((s: any) => s.id === 'disabled');
+    return { expression: s.workspace.expression(), roots: s.rules.querySelectorAll(':scope > .filter-group').length };
+  })).toEqual({ expression: { op: 'and', children: [] }, roots: 1 });
+});
+
+test('single right-clicks and intervening drags never clear dataset filters', async ({ page }) => {
+  await seed(page); await page.goto('/?autoload=1'); await filtered(page);
+  await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'category', op: 'eq', value: 'sensor' }, 'Sensors'));
+  await filtered(page);
+  const b = (await page.locator('#map canvas').boundingBox())!;
+  const x = b.x + b.width * .5, y = b.y + b.height * .5;
+  await page.mouse.click(x, y, { button: 'right' });
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children.length)).toBe(1);
+  await dragArea(page, 'right');
+  await page.mouse.click(x, y, { button: 'right' });
+  await filtered(page);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds)).toBeDefined();
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children.length)).toBe(1);
+});

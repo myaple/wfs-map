@@ -36,7 +36,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const value = (id: string) => $<HTMLInputElement>(id).value;
 const params = new URLSearchParams(location.search);
 $('app').innerHTML = `
-<header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav id="workspaceNavigation"></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
+<header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Right-drag to filter loaded points · double-right-click to clear dataset filters · double-left-click for metadata</span></div><nav id="workspaceNavigation"></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="sourceSummary" class="hint"></div></div>
 <section id="configuration" hidden></section>
 <section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · no area bound on loading.</span><button id="drawArea" type="button" aria-pressed="false">Draw load area on map</button><button id="clearArea" hidden>Clear map area</button></div><details id="advancedServerFilters" class="server-filter-panel"><summary>Advanced server filters</summary></details></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply to points already loaded for this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="query-area"><span id="localAreaSummary" class="hint" role="status">All loaded map areas · right-drag a box on the map to filter all sources.</span><button id="clearLocalArea" type="button" hidden>Clear local map area</button></div><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
@@ -949,7 +949,8 @@ geoBox.className = 'geo-box';
 geoBox.hidden = true;
 $('map').append(geoBox);
 let geoStart: [number, number] | undefined, geoPointer: number | undefined;
-let drawingLoadArea = false, geoTarget: 'local' | 'load' = 'local';
+let drawingLoadArea = false, geoTarget: 'local' | 'load' = 'local', geoMoved = false;
+let lastRightClick: { time: number; point: [number, number] } | undefined;
 const mapPoint = (e: PointerEvent): [number, number] => {
     const rect = mapCanvas.getBoundingClientRect();
     return [Math.max(0, Math.min(rect.width, e.clientX - rect.left)), Math.max(0, Math.min(rect.height, e.clientY - rect.top))];
@@ -962,18 +963,19 @@ function armLoadArea(armed: boolean) {
     mapCanvas.style.cursor = armed ? 'crosshair' : '';
 }
 function cancelGeo() {
-    geoStart = undefined; geoBox.hidden = true;
+    geoStart = undefined; geoBox.hidden = true; lastRightClick = undefined;
     if (geoPointer !== undefined && mapCanvas.hasPointerCapture(geoPointer)) mapCanvas.releasePointerCapture(geoPointer);
     geoPointer = undefined;
     map.dragPan.enable();
 }
 mapCanvas.addEventListener('contextmenu', e => e.preventDefault());
 mapCanvas.addEventListener('pointerdown', e => {
+    if (e.button !== 2) lastRightClick = undefined;
     if (geoStart || !mapReady || !(e.button === 2 || e.button === 0 && drawingLoadArea)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     geoTarget = e.button === 0 ? 'load' : 'local';
     if (geoTarget === 'local') armLoadArea(false);
-    geoStart = mapPoint(e); geoPointer = e.pointerId;
+    geoStart = mapPoint(e); geoPointer = e.pointerId; geoMoved = false;
     map.dragPan.disable(); mapCanvas.setPointerCapture(e.pointerId);
     geoBox.hidden = false;
     geoBox.style.left = geoStart[0] + 'px'; geoBox.style.top = geoStart[1] + 'px';
@@ -982,14 +984,24 @@ mapCanvas.addEventListener('pointerdown', e => {
 mapCanvas.addEventListener('pointermove', e => {
     if (!geoStart || e.pointerId !== geoPointer) return;
     const p = mapPoint(e);
+    if (Math.hypot(p[0] - geoStart[0], p[1] - geoStart[1]) >= 4) geoMoved = true;
     geoBox.style.left = Math.min(p[0], geoStart[0]) + 'px'; geoBox.style.top = Math.min(p[1], geoStart[1]) + 'px';
     geoBox.style.width = Math.abs(p[0] - geoStart[0]) + 'px'; geoBox.style.height = Math.abs(p[1] - geoStart[1]) + 'px';
 });
 function endGeo(e: PointerEvent) {
-    const a = geoStart, target = geoTarget;
+    const a = geoStart, target = geoTarget, previousClick = lastRightClick;
     if (!a || e.pointerId !== geoPointer) return;
     const b = mapPoint(e); cancelGeo();
-    if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 4) return;
+    if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 4) {
+        // Browsers do not emit dblclick for the right button. Count only completed
+        // stationary clicks; a drag or cancellation breaks the click sequence.
+        if (target === 'local' && e.button === 2 && !geoMoved) {
+            const time = performance.now();
+            if (previousClick && time - previousClick.time <= 500 && Math.hypot(b[0] - previousClick.point[0], b[1] - previousClick.point[1]) <= 6) clearDatasetFilters();
+            else lastRightClick = { time, point: b };
+        }
+        return;
+    }
     const nw = map.unproject([Math.min(a[0], b[0]), Math.min(a[1], b[1])]);
     const se = map.unproject([Math.max(a[0], b[0]), Math.max(a[1], b[1])]);
     const bounds = { west: Math.max(-180, Math.min(180, nw.lng)), east: Math.max(-180, Math.min(180, se.lng)), south: Math.max(-90, se.lat), north: Math.min(90, nw.lat) };
@@ -1010,6 +1022,18 @@ $('drawArea').onclick = () => {
     cancelGeo(); armLoadArea(!drawingLoadArea);
     if (drawingLoadArea) { location.hash = '#analysis'; mapCanvas.focus(); }
 };
+function clearDatasetFilters() {
+    localMapBounds = undefined;
+    showLocalMapBounds(); clearInspection(); chartGeneration++;
+    for (const s of sources) {
+        // Clear disabled/loading sources too, so their saved predicates cannot
+        // reappear when a load completes or the source is enabled again.
+        savedAnalyses.delete(s.id);
+        appliedExpressions.set(s, all([]));
+        s.workspace.clearFilters();
+    }
+    state();
+}
 function setLocalMapBounds(bounds?: MapBounds) {
     localMapBounds = bounds;
     showLocalMapBounds(); clearInspection(); chartGeneration++;

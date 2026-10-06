@@ -50,7 +50,7 @@ export class Workspace {
     }
     ready(fields: Field[]) {
         this.fields = fields;
-        this.makeGroup(this.rules, 'and');
+        if (!this.rules.querySelector(':scope > .filter-group')) this.makeGroup(this.rules, 'and');
         if (this.specs.length) {
             for (const view of this.views.values()) view.setFields(fields);
             return;
