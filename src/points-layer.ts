@@ -1,4 +1,5 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as LibreMap } from 'maplibre-gl';
+import { numericPalette } from './colour-schemes.ts';
 import { mercator } from './data.ts';
 const vertex = `#version 300 es
 precision highp float;
@@ -191,11 +192,11 @@ export class PointsLayer implements CustomLayerInterface {
         gl.bindVertexArray(null);
         this.map.triggerRepaint();
     }
-    setColors(codes: Uint8Array | undefined, low = '#2463d4', high = '#ee5539', bins = 24, categorical = false) {
+    setColors(codes: Uint8Array | undefined, stops: readonly string[] = ['#2463d4', '#ee5539'], bins = 24, categorical = false) {
         this.categorical = categorical;
         this.colorCodes = codes;
         this.paletteBins = bins;
-        this.setPalette(low, high);
+        this.setPalette(stops);
         const gl = this.gl;
         if (!gl)
             return;
@@ -212,12 +213,8 @@ export class PointsLayer implements CustomLayerInterface {
         gl.bindVertexArray(null);
         this.map.triggerRepaint();
     }
-    setPalette(low: string, high: string) {
-        const bins = this.paletteBins;
-        const rgb = (s: string) => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16) / 255), a = rgb(low), b = rgb(high);
-        for (let i = 0; i < 64; i++)
-            for (let c = 0; c < 3; c++)
-                this.palette[i * 3 + c] = a[c] + (b[c] - a[c]) * Math.min(1, i / Math.max(1, bins - 1));
+    setPalette(stops: readonly string[]) {
+        this.palette.set(numericPalette(stops, this.paletteBins));
         this.map?.triggerRepaint();
     }
     private draw(picking: boolean, center: [

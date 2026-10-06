@@ -1,3 +1,4 @@
+import type { Expression } from './analysis.ts';
 import type { Field } from './data.ts';
 import type { SavedSource } from './source-settings.ts';
 import type { PointsLayer } from './points-layer.ts';
@@ -6,7 +7,7 @@ import { categoryColors } from './category-colors.ts';
 type LegendSource = Pick<SavedSource, 'id' | 'name' | 'enabled'> & {
     color: [number, number, number]; coloring: NonNullable<SavedSource['coloring']>;
     fields: Field[]; done: boolean; colorLegend: string;
-    colorCategories?: string[]; colorLabels?: string[];
+    colorCategories?: string[]; colorLabels?: string[]; colorRules?: Expression[];
     layer: Pick<PointsLayer, 'palette'>;
 };
 type Group = { source: LegendSource; start: number; count: number; palette?: Map<string, string> };
@@ -22,12 +23,13 @@ export class MapLegend {
     private signature: unknown[] = [];
     private total = 0;
     private extent = 0;
-    constructor(private root: HTMLElement) {
+    constructor(private root: HTMLElement, private select: (sourceId: string, expression: Expression) => void) {
         const title = document.createElement('h2'); title.textContent = 'Map legend';
+        const help = document.createElement('p'); help.className = 'hint'; help.textContent = 'Click a value to filter its data source · clear in Dataset filters';
         this.viewport.className = 'map-legend-viewport'; this.viewport.tabIndex = 0;
         this.viewport.setAttribute('role', 'list'); this.viewport.setAttribute('aria-label', 'Point colours for enabled data sources');
         this.space.className = 'map-legend-space'; this.rows.className = 'map-legend-rows';
-        this.space.append(this.rows); this.viewport.append(this.space); root.append(title, this.viewport);
+        this.space.append(this.rows); this.viewport.append(this.space); root.append(title, help, this.viewport);
         this.viewport.addEventListener('scroll', () => this.render());
         new ResizeObserver(() => this.render()).observe(this.viewport);
     }
@@ -71,12 +73,27 @@ export class MapLegend {
             } else label = s.colorLegend || 'Updating colours…';
             const row = document.createElement('div'); row.className = 'map-legend-row'; row.dataset.source = s.id;
             row.setAttribute('role', 'listitem'); row.setAttribute('aria-setsize', String(this.total)); row.setAttribute('aria-posinset', String(index + 1));
+            let expression: Expression | undefined;
+            if (field && s.done && color) {
+                if (s.colorCategories && offset < s.colorCategories.length) expression = { field, op: 'eq', value: s.colorCategories[offset] };
+                else if (s.colorLabels && offset < s.colorLabels.length) expression = s.colorRules?.[offset];
+                else expression = s.colorLabels && s.coloring.scale === 'log10'
+                    ? { op: 'or', children: [{ field, op: 'null' }, { field, op: 'lte', value: '0' }] }
+                    : { field, op: 'null' };
+            }
+            const button = document.createElement(expression ? 'button' : 'div');
+            button.className = 'map-legend-value';
+            if (expression) {
+                (button as HTMLButtonElement).type = 'button';
+                button.setAttribute('aria-label', `Filter ${s.name}: ${label}`);
+                button.onclick = () => this.select(s.id, expression!);
+            }
             const swatch = document.createElement('span'); swatch.className = 'map-legend-swatch'; swatch.setAttribute('aria-hidden', 'true');
             if (color) swatch.style.backgroundColor = color; else swatch.hidden = true;
             const text = document.createElement('div'), value = document.createElement('span'), owner = document.createElement('small');
             value.textContent = label; owner.textContent = `${s.name}${field ? ' · ' + field : ''}`;
             row.title = `${owner.textContent}: ${label}`;
-            text.append(value, owner); row.append(swatch, text); this.rows.append(row);
+            text.append(value, owner); button.append(swatch, text); row.append(button); this.rows.append(row);
         }
     }
 }

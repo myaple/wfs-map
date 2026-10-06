@@ -7,7 +7,7 @@ test('text colours are editable, stable, per-source and saved; gradients and sol
     await page.goto('/?time=all&points=64&autoload=1');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
     await expect(page.locator('#sourceColor')).toBeVisible();
-    await expect(page.locator('#colorLow')).toBeHidden();
+    await expect(page.locator('#colorScheme')).toBeHidden();
     await page.locator('#colorAttribute').selectOption('category');
     await expect(page.locator('#colorLegend')).toContainText('4 unique values');
     await expect(page.locator('#sourceColor')).toBeHidden();
@@ -28,12 +28,12 @@ test('text colours are editable, stable, per-source and saved; gradients and sol
     await expect(page.getByLabel('Colour for sensor', { exact: true })).toHaveValue('#00ff00');
     await page.locator('#colorAttribute').selectOption('value');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0].layer.colorCodes?.length === 64);
-    await expect(page.locator('#categoryColors')).toBeHidden(); await expect(page.locator('#colorLow')).toBeVisible();
-    await page.locator('#colorBins').selectOption('8'); await page.locator('#colorLow').fill('#ff0000');
-    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0].layer.palette[0] === 1);
+    await expect(page.locator('#categoryColors')).toBeHidden(); await expect(page.locator('#colorScheme')).toBeVisible();
+    await page.locator('#colorBins').selectOption('8'); await page.locator('#colorScheme').selectOption('inferno');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0].layer.palette[0] === 0);
     await page.locator('#colorAttribute').selectOption(''); await page.locator('#sourceColor').fill('#112233');
     await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].layer.colorCodes);
-    await expect(page.locator('#colorLow')).toBeHidden();
+    await expect(page.locator('#colorScheme')).toBeHidden();
     await page.locator('#colorAttribute').selectOption('category');
     await expect(page.getByLabel('Colour for sensor', { exact: true })).toHaveValue('#00ff00');
     await expect(page.locator('#colorAttribute option[value="timestamp"]')).toHaveCount(0);
@@ -88,7 +88,7 @@ test('Log10 colour bins recompute codes, keep full-data ranges and persist indep
     await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
     await expect(page.locator('#mapLegend')).toContainText('Missing / non-positive value');
     const log = await codes();
-    await page.locator('#colorLow').fill('#ff0000'); expect(await codes()).toEqual(log);
+    await page.locator('#colorScheme').selectOption('inferno'); expect(await codes()).toEqual(log);
     await openFilters(page);
     await page.locator('#rules > .filter-group > .group-head').getByRole('button', { name: '+ Rule', exact: true }).click();
     await page.getByLabel('Attribute', { exact: true }).selectOption('value'); await page.getByLabel('Operator').selectOption('lte');
@@ -102,4 +102,50 @@ test('Log10 colour bins recompute codes, keep full-data ranges and persist indep
     await page.locator('#colorAttribute').selectOption('value'); await page.locator('#colorScale').selectOption('linear');
     await expect(page.locator('#colorLegend')).not.toContainText('Log10'); expect(await codes()).toEqual(linear);
     expect(errors).toEqual([]);
+});
+
+test('five multi-stop presets update the GPU and preview, reuse codes, and persist per source remotely', async ({ page }) => {
+    const state = (await import('../../src/analysis-state.ts')).emptyState();
+    const doc = { id: 'schemes', name: 'Colour schemes', revision: 1, updatedAt: new Date().toISOString(), readOnly: false, shared: false, state };
+    doc.state.query = { choice: 'all', bounds: {} };
+    await page.route('**/api/**', async route => {
+        const path = new URL(route.request().url()).pathname;
+        if (path === '/api/me') return route.fulfill({ json: { user: 'analyst' } });
+        if (path !== '/api/analyses/schemes') return route.continue();
+        if (route.request().method() === 'PUT') { doc.state = route.request().postDataJSON().state; doc.revision++; }
+        return route.fulfill({ json: doc });
+    });
+    await page.goto('/?analysis=schemes#configuration');
+    for (const name of ['First', 'Second']) {
+        await page.locator('#addSource').click(); await page.locator('#sourceName').fill(name); await page.locator('#type').selectOption('csv');
+        await page.locator('#csvFile').setInputFiles({ name: `${name}.csv`, mimeType: 'text/csv', buffer: Buffer.from('lon,lat,value\n-1,54,0\n-2,53,100\n') });
+        await page.locator('#updateSource').click();
+    }
+    await page.locator('#saveSettings').click();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done));
+    await navigate(page, 'analysis');
+    const ids = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.id));
+    await page.locator('#colorSource').selectOption(ids[0]); await page.locator('#colorAttribute').selectOption('value');
+    await page.locator('#colorBins').selectOption('8');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0].colorLabels?.length === 8);
+    await expect(page.getByLabel('Colour scheme', { exact: true }).locator('option')).toHaveCount(5);
+    await expect(page.locator('#colorLow, #colorHigh')).toHaveCount(0);
+    const before = await page.evaluate(() => { const s = (window as any).__WFS_MAP__.sources[0]; (window as any).__colourCodes = s.layer.colorCodes; return s.colorRequest; });
+    const { colourSchemes, numericPalette } = await import('../../src/colour-schemes.ts');
+    for (const scheme of colourSchemes) {
+        await page.getByLabel('Colour scheme', { exact: true }).selectOption(scheme.id);
+        const actual = await page.evaluate(() => { const s = (window as any).__WFS_MAP__.sources[0]; return { palette: Array.from(s.layer.palette), request: s.colorRequest, same: s.layer.colorCodes === (window as any).__colourCodes, preview: document.getElementById('colorRamp')!.style.background }; });
+        expect(actual.palette).toEqual(Array.from(numericPalette(scheme.colors, 8)));
+        expect(actual.same).toBe(true); expect(actual.request).toBe(before);
+        expect(actual.preview.match(/rgb\(/g)).toHaveLength(5);
+    }
+    await page.locator('#colorScheme').selectOption('cividis');
+    await page.locator('#colorSource').selectOption(ids[1]); await page.locator('#colorAttribute').selectOption('value'); await page.locator('#colorScheme').selectOption('inferno');
+    await navigate(page, 'configuration'); await page.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save analysis', exact: true }).click();
+    await expect(page.locator('.saved-analysis-bar')).toContainText('Analysis configuration saved');
+    expect(doc.state.settings.sources.map(s => s.coloring?.scheme)).toEqual(['cividis', 'inferno']);
+    await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done));
+    await navigate(page, 'analysis'); await page.locator('#colorSource').selectOption(ids[0]); await expect(page.locator('#colorScheme')).toHaveValue('cividis');
+    await page.locator('#colorSource').selectOption(ids[1]); await expect(page.locator('#colorScheme')).toHaveValue('inferno');
+    await page.screenshot({ path: '/tmp/wfs-colour-schemes.png' });
 });

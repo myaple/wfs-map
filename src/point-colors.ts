@@ -1,5 +1,6 @@
 import type { Field } from './data.ts';
 import type { SavedSource } from './source-settings.ts';
+import { colourSchemes, colourStops, defaultColourScheme, type ColourScheme } from './colour-schemes.ts';
 import { categoryColors } from './category-colors.ts';
 
 type ColorSource = Pick<SavedSource, 'id' | 'name' | 'enabled'> & {
@@ -18,15 +19,16 @@ export class PointColors {
     private renderedCategories?: string[];
     private renderedOverrides?: Record<string, string>;
     constructor(private sources: () => ColorSource[], private changed: (source: ColorSource, previous: ColorSource['coloring']) => void) {
+        input<HTMLSelectElement>('colorScheme').replaceChildren(...colourSchemes.map(s => new Option(s.name, s.id)));
         this.source.onchange = () => { this.search.value = ''; this.limit = 50; this.update(); };
         this.search.oninput = () => { this.limit = 50; this.renderCategories(); };
         document.getElementById('moreCategoryColors')!.onclick = () => { this.limit += 50; this.renderCategories(); };
-        for (const id of ['colorAttribute', 'colorBins', 'colorScale', 'colorLow', 'colorHigh', 'sourceColor']) {
+        for (const id of ['colorAttribute', 'colorBins', 'colorScale', 'colorScheme', 'sourceColor']) {
             input(id).onchange = () => {
                 const s = this.current();
                 if (!s) return;
                 const previous = s.coloring;
-                s.coloring = { ...previous, field: input('colorAttribute').value, bins: Number(input('colorBins').value), scale: input('colorScale').value as 'linear' | 'log10', low: input('colorLow').value, high: input('colorHigh').value };
+                s.coloring = { ...previous, field: input('colorAttribute').value, bins: Number(input('colorBins').value), scale: input('colorScale').value as 'linear' | 'log10', scheme: input('colorScheme').value as ColourScheme };
                 if (id === 'sourceColor') {
                     const hex = input('sourceColor').value;
                     s.color = [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16) / 255) as [number, number, number];
@@ -61,19 +63,18 @@ export class PointColors {
         const gradient = kind === 'number', categorical = kind === 'string';
         input('colorScale').value = s?.coloring.scale ?? 'linear';
         input('colorBins').value = String(s?.coloring.bins ?? 24);
-        input('colorLow').value = s?.coloring.low ?? '#2463d4';
-        input('colorHigh').value = s?.coloring.high ?? '#ee5539';
+        input('colorScheme').value = s?.coloring.scheme ?? defaultColourScheme;
         input('sourceColor').value = '#' + (s?.color ?? [0.02, 0.45, 0.68]).map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
         document.getElementById('solidColorControl')!.hidden = !!s?.coloring.field;
         document.querySelectorAll<HTMLElement>('[data-gradient-control]').forEach(control => control.hidden = !gradient);
         document.getElementById('categoryColors')!.hidden = !categorical;
         const ramp = document.getElementById('colorRamp')!;
         ramp.hidden = !gradient;
-        if (s) ramp.style.background = `linear-gradient(to right,${s.coloring.low},${s.coloring.high})`;
+        if (s) ramp.style.background = `linear-gradient(to right,${colourStops(s.coloring.scheme).join(',')})`;
         document.getElementById('colorLegend')!.textContent = s ? `${s.name} · ${!s.done ? 'Attributes available after loading' : s.colorLegend || 'Single colour for every point'}` : 'Add or enable a data source to configure point colours.';
         attribute.disabled = !s?.enabled || !s.done;
         input('sourceColor').disabled = !s || !!s.coloring.field;
-        for (const id of ['colorBins', 'colorScale', 'colorLow', 'colorHigh']) input(id).disabled = !s?.enabled || !s.done || !gradient;
+        for (const id of ['colorBins', 'colorScale', 'colorScheme']) input(id).disabled = !s?.enabled || !s.done || !gradient;
         if (this.renderedSource !== s || this.renderedField !== s?.coloring.field || this.renderedCategories !== s?.colorCategories || this.renderedOverrides !== s?.coloring.categories?.[s.coloring.field]) this.renderCategories();
     }
     private renderCategories() {
