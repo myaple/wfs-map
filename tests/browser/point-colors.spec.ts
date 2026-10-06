@@ -85,6 +85,7 @@ test('Log10 colour bins recompute codes, keep full-data ranges and persist indep
     await page.getByLabel('Colour bin scale', { exact: true }).selectOption('log10');
     await expect(page.locator('#colorLegend')).toContainText('Log10'); await expect(page.locator('#colorLegend')).toContainText('2 non-positive values');
     expect(await codes()).toEqual([0, 2, 5, 7, 255, 255, 255]); expect(await codes()).not.toEqual(linear);
+    await page.locator('.map-legend-summary').click();
     await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
     await expect(page.locator('#mapLegend')).toContainText('Missing / non-positive value');
     const log = await codes();

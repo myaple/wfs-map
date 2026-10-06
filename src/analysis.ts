@@ -405,6 +405,27 @@ export class Analyzer {
             }
         return { codes, axis: a.axis, excluded };
     }
+    /** Independent map display mask; never changes applied dataset/chart selections. */
+    async mapVisibility(name: string, bins: number, hidden: string[], scale: Scale = 'linear', cancelled: () => boolean = () => false) {
+        const j = this.store.fields.findIndex(f => f.name === name);
+        if (j < 0) throw Error(`Unknown colour attribute ${name}`);
+        const column = this.store.columns[j], excluded = new Set(hidden);
+        const axis = column.field.kind === 'number' ? await this.axis(name, bins, cancelled, undefined, scale) : undefined;
+        const categoryVisible = column.field.kind === 'string' ? Uint8Array.from(column.dictionary, value => Number(!excluded.has('category:' + value))) : undefined;
+        if (!axis && !categoryVisible) throw Error('Map visibility requires a numeric or text colour field');
+        const mask = new Uint8Array(this.store.length);
+        for (const chunk of this.store.chunks) for (let base = 0; base < chunk.length; base += BLOCK) {
+            const end = Math.min(base + BLOCK, chunk.length);
+            for (let i = base; i < end; i++) {
+                const value = chunk.values[j][i];
+                const bin = axis ? axis.bin(value) : value;
+                mask[chunk.offset + i] = Number(bin < 0 ? !excluded.has('missing') : categoryVisible ? categoryVisible[bin] : !excluded.has('bin:' + bin));
+            }
+            await yieldEvents();
+            if (cancelled()) throw Error('Superseded');
+        }
+        return mask;
+    }
     async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false, domains?: { x: ChartDomain; y?: ChartDomain }, timeline?: TimelineSelection) {
         if (specs.length > 12)
             throw new Error('Up to 12 charts are supported');

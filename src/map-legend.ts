@@ -2,10 +2,11 @@ import type { Field } from './data.ts';
 import type { SavedSource } from './source-settings.ts';
 import type { PointsLayer } from './points-layer.ts';
 import { categoryColors } from './category-colors.ts';
+import { colourStops } from './colour-schemes.ts';
 
 type LegendSource = Pick<SavedSource, 'id' | 'name' | 'enabled'> & {
     color: [number, number, number]; coloring: NonNullable<SavedSource['coloring']>;
-    fields: Field[]; done: boolean; colorLegend: string;
+    fields: Field[]; done: boolean; colorLegend: string; mapVisible: boolean; mapHidden: Set<string>;
     colorCategories?: string[]; colorLabels?: string[];
     layer: Pick<PointsLayer, 'palette'>;
 };
@@ -14,7 +15,7 @@ const rowHeight = 44;
 const rgb = (values: ArrayLike<number>) => `rgb(${Array.from(values, v => Math.round(v * 255)).join(', ')})`;
 
 /** Only visible legend rows enter the DOM, even for large categorical domains. */
-export class MapLegend {
+class LegendValues {
     private viewport = document.createElement('div');
     private space = document.createElement('div');
     private rows = document.createElement('div');
@@ -22,19 +23,21 @@ export class MapLegend {
     private signature: unknown[] = [];
     private total = 0;
     private extent = 0;
-    constructor(private root: HTMLElement) {
-        const title = document.createElement('h2'); title.textContent = 'Map legend';
+    private observer: ResizeObserver;
+    constructor(private root: HTMLElement, private visibility: (id: string, key: string, visible: boolean) => void) {
         this.viewport.className = 'map-legend-viewport'; this.viewport.tabIndex = 0;
         this.viewport.setAttribute('role', 'list'); this.viewport.setAttribute('aria-label', 'Point colours for enabled data sources');
         this.space.className = 'map-legend-space'; this.rows.className = 'map-legend-rows';
-        this.space.append(this.rows); this.viewport.append(this.space); root.append(title, this.viewport);
+        this.space.append(this.rows); this.viewport.append(this.space); root.append(this.viewport);
         this.viewport.addEventListener('scroll', () => this.render());
-        new ResizeObserver(() => this.render()).observe(this.viewport);
+        this.observer = new ResizeObserver(() => this.render());
+        this.observer.observe(this.viewport);
     }
+    destroy() { this.observer.disconnect(); }
     update(sources: LegendSource[]) {
         const enabled = sources.filter(s => s.enabled);
         const signature = enabled.flatMap(s => [s.id, s.name, s.done, s.color, s.coloring, s.colorCategories, s.colorLabels, s.colorLegend]);
-        if (signature.length === this.signature.length && signature.every((value, i) => value === this.signature[i])) return;
+        if (signature.length === this.signature.length && signature.every((value, i) => value === this.signature[i])) { this.syncVisibility(); return; }
         this.signature = signature; this.total = 0;
         this.groups = enabled.map(source => {
             const count = !source.coloring.field || !source.done ? 1 : source.colorCategories ? source.colorCategories.length + 1 : source.colorLabels ? source.colorLabels.length + 1 : 1;
@@ -47,6 +50,14 @@ export class MapLegend {
         this.viewport.scrollTop = Math.min(this.viewport.scrollTop, Math.max(0, this.extent - this.viewport.clientHeight));
         this.root.hidden = !enabled.length;
         this.render();
+    }
+    private syncVisibility() {
+        for (const row of this.rows.querySelectorAll<HTMLElement>('[data-key]')) {
+            const source = this.groups.find(g => g.source.id === row.dataset.source)!.source;
+            const visible = !source.mapHidden.has(row.dataset.key!);
+            row.classList.toggle('map-legend-value-hidden', !visible);
+            row.querySelector<HTMLInputElement>('input')!.checked = visible;
+        }
     }
     private render() {
         const visible = Math.max(1, Math.ceil(this.viewport.clientHeight / rowHeight));
@@ -76,7 +87,86 @@ export class MapLegend {
             const text = document.createElement('div'), value = document.createElement('span'), owner = document.createElement('small');
             value.textContent = label; owner.textContent = `${s.name}${field ? ' · ' + field : ''}`;
             row.title = `${owner.textContent}: ${label}`;
-            text.append(value, owner); row.append(swatch, text); this.rows.append(row);
+            text.append(value, owner); row.append(swatch, text);
+            if (field && s.done && (s.colorCategories || s.colorLabels)) {
+                const key = s.colorCategories ? offset < s.colorCategories.length ? 'category:' + s.colorCategories[offset] : 'missing' : offset < s.colorLabels!.length ? 'bin:' + offset : 'missing';
+                row.dataset.key = key;
+                const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.className = 'map-legend-toggle map-legend-value-toggle'; toggle.setAttribute('role', 'switch');
+                toggle.setAttribute('aria-label', `Show ${label} for ${s.name} on map`);
+                toggle.title = 'Show or hide these points on the map only';
+                toggle.checked = !s.mapHidden.has(key);
+                toggle.addEventListener('change', () => this.visibility(s.id, key, toggle.checked));
+                row.classList.toggle('map-legend-value-hidden', !toggle.checked);
+                row.append(toggle);
+            }
+            this.rows.append(row);
         }
+    }
+}
+
+
+type Entry = {
+    root: HTMLElement; details: HTMLDetailsElement; summary: HTMLElement;
+    preview: HTMLElement; name: HTMLElement; mode: HTMLElement; toggle: HTMLInputElement;
+    values: LegendValues; source: LegendSource;
+};
+
+/** One stable entry per dataset; large colour domains are rendered only when opened. */
+export class MapLegend {
+    private entries = new Map<string, Entry>();
+    private list = document.createElement('div');
+    constructor(private root: HTMLElement, private visibility: (id: string, visible: boolean) => void, private valueVisibility: (id: string, key: string, visible: boolean) => void) {
+        const title = document.createElement('h2'); title.textContent = 'Map legend';
+        this.list.className = 'map-legend-sources';
+        this.list.setAttribute('role', 'list');
+        this.list.setAttribute('aria-label', 'Data source colours and map visibility');
+        root.append(title, this.list);
+    }
+    update(sources: LegendSource[]) {
+        const enabled = sources.filter(s => s.enabled);
+        for (const [id, entry] of this.entries) if (!enabled.some(s => s.id === id)) {
+            entry.values.destroy(); entry.root.remove(); this.entries.delete(id);
+        }
+        for (const source of enabled) {
+            let entry = this.entries.get(source.id);
+            if (!entry) {
+                const container = document.createElement('div'); container.className = 'map-legend-source';
+                container.dataset.source = source.id; container.setAttribute('role', 'listitem');
+                const details = document.createElement('details'), summary = document.createElement('summary');
+                details.className = 'map-legend-details'; summary.className = 'map-legend-summary';
+                const preview = document.createElement('span'); preview.className = 'map-legend-preview'; preview.setAttribute('aria-hidden', 'true');
+                const text = document.createElement('span'), name = document.createElement('span'), mode = document.createElement('small');
+                text.className = 'map-legend-description'; name.className = 'map-legend-name';
+                text.append(name, mode); summary.append(preview, text); details.append(summary);
+                const body = document.createElement('div'); details.append(body);
+                const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.className = 'map-legend-toggle'; toggle.setAttribute('role', 'switch');
+                container.append(details, toggle); this.list.append(container);
+                entry = { root: container, details, summary, preview, name, mode, toggle, values: new LegendValues(body, this.valueVisibility), source };
+                const current = entry;
+                details.addEventListener('toggle', () => { if (details.open) current.values.update([current.source]); });
+                toggle.addEventListener('change', () => this.visibility(current.source.id, toggle.checked));
+                this.entries.set(source.id, entry);
+            }
+            entry.source = source; entry.name.textContent = source.name;
+            const field = source.coloring.field;
+            entry.mode.textContent = !field ? 'Single colour' : `${field} · ${source.colorCategories ? 'Categories' : source.coloring.scale === 'log10' ? 'Log10 gradient' : 'Linear gradient'}`;
+            entry.summary.title = `${source.name} · click for colour values`;
+            entry.toggle.checked = source.mapVisible;
+            entry.toggle.setAttribute('aria-label', `Show ${source.name} on map`);
+            entry.toggle.title = 'Show or hide this dataset on the map only';
+            entry.root.classList.toggle('map-legend-hidden', !source.mapVisible);
+            // Use a bounded sample for a categorical overview, without building the full palette.
+            let background: string;
+            if (!field || !source.done) background = rgb(source.color);
+            else if (source.colorCategories?.length) {
+                const sample = source.colorCategories.slice(0, 8);
+                const colours = Array.from(categoryColors(sample, source.coloring.categories?.[field]).values());
+                background = `linear-gradient(to right, ${colours.flatMap((c, i) => [`${c} ${i / colours.length * 100}%`, `${c} ${(i + 1) / colours.length * 100}%`]).join(', ')})`;
+            } else if (source.colorLabels?.length) background = `linear-gradient(to right, ${colourStops(source.coloring.scheme).join(', ')})`;
+            else background = '#808080';
+            entry.preview.style.background = background;
+            if (entry.details.open) entry.values.update([source]);
+        }
+        this.root.hidden = !enabled.length;
     }
 }
