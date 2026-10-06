@@ -48,12 +48,13 @@ test('map area reloads every source with time AND BBOX and clearing restores the
   await page.goto('/?autoload=1'); await ready(page);
   const original = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.loaded));
   await page.evaluate(() => (window as any).__WFS_MAP__.map.jumpTo({ center: [-3, 54.5], zoom: 5 }));
+  await openFilters(page); await page.locator('#drawArea').click();
   const canvas = page.locator('#map canvas'); await canvas.scrollIntoViewIfNeeded(); const b = (await canvas.boundingBox())!;
   filters.length = 0;
   await page.mouse.move(b.x + b.width * .25, b.y + b.height * .25);
-  await page.mouse.down({ button: 'right' });
+  await page.mouse.down({ button: 'left' });
   await page.mouse.move(b.x + b.width * .75, b.y + b.height * .75, { steps: 4 });
-  await page.mouse.up({ button: 'right' });
+  await page.mouse.up({ button: 'left' });
   await openFilters(page);
   await expect(page.locator('#clearArea')).toBeVisible(); await ready(page);
   const bounds = await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox);
@@ -122,4 +123,71 @@ test('superseded schema requests cannot clear or overwrite the replacement query
   expect(state.error).toBe(false);
   expect(state.bounds.time.start).toBe('2026-10-02T06:00:00.000Z');
   expect(state.metrics.queryBounds).toEqual(state.bounds);
+});
+
+async function dragArea(page: Page, button: 'right' | 'left', start = .25, end = .75) {
+  const canvas = page.locator('#map canvas'); await canvas.scrollIntoViewIfNeeded();
+  const b = (await canvas.boundingBox())!;
+  await page.mouse.move(b.x + b.width * start, b.y + b.height * .25);
+  await page.mouse.down({ button });
+  await page.mouse.move(b.x + b.width * end, b.y + b.height * .75, { steps: 4 });
+  await page.mouse.up({ button });
+}
+const filtered = (page: Page) => page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done && !s.filtering));
+test('right-drag replaces one shared local area across sources and intersects OR filters without requests', async ({ page }) => {
+  await seed(page, true);
+  const requests: string[] = [];
+  page.on('request', r => { if (new URL(r.url()).searchParams.get('request') === 'GetFeature') requests.push(r.url()); });
+  await page.goto('/?autoload=1'); await filtered(page);
+  await page.evaluate(() => {
+    const h = (window as any).__WFS_MAP__;
+    h.map.jumpTo({ center: [-3, 54.5], zoom: 5 });
+    h.sources[0].workspace.restore({ op: 'or', children: [{ field: 'category', op: 'eq', value: 'sensor' }, { field: 'category', op: 'eq', value: 'event' }] }, h.sources[0].workspace.specs);
+    h.filter();
+  });
+  await filtered(page);
+  const original = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => ({ loaded: s.loaded, selected: s.selected, request: s.request })));
+  const before = requests.length;
+  const expectedFor = (bounds: any) => ['uk', 'dense'].map((distribution, source) => Array.from({ length: 8192 }, (_, i) => feature(i, distribution)).filter(f => {
+    const [x, y] = f.geometry.coordinates, t = Date.parse(f.properties.timestamp);
+    return x >= bounds.west && x <= bounds.east && y >= bounds.south && y <= bounds.north && t >= now.getTime() - 86400000 && t <= now.getTime() && (source || ['sensor', 'event'].includes(f.properties.category));
+  }).length);
+  await dragArea(page, 'right', .2, .5); await filtered(page);
+  const first = await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.selected))).toEqual(expectedFor(first));
+  await dragArea(page, 'right', .5, .8); await filtered(page);
+  const second = await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds);
+  expect(second).not.toEqual(first);
+  const expected = expectedFor(second);
+  expect(expected.some(n => n > 0)).toBe(true);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.selected))).toEqual(expected);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => ({ loaded: s.loaded, request: s.request })))).toEqual(original.map(({ loaded, request }) => ({ loaded, request })));
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox)).toBeUndefined();
+  expect(requests).toHaveLength(before);
+  await openFilters(page);
+  await expect(page.locator('#clearLocalArea')).toHaveCount(1);
+  await expect(page.locator('#rules .selection')).toHaveCount(0);
+  await page.locator('#clearLocalArea').click(); await filtered(page);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.selected))).toEqual(original.map(s => s.selected));
+  expect(requests).toHaveLength(before);
+});
+
+test('load-area drawing can be cancelled and leaves the independent local area unchanged', async ({ page }) => {
+  await seed(page); await page.goto('/?autoload=1'); await filtered(page);
+  await dragArea(page, 'right'); await filtered(page);
+  const local = await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds);
+  const request = await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].request);
+  await openFilters(page); await page.locator('#drawArea').click();
+  await expect(page.locator('#drawArea')).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#drawArea')).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[0].request)).toBe(request);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox)).toBeUndefined();
+  await openFilters(page); await page.locator('#drawArea').click();
+  await dragArea(page, 'left'); await filtered(page);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.queryBounds.bbox)).toBeDefined();
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds)).toEqual(local);
+  await expect(page.locator('#drawArea')).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#clearArea').click(); await filtered(page);
+  expect(await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds)).toEqual(local);
 });

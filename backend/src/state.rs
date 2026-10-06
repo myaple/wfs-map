@@ -82,8 +82,33 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
     }
     object(
         v,
-        &["schemaVersion", "settings", "query", "analyses", "timeline"],
+        &[
+            "schemaVersion",
+            "settings",
+            "query",
+            "analyses",
+            "timeline",
+            "localMapBounds",
+        ],
     )?;
+    if let Some(bbox) = v.get("localMapBounds") {
+        object(bbox, &["west", "east", "south", "north"])?;
+        for k in ["west", "east", "south", "north"] {
+            finite(required(bbox, k)?)?;
+        }
+        let west = bbox["west"].as_f64().unwrap();
+        let east = bbox["east"].as_f64().unwrap();
+        let south = bbox["south"].as_f64().unwrap();
+        let north = bbox["north"].as_f64().unwrap();
+        if !(-180.0..=180.0).contains(&west)
+            || !(-180.0..=180.0).contains(&east)
+            || !(-90.0..=90.0).contains(&south)
+            || !(-90.0..=90.0).contains(&north)
+            || south > north
+        {
+            return Err("Invalid local map bounds");
+        }
+    }
     if let Some(timeline) = v.get("timeline") {
         object(timeline, &["start", "end"])?;
         finite(required(timeline, "start")?)?;
@@ -425,6 +450,25 @@ mod tests {
     use super::*;
     fn state() -> Value {
         serde_json::json!({"schemaVersion":1,"settings":{"sources":[],"background":{"url":"","attribution":"","enabled":false}},"query":{"choice":"all","bounds":{}},"analyses":[]})
+    }
+    #[test]
+    fn validates_local_map_bounds_without_accepting_payloads() {
+        let mut v = state();
+        v["localMapBounds"] = serde_json::json!({"west":-5,"east":1,"south":50,"north":55});
+        assert!(validate(&v).is_ok());
+        for (key, value) in [
+            ("west", -181),
+            ("east", 181),
+            ("south", -91),
+            ("north", 91),
+            ("south", 56),
+        ] {
+            let mut bad = v.clone();
+            bad["localMapBounds"][key] = value.into();
+            assert!(validate(&bad).is_err());
+        }
+        v["localMapBounds"]["rows"] = serde_json::json!(["payload"]);
+        assert!(validate(&v).is_err());
     }
     #[test]
     fn accepts_config_and_rejects_data() {

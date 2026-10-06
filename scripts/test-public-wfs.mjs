@@ -56,11 +56,12 @@ async function check(service,version,format){
   // A time bound on a timeless schema must fail before any GetFeature request.
   const beforeTime=responses.length;await page.getByLabel('Time window',{exact:true}).selectOption('24');await page.waitForFunction(()=>window.__WFS_MAP__.sources[0].error);await flush();assert.equal(responses.length,beforeTime);result.timelessSourceRejectsTimeBounds=true;
   await page.getByLabel('Time window',{exact:true}).selectOption('all');await ready(page);await flush();
-  // Exercise the real right-button gesture, then compare XML FILTER against
+  // Exercise the explicit load-area drawing gesture, then compare XML FILTER against
   // an independently expressed KVP BBOX, without reusing the app's XML builder.
   await page.evaluate(center=>window.__WFS_MAP__.map.jumpTo({center,zoom:18}),service.center);
+  await page.locator('#drawArea').click();
   const canvas=page.locator('#map canvas');await canvas.scrollIntoViewIfNeeded();const box=await canvas.boundingBox();responses.length=0;
-  await page.mouse.move(box.x+box.width*.35,box.y+box.height*.35);await page.mouse.down({button:'right'});await page.mouse.move(box.x+box.width*.65,box.y+box.height*.65,{steps:4});await page.mouse.up({button:'right'});
+  await page.mouse.move(box.x+box.width*.35,box.y+box.height*.35);await page.mouse.down({button:'left'});await page.mouse.move(box.x+box.width*.65,box.y+box.height*.65,{steps:4});await page.mouse.up({button:'left'});
   await ready(page);await flush();const bounds=await page.evaluate(()=>window.__WFS_MAP__.queryBounds.bbox);assert.ok(bounds,'No map area created');
   result.area=await snapshot();assert.equal(result.area.error,false,JSON.stringify(result.area));
   const bbox=await independent(service,version,{[version==='2.0.0'?'count':'maxFeatures']:'250',startIndex:'0',bbox:`${bounds.west},${bounds.south},${bounds.east},${bounds.north},urn:ogc:def:crs:OGC:1.3:CRS84`});

@@ -29,7 +29,7 @@ import { all, type Expression } from './analysis.ts';
 import { PointColors } from './point-colors.ts';
 import { DataSources } from './data-sources.ts';
 import { configIdentity, defaultConfig, readSettings, settingsKey, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
-import { queryFilter, timeBounds, validateTime, type QueryBounds, type QueryFields } from './wfs-query.ts';
+import { queryFilter, timeBounds, validateTime, type QueryBounds, type QueryFields, type MapBounds } from './wfs-query.ts';
 import './style.css';
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -39,9 +39,9 @@ $('app').innerHTML = `
 <header class="topbar"><div><h1>WFS analysis</h1><span class="hint">Explore every loaded point · double-click the map for metadata</span></div><nav id="workspaceNavigation"></nav><button id="load" class="primary">Load enabled sources</button><button id="cancel" disabled>Cancel / clear</button></header>
 <div class="load-strip"><progress id="progress" max="1" value="0"></progress><div id="status" role="status">Ready. Add a data source to get started.</div><div id="sourceSummary" class="hint"></div></div>
 <section id="configuration" hidden></section>
-<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · right-drag a box on the map to bound requests.</span><button id="clearArea" hidden>Clear map area</button></div><details id="advancedServerFilters" class="server-filter-panel"><summary>Advanced server filters</summary></details></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply to points already loaded for this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
+<section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · no area bound on loading.</span><button id="drawArea" type="button" aria-pressed="false">Draw load area on map</button><button id="clearArea" hidden>Clear map area</button></div><details id="advancedServerFilters" class="server-filter-panel"><summary>Advanced server filters</summary></details></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorLow">Low value colour</label><input id="colorLow" type="color" value="#2463d4"></div><div data-gradient-control class="source-control"><label for="colorHigh">High value colour</label><input id="colorHigh" type="color" value="#ee5539"></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply to points already loaded for this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="query-area"><span id="localAreaSummary" class="hint" role="status">All loaded map areas · right-drag a box on the map to filter all sources.</span><button id="clearLocalArea" type="button" hidden>Clear local map area</button></div><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
 
-<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">⤢</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
+<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><span id="drawAreaHelp" class="hint" role="status" hidden>Left-drag to draw the load area · Escape to cancel</span><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">⤢</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section><div id="timelineHost" hidden></div>`;
 mountThemeToggle(document.querySelector('.topbar')!);
@@ -124,6 +124,7 @@ timeline.restoreWindow(initialState?.timeline);
 const savedQuery = initialState?.query;
 let queryBounds: QueryBounds = savedQuery ? { ...structuredClone(savedQuery.bounds), ...(savedQuery.choice === 'all' ? { time: undefined } : savedQuery.choice !== 'custom' ? { time: timeBounds(Number(savedQuery.choice)) } : {}) } : params.get('time') === 'all' ? {} : { time: timeBounds(24) };
 if (queryBounds.time) queryBounds.time = { start: utcISO(queryBounds.time.start), end: utcISO(queryBounds.time.end) };
+let localMapBounds: MapBounds | undefined = initialState?.localMapBounds ? structuredClone(initialState.localMapBounds) : undefined;
 let filterSourceId = '', popup: maplibregl.Popup | undefined, benchmarkRunning = false, mapReady = false, loadSlots = 0;
 const loadQueue: Source[] = [];
 const layerOrder: Source[] = [];
@@ -221,6 +222,7 @@ const serverFilterPanel = new ServerFilterPanel($<HTMLDetailsElement>('advancedS
         loadSource(s); state();
     });
 function applySettings(next: Settings, restore = false) {
+    if (restore) setLocalMapBounds(undefined);
     for (const s of [...sources]) if (restore || !next.sources.some(n => n.id === s.id)) {
         clearSource(s); s.workspace.reset(); sources.splice(sources.indexOf(s), 1);
     }
@@ -764,7 +766,7 @@ async function refreshMultiCharts() {
             const x = sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.x }) as Promise<ChartDomain>)));
             const usesY = spec.type === 'scatter' || spec.type === 'time' && (spec.aggregate ?? 'count') !== 'count';
             const y = usesY ? sharedDomain(await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartDomain', field: m.y }) as Promise<ChartDomain>))) : undefined;
-            const results: ChartResult[] = await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartSeries', spec: { ...spec, series: undefined, x: m.x, y: m.y }, domains: { x, y }, expression: appliedExpressions.get(members[i]) ?? all([]), timeline: window && members[i].timeline?.valid ? { ...window, field: members[i].timeline!.field } : undefined })));
+            const results: ChartResult[] = await Promise.all(mappings.map((m, i) => chartRPC(members[i], { type: 'chartSeries', spec: { ...spec, series: undefined, x: m.x, y: m.y }, domains: { x, y }, expression: withLocalMapBounds(appliedExpressions.get(members[i]) ?? all([])), timeline: window && members[i].timeline?.valid ? { ...window, field: members[i].timeline!.field } : undefined })));
             if (generation !== chartGeneration || !owner.workspace.specs.includes(spec) || members.some(s => !s.enabled || !s.done)) return;
             owner.workspace.updateComparison(combineSeries(spec, results.map((result, i) => ({ sourceId: members[i].id, name: members[i].name, color: seriesColors[i], result }))));
         })().catch(e => { if (generation === chartGeneration) owner.workspace.chartError(spec.id, (e as Error).message); }));
@@ -775,6 +777,9 @@ async function refreshMultiCharts() {
 }
 function timelineSelection(s: Source) {
     return timeline.window && s.timeline?.valid ? { ...timeline.window, field: s.timeline.field } : undefined;
+}
+function withLocalMapBounds(expression: Expression): Expression {
+    return localMapBounds ? { op: 'and', children: [expression, { op: 'bbox', ...localMapBounds }] } : expression;
 }
 function filter(rules?: Rule[] | Expression, s = filterSource(), scrubbing = false) {
     if (!s?.enabled || !s.done)
@@ -790,7 +795,7 @@ function filter(rules?: Rule[] | Expression, s = filterSource(), scrubbing = fal
     if (!scrubbing) clearInspection();
     if (!scrubbing) appliedExpressions.set(s, structuredClone(expression));
     if (!scrubbing) chartGeneration++; // Dataset predicates invalidate comparisons; scrubbing uses bounded snapshots.
-    s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression, timeline: timelineSelection(s), charts: s.workspace.specs.filter(c => !c.series?.length && c.x && (c.type !== 'scatter' || c.y)) });
+    s.worker?.postMessage({ type: 'analyze', request: ++s.filterRequest, expression: withLocalMapBounds(expression), timeline: timelineSelection(s), charts: s.workspace.specs.filter(c => !c.series?.length && c.x && (c.type !== 'scatter' || c.y)) });
     state();
 }
 function showMetadata(data: any, source: Source) {
@@ -902,7 +907,7 @@ $('exportCSV').onclick = () => {
     state();
 };
 $('export').onclick = () => { const blob = new Blob([JSON.stringify({ sources: sources.map(s => ({ id: s.id, name: s.name, enabled: s.enabled, metrics: s.metrics })) }, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wfs-map-metrics.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
-(window as any).__WFS_MAP__ = { map, get layer() { return filterSource()?.layer; }, get metrics() { return filterSource()?.metrics; }, get done() { return filterSource()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get workspace() { return filterSource()?.workspace; }, get sources() { return sources; }, records: recordPage, inspectRecord, chooseRecords, get inspection() { return inspection; }, switchSource: switchFilters, filterSource: (id: string, rules: Rule[] | Expression) => {
+(window as any).__WFS_MAP__ = { map, get layer() { return filterSource()?.layer; }, get metrics() { return filterSource()?.metrics; }, get done() { return filterSource()?.done ?? false; }, load, filter, benchmark, get queryBounds() { return structuredClone(queryBounds); }, get localMapBounds() { return localMapBounds && structuredClone(localMapBounds); }, get workspace() { return filterSource()?.workspace; }, get sources() { return sources; }, records: recordPage, inspectRecord, chooseRecords, get inspection() { return inspection; }, switchSource: switchFilters, filterSource: (id: string, rules: Rule[] | Expression) => {
         const s = sources.find(s => s.id === id);
         if (s)
             filter(rules, s);
@@ -943,26 +948,93 @@ const mapCanvas = map.getCanvas(), geoBox = document.createElement('div');
 geoBox.className = 'geo-box';
 geoBox.hidden = true;
 $('map').append(geoBox);
-let geoStart: [
-    number,
-    number
-] | undefined;
-const mapPoint = (e: PointerEvent): [
-    number,
-    number
-] => { const rect = mapCanvas.getBoundingClientRect(); return [Math.max(0, Math.min(rect.width, e.clientX - rect.left)), Math.max(0, Math.min(rect.height, e.clientY - rect.top))]; };
+let geoStart: [number, number] | undefined, geoPointer: number | undefined;
+let drawingLoadArea = false, geoTarget: 'local' | 'load' = 'local';
+const mapPoint = (e: PointerEvent): [number, number] => {
+    const rect = mapCanvas.getBoundingClientRect();
+    return [Math.max(0, Math.min(rect.width, e.clientX - rect.left)), Math.max(0, Math.min(rect.height, e.clientY - rect.top))];
+};
+function armLoadArea(armed: boolean) {
+    drawingLoadArea = armed;
+    $('drawArea').textContent = armed ? 'Cancel drawing load area' : 'Draw load area on map';
+    $('drawArea').setAttribute('aria-pressed', String(armed));
+    $('drawAreaHelp').hidden = !armed;
+    mapCanvas.style.cursor = armed ? 'crosshair' : '';
+}
+function cancelGeo() {
+    geoStart = undefined; geoBox.hidden = true;
+    if (geoPointer !== undefined && mapCanvas.hasPointerCapture(geoPointer)) mapCanvas.releasePointerCapture(geoPointer);
+    geoPointer = undefined;
+    map.dragPan.enable();
+}
 mapCanvas.addEventListener('contextmenu', e => e.preventDefault());
-mapCanvas.addEventListener('pointerdown', e => { if (e.button !== 2 || !mapReady)
-    return; e.preventDefault(); e.stopImmediatePropagation(); geoStart = mapPoint(e); map.dragPan.disable(); mapCanvas.setPointerCapture(e.pointerId); geoBox.hidden = false; geoBox.style.left = geoStart[0] + 'px'; geoBox.style.top = geoStart[1] + 'px'; geoBox.style.width = '0'; geoBox.style.height = '0'; }, true);
-mapCanvas.addEventListener('pointermove', e => { if (!geoStart)
-    return; const p = mapPoint(e); geoBox.style.left = Math.min(p[0], geoStart[0]) + 'px'; geoBox.style.top = Math.min(p[1], geoStart[1]) + 'px'; geoBox.style.width = Math.abs(p[0] - geoStart[0]) + 'px'; geoBox.style.height = Math.abs(p[1] - geoStart[1]) + 'px'; });
-function endGeo(e: PointerEvent, cancel = false) { const a = geoStart; geoStart = undefined; geoBox.hidden = true; map.dragPan.enable(); if (!a || cancel)
-    return; const b = mapPoint(e); if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 4)
-    return; const nw = map.unproject([Math.min(a[0], b[0]), Math.min(a[1], b[1])]), se = map.unproject([Math.max(a[0], b[0]), Math.max(a[1], b[1])]); const west = Math.max(-180, Math.min(180, nw.lng)), east = Math.max(-180, Math.min(180, se.lng)), south = Math.max(-90, se.lat), north = Math.min(90, nw.lat); queryBounds = { ...queryBounds, bbox: { west, east, south, north } }; showQueryBounds(); reloadBounds(); }
-mapCanvas.addEventListener('pointerup', e => { if (geoStart)
-    endGeo(e); });
-mapCanvas.addEventListener('pointercancel', e => { if (geoStart)
-    endGeo(e, true); });
+mapCanvas.addEventListener('pointerdown', e => {
+    if (geoStart || !mapReady || !(e.button === 2 || e.button === 0 && drawingLoadArea)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    geoTarget = e.button === 0 ? 'load' : 'local';
+    if (geoTarget === 'local') armLoadArea(false);
+    geoStart = mapPoint(e); geoPointer = e.pointerId;
+    map.dragPan.disable(); mapCanvas.setPointerCapture(e.pointerId);
+    geoBox.hidden = false;
+    geoBox.style.left = geoStart[0] + 'px'; geoBox.style.top = geoStart[1] + 'px';
+    geoBox.style.width = geoBox.style.height = '0';
+}, true);
+mapCanvas.addEventListener('pointermove', e => {
+    if (!geoStart || e.pointerId !== geoPointer) return;
+    const p = mapPoint(e);
+    geoBox.style.left = Math.min(p[0], geoStart[0]) + 'px'; geoBox.style.top = Math.min(p[1], geoStart[1]) + 'px';
+    geoBox.style.width = Math.abs(p[0] - geoStart[0]) + 'px'; geoBox.style.height = Math.abs(p[1] - geoStart[1]) + 'px';
+});
+function endGeo(e: PointerEvent) {
+    const a = geoStart, target = geoTarget;
+    if (!a || e.pointerId !== geoPointer) return;
+    const b = mapPoint(e); cancelGeo();
+    if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 4) return;
+    const nw = map.unproject([Math.min(a[0], b[0]), Math.min(a[1], b[1])]);
+    const se = map.unproject([Math.max(a[0], b[0]), Math.max(a[1], b[1])]);
+    const bounds = { west: Math.max(-180, Math.min(180, nw.lng)), east: Math.max(-180, Math.min(180, se.lng)), south: Math.max(-90, se.lat), north: Math.min(90, nw.lat) };
+    if (target === 'load') {
+        armLoadArea(false);
+        queryBounds = { ...queryBounds, bbox: bounds }; showQueryBounds(); reloadBounds();
+    } else setLocalMapBounds(bounds);
+}
+mapCanvas.addEventListener('pointerup', endGeo);
+mapCanvas.addEventListener('pointercancel', cancelGeo);
+mapCanvas.addEventListener('lostpointercapture', () => { if (geoStart) cancelGeo(); });
+window.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && (drawingLoadArea || geoStart)) {
+        cancelGeo(); armLoadArea(false); e.preventDefault(); e.stopImmediatePropagation();
+    }
+}, true);
+$('drawArea').onclick = () => {
+    cancelGeo(); armLoadArea(!drawingLoadArea);
+    if (drawingLoadArea) { location.hash = '#analysis'; mapCanvas.focus(); }
+};
+function setLocalMapBounds(bounds?: MapBounds) {
+    localMapBounds = bounds;
+    showLocalMapBounds(); clearInspection(); chartGeneration++;
+    // Preserve each source's applied attribute filters, including OR groups and
+    // unfinished editor changes. The one shared area is always intersected.
+    for (const s of sources) if (s.enabled && s.done) filter(undefined, s, true);
+}
+$('clearLocalArea').onclick = () => setLocalMapBounds(undefined);
+function showLocalMapBounds() {
+    $('localAreaSummary').textContent = localMapBounds
+        ? `Local map area: ${localMapBounds.west.toFixed(4)}, ${localMapBounds.south.toFixed(4)} to ${localMapBounds.east.toFixed(4)}, ${localMapBounds.north.toFixed(4)} · all data sources`
+        : 'All loaded map areas · right-drag a box on the map to filter all sources.';
+    $('clearLocalArea').hidden = !localMapBounds;
+    showMapArea('local-area', localMapBounds, '#e49a2a', false);
+}
+function showMapArea(id: string, bbox: MapBounds | undefined, color: string, dashed: boolean) {
+    if (!mapReady) return;
+    const data: Parameters<maplibregl.GeoJSONSource['setData']>[0] = { type: 'FeatureCollection', features: bbox ? [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[bbox.west, bbox.south], [bbox.east, bbox.south], [bbox.east, bbox.north], [bbox.west, bbox.north], [bbox.west, bbox.south]]] } }] : [] };
+    const source = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
+    if (source) source.setData(data);
+    else {
+        map.addSource(id, { type: 'geojson', data });
+        map.addLayer({ id: id + '-outline', type: 'line', source: id, paint: { 'line-color': color, 'line-width': 2, ...(dashed ? { 'line-dasharray': [3, 2] } : {}) } });
+    }
+}
 
 function reloadBounds() {
     // Cancel every old worker and queued load before pumping replacement work.
@@ -974,17 +1046,11 @@ function reloadBounds() {
 function showQueryBounds() {
     const time = queryBounds.time, bbox = queryBounds.bbox;
     $('timeSummary').textContent = time ? `${formatUTC(time.start)} → ${formatUTC(time.end)}` : 'All time · no time bound sent to WFS.';
-    $('areaSummary').textContent = bbox ? `Map area: ${bbox.west.toFixed(4)}, ${bbox.south.toFixed(4)} to ${bbox.east.toFixed(4)}, ${bbox.north.toFixed(4)} · all enabled sources` : 'All map areas · right-drag a box on the map to bound requests.';
+    $('areaSummary').textContent = bbox ? `Map area: ${bbox.west.toFixed(4)}, ${bbox.south.toFixed(4)} to ${bbox.east.toFixed(4)}, ${bbox.north.toFixed(4)} · all enabled sources` : 'All map areas · no area bound on loading.';
     $('clearArea').hidden = !bbox;
-    if (!mapReady) return;
-    const data: Parameters<maplibregl.GeoJSONSource['setData']>[0] = { type: 'FeatureCollection', features: bbox ? [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[bbox.west, bbox.south], [bbox.east, bbox.south], [bbox.east, bbox.north], [bbox.west, bbox.north], [bbox.west, bbox.south]]] } }] : [] };
-    const source = map.getSource('query-area') as maplibregl.GeoJSONSource | undefined;
-    if (source) source.setData(data);
-    else {
-        map.addSource('query-area', { type: 'geojson', data });
-        map.addLayer({ id: 'query-area-outline', type: 'line', source: 'query-area', paint: { 'line-color': '#3984cf', 'line-width': 2, 'line-dasharray': [3, 2] } });
-    }
+    showMapArea('query-area', bbox, '#3984cf', true);
 }
+
 function chooseTime() {
     const custom = value('timeWindow') === 'custom';
     $('customTime').hidden = !custom;
@@ -1020,7 +1086,8 @@ if (savedQuery?.choice === 'custom') {
     $<HTMLInputElement>('timeEnd').value = queryBounds.time ? utcInput(queryBounds.time.end) : '';
 }
 showQueryBounds();
-map.on('load', showQueryBounds);
+map.on('load', () => { showQueryBounds(); showLocalMapBounds(); });
+showLocalMapBounds();
 
 function savedState() {
     const pending = sourceSettings.pendingSettings();
@@ -1035,7 +1102,7 @@ function savedState() {
     });
     // A newly added source has no schema yet. Omitting its uninitialized workspace
     // lets loading create the usual default charts instead of restoring an empty set.
-    return configurationState(pending, { choice: value('timeWindow'), bounds: queryBounds }, analyses.filter(s => s.fields.length || savedAnalyses.has(s.id)), timeline.savedWindow);
+    return configurationState(pending, { choice: value('timeWindow'), bounds: queryBounds }, analyses.filter(s => s.fields.length || savedAnalyses.has(s.id)), timeline.savedWindow, localMapBounds);
 }
 mountAnalysisControls(savedState, $('remoteAnalysisControls'), timeline.root.querySelector('.timeline-bar')!, async () => {
     // Validate portable filters before committing sources, then persist the complete state.
