@@ -19,14 +19,19 @@ function wfsState(points: number) {
 async function user(context: BrowserContext, baseURL: string, value: string) {
     await context.addCookies([{ name: 'wfs_test_user', value, url: baseURL }]);
 }
-async function attach(page: Page, text: string) {
+async function attach(page: Page, text: string, copyName?: string) {
     await navigate(page, 'configuration');
     await page.getByRole('button', { name: 'Configure Local stations', exact: true }).click();
     await page.locator('#csvFile').setInputFiles({ name: 'stations.csv', mimeType: 'text/csv', buffer: Buffer.from(text) });
     await expect(page.locator('#csvFileStatus')).toContainText('4 columns');
     await page.locator('#updateSource').click();
     await page.locator('#saveSettings').click();
-    await expect(page.locator('#saveState')).toHaveText('Saved in this browser');
+    if (copyName) {
+        await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue(copyName);
+        await expect(page).toHaveURL(/\?analysis=/);
+    } else {
+        await expect(page.locator('#saveState')).toHaveText('Analysis configuration saved');
+    }
     await navigate(page, 'analysis');
 }
 const save = async (page: Page) => {
@@ -125,7 +130,8 @@ test('CSV files stay local and isolated across users in one browser; shared atta
         await expect(page.locator('#status')).toContainText('file is missing');
         await attach(page, 'lon,lat,value,secret\n-1,54,7,ALICE_PRIVATE_ROW\n-2,53,9,ALICE_PRIVATE_ROW');
         await expect(page.locator('#hud')).toHaveText('Loaded 2 points');
-        await save(page);
+        const saved = await (await request.get('/api/analyses/' + doc.id, { headers: headers() })).json();
+        expect(saved.state.settings.sources[0].config.csvRef).not.toBe(state.settings.sources[0].config.csvRef);
         await navigate(page, 'configuration'); await page.getByRole('button', { name: 'Share', exact: true }).click();
         await expect(page.getByLabel('Shared analysis link')).toBeVisible();
         const sharedURL = new URL(await page.getByLabel('Shared analysis link').inputValue());
@@ -143,14 +149,9 @@ test('CSV files stay local and isolated across users in one browser; shared atta
         await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue(doc.name + ' (copy)');
         copyID = new URL(page.url()).searchParams.get('analysis')!;
         await expect(page.locator('#status')).toContainText('file is missing');
-        await page.goto(sharedURL.pathname + sharedURL.search);
-        await attach(page, 'lon,lat,value,secret\n-3,52,8,BOB_PRIVATE_ROW');
-        await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
-        await page.reload();
-        await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
         await remove(request, copyID, 'bob'); copyID = undefined;
-        await navigate(page, 'configuration'); await page.locator('#remoteAnalysisControls').getByRole('button', { name: 'Save a copy', exact: true }).click();
-        await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue(doc.name + ' (copy)');
+        await page.goto(sharedURL.pathname + sharedURL.search);
+        await attach(page, 'lon,lat,value,secret\n-3,52,8,BOB_PRIVATE_ROW', doc.name + ' (copy)');
         copyID = new URL(page.url()).searchParams.get('analysis')!;
         await expect(page.locator('#hud')).toHaveText('Loaded 1 points');
         await page.reload();

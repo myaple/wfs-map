@@ -134,7 +134,9 @@ test('source legend toggles every chart type, including empty charts and raw key
     await expect(chart.locator('.hint').last()).toContainText('19 plotted');
     await page.keyboard.press('Escape');
     await legend.getByRole('button', { name: 'WFS source', exact: true }).click();
-    await page.locator('#dockSaveAnalysis').click(); await expect(page.locator('#dockSaveAnalysis')).toBeDisabled();
+    await page.locator('#dockSaveAnalysis').click();
+    await expect(page.locator('.dock-save-status')).toContainText('Saved in this browser · Remote save failed:');
+    await expect(page.locator('#dockSaveAnalysis')).toBeEnabled();
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done));
     await expect(legend.getByRole('button', { name: 'WFS source', exact: true })).toHaveAttribute('aria-pressed', 'false');
     await expect(chart.locator('.hint').last()).toContainText('3 plotted');
@@ -145,7 +147,9 @@ test('a saved timeline spanning sources survives their separate load completion'
     await page.locator('#toggleTimeline').click();
     await page.locator('.timeline-toggle').check();
     const start = await page.locator('.timeline-start').inputValue(), end = await page.locator('.timeline-end').inputValue();
-    await page.locator('#dockSaveAnalysis').click(); await expect(page.locator('#dockSaveAnalysis')).toBeDisabled();
+    await page.locator('#dockSaveAnalysis').click();
+    await expect(page.locator('.dock-save-status')).toContainText('Saved in this browser · Remote save failed:');
+    await expect(page.locator('#dockSaveAnalysis')).toBeEnabled();
     await page.reload(); await page.waitForFunction(() => (window as any).__WFS_MAP__?.sources.every((s: any) => s.done));
     await page.locator('#toggleTimeline').click();
     await expect(page.locator('.timeline-toggle')).toBeChecked();
