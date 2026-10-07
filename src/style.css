@@ -974,9 +974,24 @@ html { scroll-padding-bottom: var(--workspace-dock-height, 48px); }
 #toggleEllipses[aria-pressed="true"] { background:var(--accent);color:white; }
 .ellipse-resolution { position:relative; }
 .ellipse-resolution > summary { cursor:pointer;list-style:none;padding:5px 8px; }
-.ellipse-options { position:absolute;right:0;top:calc(100% + 8px);width:210px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px #0002;z-index:6; }
-.ellipse-options label { display:block;margin-bottom:5px; }
+.ellipse-options {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(304px, calc(100vw - 32px));
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px #0002;
+  z-index: 6;
+}
+.ellipse-option { display: grid; gap: 6px; min-width: 0; }
+.ellipse-options label { font-weight: 600; }
+.ellipse-options input { width: 80px; }
+.ellipse-options select { width: 100%; max-width: 100%; }
+.ellipse-options .hint { display: block; margin: 2px 0 0; font-size: 11px; line-height: 1.5; }
 .map-tools #toggleEllipses { margin-left:auto; }
 .map-tools #enlargeMap { margin-left:0; }
-.ellipse-resolution input { width:70px; }
-.ellipse-resolution .hint { display:block;font-size:11px; }
