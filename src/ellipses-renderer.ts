@@ -14,6 +14,8 @@ uniform int u_width;
 uniform int u_vertices;
 uniform vec4 u_center;
 uniform vec2 u_scale;
+uniform vec2 u_viewport;
+uniform float u_line_width;
 uniform float u_world;
 uniform vec3 u_color;
 uniform bool u_styled;
@@ -24,6 +26,30 @@ out vec3 v_color;
 const float PI=3.141592653589793;
 // Stable log(1+x) preserves sub-metre offsets at high zoom.
 float log1p(float x) { return abs(x)<.001 ? x*(1.0-x*(.5-x/3.0)) : log(1.0+x); }
+vec2 projectSample(vec4 axes, vec4 position, int sampleIndex, int bucket) {
+  vec2 unit=texelFetch(u_samples,ivec2(sampleIndex,bucket),0).xy;
+  float cosLat=cos(axes.w), sinLat=sin(axes.w);
+  float major=axes.x*unit.x, minor=axes.y*unit.y;
+  float sn=sin(axes.z), cs=cos(axes.z);
+  float east=major*sn+minor*cs, north=major*cs-minor*sn;
+  // Use the tangent limit only when its conservative second-order screen error
+  // is below 1/8 pixel. At high zoom or large distances use the spherical path.
+  if(axes.x*axes.x*u_world/(2.0*PI*cosLat*cosLat)<.125) {
+    vec2 offset=vec2(east,-north)/(2.0*PI*cosLat);
+    offset.y=clamp(offset.y,-(position.y+position.w),1.0-(position.y+position.w));
+    return offset*u_scale;
+  }
+  float distance=length(vec2(east,north));
+  float sinc=distance<.0001?1.0:sin(distance)/distance;
+  float cosDistance=cos(distance);
+  float deltaSin=sinLat*(-2.0*pow(sin(distance*.5),2.0))+cosLat*north*sinc;
+  deltaSin=clamp(deltaSin,-.9999999-sinLat,.9999999-sinLat);
+  float dx=atan(east*sinc,cosLat*cosDistance-sinLat*north*sinc)/(2.0*PI);
+  float dy=(log1p(-deltaSin/(1.0-sinLat))-log1p(deltaSin/(1.0+sinLat)))/(4.0*PI);
+  // Mercator cannot show the poles; use the same clamp as centre points.
+  dy=clamp(dy,-(position.y+position.w),1.0-(position.y+position.w));
+  return vec2(dx,dy)*u_scale;
+}
 void main() {
   int local=gl_InstanceID*u_stride;
   // Stable jitter avoids favouring periodic categories in input row order.
@@ -36,7 +62,7 @@ void main() {
   if(style.a<.5) return;
   vec4 axes=texelFetch(u_axes,cell,0);
   if(axes.x<=0.0) return;
-  float cosLat=cos(axes.w), sinLat=sin(axes.w);
+  float cosLat=cos(axes.w);
   float radius=axes.x/(2.0*PI*cosLat);
   // Subpixel outlines contribute no readable geometry. Keep their centre points.
   if(radius*u_world<.75) return;
@@ -44,35 +70,28 @@ void main() {
   vec2 relative=(position.xy-u_center.xy)+(position.zw-u_center.zw);
   vec2 center=relative*u_scale;
   float bound=axes.x/(2.0*PI*cos(min(1.48442223,abs(axes.w)+axes.x)));
-  if(any(greaterThan(abs(center),vec2(1.0)+bound*abs(u_scale)))) return;
+  if(any(greaterThan(abs(center),vec2(1.0)+bound*abs(u_scale)+u_line_width*4.0/u_viewport))) return;
   int code=int(round(style.r*255.0));
   v_color=u_colored?(u_categorical?style.rgb:(code==255?vec3(.5):u_palette[min(code,63)])):u_color;
   int bucket=int(round(clamp(log2(axes.x/axes.y),0.0,10.0)*6.3));
-  // Repeat the first sample once to close the outline. LINE_STRIP avoids
-  // driver-side LINE_LOOP index expansion for large instanced draws.
-  int sampleIndex=gl_VertexID%u_vertices;
-  vec2 unit=texelFetch(u_samples,ivec2(sampleIndex,bucket),0).xy;
-  float major=axes.x*unit.x, minor=axes.y*unit.y;
-  float sn=sin(axes.z), cs=cos(axes.z);
-  float east=major*sn+minor*cs, north=major*cs-minor*sn;
-  // Use the tangent limit only when its conservative second-order screen error
-  // is below 1/8 pixel. At high zoom or large distances use the spherical path.
-  if(axes.x*axes.x*u_world/(2.0*PI*cosLat*cosLat)<.125) {
-    vec2 offset=vec2(east,-north)/(2.0*PI*cosLat);
-    offset.y=clamp(offset.y,-(position.y+position.w),1.0-(position.y+position.w));
-    gl_Position=vec4(center+offset*u_scale,0.0,1.0);
-    return;
-  }
-  float distance=length(vec2(east,north));
-  float sinc=distance<.0001?1.0:sin(distance)/distance;
-  float cosDistance=cos(distance);
-  float deltaSin=sinLat*(-2.0*pow(sin(distance*.5),2.0))+cosLat*north*sinc;
-  deltaSin=clamp(deltaSin,-.9999999-sinLat,.9999999-sinLat);
-  float dx=atan(east*sinc,cosLat*cosDistance-sinLat*north*sinc)/(2.0*PI);
-  float dy=(log1p(-deltaSin/(1.0-sinLat))-log1p(deltaSin/(1.0+sinLat)))/(4.0*PI);
-  // Mercator cannot show the poles; use the same clamp as centre points.
-  dy=clamp(dy,-(position.y+position.w),1.0-(position.y+position.w));
-  gl_Position=vec4(center+vec2(dx,dy)*u_scale,0.0,1.0);
+  // Two vertices per sample form a closed ribbon. Screen-space extrusion
+  // supports widths on drivers whose native WebGL lines are fixed at 1 px.
+  int sampleIndex=(gl_VertexID/2)%u_vertices;
+  vec2 at=projectSample(axes,position,sampleIndex,bucket);
+  vec2 before=projectSample(axes,position,(sampleIndex+u_vertices-1)%u_vertices,bucket);
+  vec2 after=projectSample(axes,position,(sampleIndex+1)%u_vertices,bucket);
+  vec2 incoming=(at-before)*u_viewport, outgoing=(after-at)*u_viewport;
+  float incomingLength=length(incoming), outgoingLength=length(outgoing);
+  if(min(incomingLength,outgoingLength)<1e-7) return;
+  vec2 n0=vec2(-incoming.y,incoming.x)/incomingLength;
+  vec2 n1=vec2(-outgoing.y,outgoing.x)/outgoingLength;
+  vec2 bisector=n0+n1;
+  float bisectorLength=length(bisector);
+  vec2 miter=bisectorLength>1e-7?bisector/bisectorLength:n1;
+  // Cap acute joins, especially for very narrow ellipses and low vertex counts.
+  vec2 offset=miter*(u_line_width/max(abs(dot(miter,n1)),.25))/u_viewport;
+  float side=gl_VertexID%2==0?-1.0:1.0;
+  gl_Position=vec4(center+at+offset*side,0.0,1.0);
 }`;
 const fragment = `#version 300 es
 precision highp float;
@@ -114,7 +133,7 @@ export class EllipsesRenderer {
         gl.linkProgram(this.program);
         for (const s of shaders) gl.deleteShader(s);
         if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(this.program) ?? 'Ellipse shader link failed');
-        for (const name of ['positions','axes','samples','styles','width','vertices','center','scale','world','color','styled','colored','categorical','palette','order','offset','stride','count']) this.uniforms[name] = gl.getUniformLocation(this.program, 'u_' + name);
+        for (const name of ['positions','axes','samples','styles','width','vertices','center','scale','viewport','line_width','world','color','styled','colored','categorical','palette','order','offset','stride','count']) this.uniforms[name] = gl.getUniformLocation(this.program, 'u_' + name);
         this.vao = gl.createVertexArray()!;
         this.spatialOrder = this.texture(); this.filterOrder = this.texture();
         this.positions = this.texture(); this.axes = this.texture(); this.samples = this.texture(); this.styles = this.texture();
@@ -182,7 +201,7 @@ export class EllipsesRenderer {
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.styles);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, this.width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data); this.styleBytes = data.byteLength;
     }
-    prepare(vertices: number, center: number[], scale: number[], world: number, color: number[], palette: Float32Array) {
+    prepare(vertices: number, center: number[], scale: number[], world: number, color: number[], palette: Float32Array, viewport: number[], lineWidth: number) {
         const gl = this.gl;
         if (vertices !== this.vertices) {
             validateEllipseVertices(vertices); this.vertices = vertices;
@@ -194,13 +213,14 @@ export class EllipsesRenderer {
         for (const [i,name] of ['positions','axes','samples','styles'].entries()) gl.uniform1i(this.uniforms[name],i);
         gl.uniform1i(this.uniforms.width,this.width); gl.uniform1i(this.uniforms.vertices,vertices); gl.uniform1i(this.uniforms.styled,this.styled?1:0);
         gl.uniform1i(this.uniforms.colored,this.colored?1:0); gl.uniform1i(this.uniforms.categorical,this.categorical?1:0); gl.uniform3fv(this.uniforms.palette,palette);
+        gl.uniform2fv(this.uniforms.viewport,viewport); gl.uniform1f(this.uniforms.line_width,lineWidth);
         gl.uniform4fv(this.uniforms.center,center); gl.uniform2fv(this.uniforms.scale,scale); gl.uniform1f(this.uniforms.world,world); gl.uniform3fv(this.uniforms.color,color);
     }
     draw(filtered: boolean, count: number, offset: number, stride = 1) {
         const gl = this.gl;
         gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,filtered?this.filterOrder:this.spatialOrder);
         gl.uniform1i(this.uniforms.order,4); gl.uniform1i(this.uniforms.offset,offset); gl.uniform1i(this.uniforms.stride,stride); gl.uniform1i(this.uniforms.count,count);
-        gl.drawArraysInstanced(gl.LINE_STRIP,0,this.vertices+1,Math.ceil(count/stride));
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,(this.vertices+1)*2,Math.ceil(count/stride));
     }
     remove() { const gl = this.gl; for (const t of [this.positions,this.axes,this.samples,this.styles,this.spatialOrder,this.filterOrder]) gl.deleteTexture(t); gl.deleteVertexArray(this.vao); gl.deleteProgram(this.program); }
     get gpuBytes() { return this.width*this.height*32 + this.width*this.height*4 + this.filterBytes + this.styleBytes + this.vertices*ELLIPSE_ASPECT_BUCKETS*8; }

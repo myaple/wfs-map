@@ -1,3 +1,4 @@
+import { MapCoordinates } from './map-coordinates.ts';
 import { ServerFilterPanel } from './server-filter-panel.ts';
 import { validateServerFilters, type ServerFilter } from './server-filters.ts';
 import { sharedDomain, combineSeries, seriesColors } from './multi-charts.ts';
@@ -427,6 +428,8 @@ map.touchZoomRotate.disableRotation();
 map.keyboard.disableRotation();
 map.doubleClickZoom.disable();
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
+map.addControl(new MapCoordinates(), 'bottom-left');
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 100 }), 'bottom-right');
 const mapPanel = document.querySelector<HTMLElement>('.map-panel')!;
 function syncEllipses() {
     const enabled = mapSettings.ellipses ?? false;

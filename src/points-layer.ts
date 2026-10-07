@@ -307,7 +307,7 @@ export class PointsLayer implements CustomLayerInterface {
                 this.ellipses.setStyles(this.count, this.colorCodes, this.categorical, this.mapMask);
                 this.ellipseStylesDirty = false;
             }
-            this.ellipses.prepare(this.ellipseVertices, [hx, hy, x-hx, y-hy], [world*2/size.width, -world*2/size.height], world, this.color, this.palette);
+            this.ellipses.prepare(this.ellipseVertices, [hx, hy, x-hx, y-hy], [world*2/size.width, -world*2/size.height], world, this.color, this.palette, [size.width, size.height], this.pointSize / 2);
         }
         let ellipseStride = 1;
         const draw = (buffer: WebGLBuffer, count: number, offset = 0) => {
