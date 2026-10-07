@@ -215,10 +215,38 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                 "longitudeField",
                 "latitudeField",
                 "fieldTypes",
+                "ellipseMajorField",
+                "ellipseMinorField",
+                "ellipseOrientationField",
+                "ellipseMajorUnit",
+                "ellipseMinorUnit",
             ],
         )?;
         for value in c.values() {
             string(value)?;
+        }
+        let ellipse_fields = [
+            "ellipseMajorField",
+            "ellipseMinorField",
+            "ellipseOrientationField",
+        ];
+        let selected = ellipse_fields
+            .iter()
+            .filter(|k| {
+                c.get(**k)
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.is_empty())
+            })
+            .count();
+        if selected != 0 && selected != 3 {
+            return Err("Incomplete ellipse field mappings");
+        }
+        for key in ["ellipseMajorUnit", "ellipseMinorUnit"] {
+            if let Some(unit) = c.get(key) {
+                if !matches!(unit.as_str(), Some("m" | "nm")) {
+                    return Err("Invalid ellipse units");
+                }
+            }
         }
         if let Some(types) = c.get("fieldTypes") {
             let types: Value =
@@ -316,7 +344,31 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
         return Err("Invalid basemap setting");
     }
     if let Some(map) = settings.get("map") {
-        object(map, &["center", "zoom", "pointSize"])?;
+        object(
+            map,
+            &[
+                "center",
+                "zoom",
+                "pointSize",
+                "ellipses",
+                "ellipseVertices",
+                "ellipseFullDetail",
+            ],
+        )?;
+        if map
+            .get("ellipseFullDetail")
+            .is_some_and(|v| v.as_bool().is_none())
+        {
+            return Err("Invalid ellipse detail setting");
+        }
+        if map.get("ellipses").is_some_and(|v| v.as_bool().is_none()) {
+            return Err("Invalid ellipse visibility");
+        }
+        if let Some(vertices) = map.get("ellipseVertices") {
+            if !vertices.as_u64().is_some_and(|n| (4..=128).contains(&n)) {
+                return Err("Invalid ellipse vertices");
+            }
+        }
         let center = array(required(map, "center")?, 2)?;
         if center.len() != 2 {
             return Err("Invalid map centre");
@@ -499,6 +551,26 @@ mod tests {
         }
         let mut v = state();
         v["settings"]["sources"] = serde_json::json!([{"id":"csv1","name":"CSV","enabled":true,"config":{"type":"csv","csvText":"SECRET"}}]);
+        assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn ellipse_settings_allow_only_configuration() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"a","name":"A","enabled":true,"config":{"type":"csv","ellipseMajorField":"a","ellipseMinorField":"b","ellipseOrientationField":"angle","ellipseMajorUnit":"nm","ellipseMinorUnit":"m"}}]);
+        v["settings"]["map"] = serde_json::json!({"center":[-1,54],"zoom":12,"pointSize":2,"ellipses":true,"ellipseVertices":6,"ellipseFullDetail":true});
+        assert!(validate(&v).is_ok());
+        for count in [0, 3, 129] {
+            let mut bad = v.clone();
+            bad["settings"]["map"]["ellipseVertices"] = count.into();
+            assert!(validate(&bad).is_err());
+        }
+        let mut bad = v.clone();
+        bad["settings"]["sources"][0]["config"]["ellipseMajorUnit"] = "feet".into();
+        assert!(validate(&bad).is_err());
+        let mut bad = v.clone();
+        bad["settings"]["sources"][0]["config"]["ellipseOrientationField"] = "".into();
+        assert!(validate(&bad).is_err());
+        v["settings"]["map"]["ellipses"] = "true".into();
         assert!(validate(&v).is_err());
     }
     #[test]

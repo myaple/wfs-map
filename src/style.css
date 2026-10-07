@@ -969,3 +969,14 @@ html { scroll-padding-bottom: var(--workspace-dock-height, 48px); }
 .map-legend-row > div { flex: 1; }
 .map-legend-value-hidden .map-legend-swatch { opacity: .35; }
 .map-legend-value-hidden > div > span { text-decoration: line-through; color: var(--muted); }
+
+#toggleEllipses { display:inline-flex;align-items:center;justify-content:center;min-width:34px; }
+#toggleEllipses[aria-pressed="true"] { background:var(--accent);color:white; }
+.ellipse-resolution { position:relative; }
+.ellipse-resolution > summary { cursor:pointer;list-style:none;padding:5px 8px; }
+.ellipse-options { position:absolute;right:0;top:calc(100% + 8px);width:210px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px #0002;z-index:6; }
+.ellipse-options label { display:block;margin-bottom:5px; }
+.map-tools #toggleEllipses { margin-left:auto; }
+.map-tools #enlargeMap { margin-left:0; }
+.ellipse-resolution input { width:70px; }
+.ellipse-resolution .hint { display:block;font-size:11px; }

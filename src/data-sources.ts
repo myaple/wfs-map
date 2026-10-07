@@ -1,3 +1,4 @@
+import { ellipseConfigKeys } from './ellipses.ts';
 import { createUUID } from './uuid.ts';
 import { currentAnalysis } from './saved-analysis.ts';
 import { readCSVText, readCSVBlob, stageCSVFile, unstageCSVFile, discardStagedCSVFiles, saveSettings } from './source-storage.ts';
@@ -68,6 +69,14 @@ export class DataSources {
             <details id="csvTypes"><summary>Column types</summary><p class="hint">Automatic infers each column from the whole file. Text / category preserves numeric codes and leading zeros. Invalid values for an explicit type are reported as rejected rows. The selected time attribute must be Date / time or Automatic.</p><div id="csvTypeList" class="settings-fields"></div></details>
             <p class="hint">The imported file is saved in this browser with its settings. Available storage depends on your browser and device; a save error leaves your existing saved sources intact.</p>
           </fieldset>
+          <details id="ellipseFields"><summary>Ellipse fields (optional)</summary><div class="settings-fields">
+            <p class="hint">Axes are radii from each point’s centre. Orientation is degrees clockwise from north. Missing or invalid values skip the ellipse while retaining its point.</p>
+            <label for="ellipseMajorField">Semimajor axis field</label><input id="ellipseMajorField" list="ellipseColumns" placeholder="No ellipses">
+            <label for="ellipseMajorUnit">Semimajor units</label><select id="ellipseMajorUnit"><option value="m">Metres</option><option value="nm">Nautical miles</option></select>
+            <label for="ellipseMinorField">Semiminor axis field</label><input id="ellipseMinorField" list="ellipseColumns">
+            <label for="ellipseMinorUnit">Semiminor units</label><select id="ellipseMinorUnit"><option value="m">Metres</option><option value="nm">Nautical miles</option></select>
+            <label for="ellipseOrientationField">Orientation field</label><input id="ellipseOrientationField" list="ellipseColumns"><datalist id="ellipseColumns"></datalist>
+          </div></details>
           <p id="sourceError" class="error" role="alert" hidden></p>
         </div><div class="source-dialog-footer"><span class="hint">Save analysis to apply.</span><button id="cancelSource" type="button">Cancel</button><button id="updateSource" class="primary" type="submit">Add to list</button></div></form></dialog>`;
         $('type').onchange = () => { this.stopDiscovery(); this.showType(); };
@@ -241,6 +250,7 @@ export class DataSources {
         this.stopDiscovery(); this.resetLayers(true);
         $('sourceError').hidden = true; $('discoveryStatus').textContent = '';
         $<HTMLDetailsElement>('wfsCompatibility').open = false;
+        $<HTMLDetailsElement>('ellipseFields').open = false;
         $<HTMLDialogElement>('sourceDialog').showModal();
         input('sourceName').focus();
         if (config.type === 'csv') {
@@ -310,6 +320,7 @@ export class DataSources {
     }
     private csvColumns(config?: Config) {
         const headers = this.csvHeaderNames;
+        $('ellipseColumns').replaceChildren(...headers.map(h => new Option(h, h)));
         const restoring = !headers.length && !!this.csvRef;
         for (const id of ['longitudeField', 'latitudeField', 'csvGeometry', 'csvTime']) {
             const select = $<HTMLSelectElement>(id), previous = config ? config[id === 'csvGeometry' ? 'geometryField' : id === 'csvTime' ? 'timeField' : id as 'longitudeField' | 'latitudeField'] : select.value;
@@ -356,7 +367,7 @@ export class DataSources {
             const headers = await csvHeaders(file, input('delimiter').value);
             if (revision !== this.fileRevision) return;
             if (this.editing?.config.type === 'csv') {
-                const mapped = ['longitudeField', 'latitudeField', 'geometryField', 'timeField'] as const;
+                const mapped = ['longitudeField', 'latitudeField', 'geometryField', 'timeField', ...ellipseConfigKeys.filter(k => k.endsWith('Field'))] as const;
                 const savedFields = currentAnalysis?.state.analyses.find(s => s.id === this.editing!.id)?.fields.map(f => f.name) ?? [];
                 const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields, ...(this.editing!.serverFilters ?? []).map(r => r.field), ...Object.keys(this.fieldTypes)])].filter(k => k && !headers.includes(k));
                 if (missing.length) throw Error('The chosen CSV is missing configured columns: ' + missing.join(', '));

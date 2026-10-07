@@ -1,3 +1,4 @@
+import { EllipsesRenderer } from './ellipses-renderer.ts';
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as LibreMap } from 'maplibre-gl';
 import { numericPalette } from './colour-schemes.ts';
 import { mercator } from './data.ts';
@@ -78,11 +79,21 @@ export class PointsLayer implements CustomLayerInterface {
     private capacityLimit = 0;
     count = 0;
     pointSize = 2;
+    ellipsesEnabled = false;
+    ellipseVertices = 12;
+    ellipseFullDetail = false;
+    private ellipseValidCount = 0;
+    private maskCount?: number;
+    ellipseRadius = 0;
+    private ellipses?: EllipsesRenderer;
+    private ellipseStylesDirty = true;
+    ellipsesDrawnLastFrame = 0;
     chunks: {
         offset: number;
         positions: Float32Array;
         indices: Uint32Array;
         groups: Float64Array;
+        ellipses?: Float32Array;
     }[] = [];
     private bounds = [Infinity, Infinity, -Infinity, -Infinity];
     drawnLastFrame = 0;
@@ -146,6 +157,13 @@ export class PointsLayer implements CustomLayerInterface {
         gl.bindVertexArray(null);
         this.framebuffer = undefined;
         this.texture = undefined;
+        if (this.chunks.some(c => c.ellipses)) this.initializeEllipses();
+    }
+    private initializeEllipses() {
+        this.ellipses = new EllipsesRenderer(this.gl);
+        this.ellipses.resize(this.capacity, this.chunks);
+        this.ellipses.setFilter(this.indices);
+        this.ellipseStylesDirty = true;
     }
     allocate(capacity: number, limit = capacity) {
         this.capacityLimit = limit;
@@ -164,16 +182,25 @@ export class PointsLayer implements CustomLayerInterface {
         for (const c of this.chunks)
             gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, c.offset * 4, c.indices);
         gl.bindVertexArray(null);
+        this.ellipses?.resize(capacity, this.chunks);
         if (gl.getError() !== gl.NO_ERROR)
             throw new Error('GPU allocation failed; lower point limit');
     }
-    append(offset: number, positions: Float32Array, indices: Uint32Array, groups: Float64Array) {
+    append(offset: number, positions: Float32Array, indices: Uint32Array, groups: Float64Array, ellipses?: Float32Array, ellipseRadius = 0, ellipseValidCount?: number) {
         const required = offset + positions.length / 4;
         if (required > this.capacityLimit)
             throw new Error('WFS exceeded allocated count');
         if (required > this.capacity)
             this.resize(Math.min(this.capacityLimit, Math.max(required, this.capacity * 2)));
-        this.chunks.push({ offset, positions, indices, groups });
+        const chunk = { offset, positions, indices, groups, ellipses };
+        this.chunks.push(chunk);
+        if (ellipses) this.ellipseValidCount += ellipseValidCount ?? positions.length/4;
+        this.ellipseRadius = Math.max(this.ellipseRadius, ellipseRadius);
+        if (ellipses) {
+            if (!this.ellipses) this.initializeEllipses();
+            else this.ellipses.append(chunk);
+        }
+        this.ellipseStylesDirty = true;
         const gl = this.gl;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
         gl.bufferSubData(gl.ARRAY_BUFFER, offset * 16, positions);
@@ -192,6 +219,7 @@ export class PointsLayer implements CustomLayerInterface {
     }
     filter(indices: Uint32Array | null) {
         this.indices = indices;
+        this.ellipses?.setFilter(indices);
         const gl = this.gl;
         gl.bindVertexArray(this.vao);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
@@ -203,6 +231,7 @@ export class PointsLayer implements CustomLayerInterface {
         this.map.triggerRepaint();
     }
     setColors(codes: Uint8Array | undefined, stops: readonly string[] = ['#2463d4', '#ee5539'], bins = 24, categorical = false) {
+        this.ellipseStylesDirty = true;
         this.categorical = categorical;
         this.colorCodes = codes;
         this.paletteBins = bins;
@@ -224,7 +253,9 @@ export class PointsLayer implements CustomLayerInterface {
         this.map.triggerRepaint();
     }
     setMapMask(mask?: Uint8Array) {
+        this.ellipseStylesDirty = true;
         this.mapMask = mask;
+        this.maskCount = mask ? mask.reduce((sum, v) => sum + (v ? 1 : 0),0) : undefined;
         if (this.gl) this.uploadMapMask();
         this.map?.triggerRepaint();
     }
@@ -248,7 +279,7 @@ export class PointsLayer implements CustomLayerInterface {
     ] = [0, 0], scale: [
         number,
         number
-    ] = [1, 1]) {
+    ] = [1, 1], ellipses = false) {
         if (!this.visible)
             return;
         const gl = this.gl, canvas = this.map.getCanvas(), size = this.map.getContainer().getBoundingClientRect();
@@ -270,30 +301,64 @@ export class PointsLayer implements CustomLayerInterface {
         gl.disable(gl.DEPTH_TEST);
         gl.disable(gl.STENCIL_TEST);
         gl.disable(gl.BLEND);
+        if (ellipses) {
+            if (!this.ellipses || !this.ellipsesEnabled || this.ellipseRadius * world < .75) return;
+            if (this.ellipseStylesDirty) {
+                this.ellipses.setStyles(this.count, this.colorCodes, this.categorical, this.mapMask);
+                this.ellipseStylesDirty = false;
+            }
+            this.ellipses.prepare(this.ellipseVertices, [hx, hy, x-hx, y-hy], [world*2/size.width, -world*2/size.height], world, this.color, this.palette);
+        }
+        let ellipseStride = 1;
+        const draw = (buffer: WebGLBuffer, count: number, offset = 0) => {
+            if (ellipses) this.ellipses!.draw(buffer === this.indexBuffer, count, offset, ellipseStride);
+            else { gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer); gl.drawElements(gl.POINTS, count, gl.UNSIGNED_INT, offset*4); }
+        };
+        const eligibleFraction = this.count ? Math.min(1,this.ellipseValidCount/this.count) * (this.maskCount === undefined ? 1 : this.maskCount/this.count) : 1;
+        const budget = Math.max(2000, Math.floor(size.width * size.height / 100));
         if (this.indices) {
+            if (ellipses && !this.ellipseFullDetail) {
+                const halfX = size.width / world / 2 + this.ellipseRadius, halfY = size.height / world / 2 + this.ellipseRadius;
+                const area = (this.bounds[2]-this.bounds[0])*(this.bounds[3]-this.bounds[1]);
+                const overlap = Math.max(0,Math.min(x+halfX,this.bounds[2])-Math.max(x-halfX,this.bounds[0]))*Math.max(0,Math.min(y+halfY,this.bounds[3])-Math.max(y-halfY,this.bounds[1]));
+                const visible = area ? this.indices.length * Math.min(1,overlap/area) : this.indices.length;
+                ellipseStride = Math.max(1,Math.ceil(visible*eligibleFraction/budget));
+            }
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-            gl.drawElements(gl.POINTS, this.indices.length, gl.UNSIGNED_INT, 0);
-            if (!picking)
-                this.drawnLastFrame = this.indices.length;
+            draw(this.indexBuffer, this.indices.length);
+            if (!picking) {
+                if (ellipses) this.ellipsesDrawnLastFrame = Math.ceil(this.indices.length/ellipseStride);
+                else this.drawnLastFrame = this.indices.length;
+            }
         }
         else {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.spatialBuffer);
             const margin = picking ? Math.max(this.pointSize, 6) : this.pointSize;
-            const halfX = (size.width / 2 + margin) / world, halfY = (size.height / 2 + margin) / world;
+            const radius = ellipses ? this.ellipseRadius : 0;
+            const halfX = (size.width / 2 + margin) / world + radius, halfY = (size.height / 2 + margin) / world + radius;
             const left = x - halfX, right = x + halfX, top = y - halfY, bottom = y + halfY;
             const area = (this.bounds[2] - this.bounds[0]) * (this.bounds[3] - this.bounds[1]);
             const overlap = Math.max(0, Math.min(right, this.bounds[2]) - Math.max(left, this.bounds[0])) * Math.max(0, Math.min(bottom, this.bounds[3]) - Math.max(top, this.bounds[1]));
+            if (ellipses && !this.ellipseFullDetail) {
+                let candidates = 0;
+                if (overlap >= area*.5) candidates = this.count;
+                else for (const chunk of this.chunks) for (let i=0;i<chunk.groups.length;i+=6) {
+                    const g=chunk.groups;
+                    if(g[i+2]<=right && g[i+4]>=left && g[i+3]<=bottom && g[i+5]>=top) candidates += g[i+1];
+                }
+                ellipseStride = Math.max(1,Math.ceil(candidates*eligibleFraction/budget));
+            }
             let drawn = 0;
             if (overlap >= area * .5) {
-                gl.drawElements(gl.POINTS, this.count, gl.UNSIGNED_INT, 0);
-                drawn = this.count;
+                draw(this.spatialBuffer, this.count);
+                drawn = ellipses ? Math.ceil(this.count/ellipseStride) : this.count;
             }
             else if (overlap > 0 || area === 0) {
                 let start = -1, count = 0;
                 const flush = () => {
                     if (count) {
-                        gl.drawElements(gl.POINTS, count, gl.UNSIGNED_INT, start * 4);
-                        drawn += count;
+                        draw(this.spatialBuffer, count, start);
+                        drawn += ellipses ? Math.ceil(count/ellipseStride) : count;
                     }
                     count = 0;
                     start = -1;
@@ -315,15 +380,21 @@ export class PointsLayer implements CustomLayerInterface {
                     }
                 flush();
             }
-            if (!picking)
-                this.drawnLastFrame = drawn;
+            if (!picking) {
+                if (ellipses) this.ellipsesDrawnLastFrame = drawn;
+                else this.drawnLastFrame = drawn;
+            }
         }
         gl.bindVertexArray(null);
+        gl.activeTexture(gl.TEXTURE0);
         gl.enable(gl.BLEND);
     }
     render(_gl: WebGL2RenderingContext, _options: CustomRenderMethodInput) {
-        if (this.count)
+        this.ellipsesDrawnLastFrame = 0;
+        if (this.count) {
+            if (this.ellipsesEnabled && this.ellipses && this.ellipseRadius * 512 * 2 ** this.map.getZoom() >= .75) this.draw(false, [0,0], [1,1], true);
             this.draw(false);
+        }
     }
     // CPU spatial groups retain every coincident point, unlike an ID framebuffer.
     pickAll(cssX: number, cssY: number): Uint32Array {
@@ -409,6 +480,7 @@ export class PointsLayer implements CustomLayerInterface {
     }
     onRemove() {
         const gl = this.gl;
+        this.ellipses?.remove(); this.ellipses = undefined;
         gl.deleteProgram(this.program);
         gl.deleteVertexArray(this.vao);
         gl.deleteBuffer(this.positionBuffer);
@@ -421,5 +493,5 @@ export class PointsLayer implements CustomLayerInterface {
         if (this.texture)
             gl.deleteTexture(this.texture);
     }
-    get gpuBytes() { return this.capacity * 20 + (this.colorCodes?.byteLength ?? 0) + (this.indices?.byteLength ?? 0) + (this.mapMask?.byteLength ?? 0); }
+    get gpuBytes() { return (this.ellipses?.gpuBytes ?? 0) + this.capacity * 20 + (this.colorCodes?.byteLength ?? 0) + (this.indices?.byteLength ?? 0) + (this.mapMask?.byteLength ?? 0); }
 }

@@ -1,9 +1,10 @@
+import { ellipseConfigKeys, ellipseDefaults, validateEllipseConfig, validateEllipseVertices } from './ellipses.ts';
 import { validateServerFilters, type ServerFilter } from './server-filters.ts';
 import type { ColourScheme } from './colour-schemes.ts';
 import { createUUID } from './uuid.ts';
-export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField', 'fieldTypes'] as const;
+export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField', 'fieldTypes', ...ellipseConfigKeys] as const;
 export type Config = Record<typeof configKeys[number], string>;
-export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '', fieldTypes: '{}' };
+export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '', fieldTypes: '{}', ...ellipseDefaults };
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
@@ -11,7 +12,7 @@ export type SavedSource = {
     coloring?: { scheme?: ColourScheme; scale?: 'linear' | 'log10'; field: string; bins: number; low: string; high: string; categories?: Record<string, Record<string, string>> };
 };
 export type Background = { url: string; attribution: string; enabled: boolean };
-export type MapSettings = { center: [number, number]; zoom: number; pointSize: number };
+export type MapSettings = { center: [number, number]; zoom: number; pointSize: number; ellipses?: boolean; ellipseVertices?: number; ellipseFullDetail?: boolean };
 export type Settings = { sources: SavedSource[]; background: Background; map?: MapSettings };
 export let settingsKey = 'wfs-settings';
 export function setSettingsScope(key: string) { settingsKey = key; }
@@ -60,6 +61,7 @@ export function csvFieldTypes(config: Config): Record<string, CSVFieldKind> {
     return result;
 }
 export function validateConfig(config: Config) {
+    validateEllipseConfig({ ...ellipseDefaults, ...config });
     if (config.type === 'csv') {
         csvFieldTypes(config);
         if (!config.csvRef && !config.csvText.trim()) throw Error('Choose a CSV file.');
@@ -82,6 +84,9 @@ export function validateBackground(background: Background) {
     if (!['http:', 'https:'].includes(url.protocol) || !['{z}', '{x}', '{y}'].every(token => background.url.includes(token))) throw Error('Use an HTTP(S) XYZ tile URL with {z}, {x}, and {y}, or leave it empty.');
 }
 export function validateMapSettings(map: MapSettings) {
+    if (map?.ellipseVertices !== undefined) validateEllipseVertices(map.ellipseVertices);
+    if (map?.ellipseFullDetail !== undefined && typeof map.ellipseFullDetail !== 'boolean') throw Error('Invalid ellipse detail setting.');
+    if (map?.ellipses !== undefined && typeof map.ellipses !== 'boolean') throw Error('Invalid ellipse visibility.');
     if (!map || !Array.isArray(map.center) || map.center.length !== 2 || !map.center.every(Number.isFinite)
         || Math.abs(map.center[0]) > 180 || Math.abs(map.center[1]) > 85.051129
         || !Number.isFinite(map.zoom) || map.zoom < 1 || map.zoom > 22
