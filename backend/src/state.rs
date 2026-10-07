@@ -221,8 +221,7 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
         for value in c.values() {
             string(value)?;
         }
-        if c
-            .get("pagingEnd")
+        if c.get("pagingEnd")
             .is_some_and(|value| !matches!(value.as_str(), Some("empty" | "short")))
         {
             return Err("Invalid WFS paging completion");
