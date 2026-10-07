@@ -110,3 +110,10 @@ test('corruption, truncation, unsafe paths, duplicates, links and oversized head
     await assert.rejects(readBackup(new Blob([gzipSync(Buffer.concat([tar.subarray(0, firstEnd), tar]))])), /duplicate/);
     await assert.rejects(readBackup(new Blob([gzipSync(tar.subarray(0, tar.length - 512))])), /truncated/);
 });
+
+test('backups created before ellipse settings migrate with ellipses disabled', async () => {
+    const restored = await readBackup(await modifiedBackup(m => {
+        for (const source of m.settings.sources) for (const key of ['ellipseMajorField','ellipseMinorField','ellipseOrientationField','ellipseMajorUnit','ellipseMinorUnit']) delete source.config[key];
+    }));
+    for (const source of restored.sources) { assert.equal(source.config.ellipseMajorField,''); assert.equal(source.config.ellipseMajorUnit,'m'); }
+});
