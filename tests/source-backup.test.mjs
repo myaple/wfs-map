@@ -16,7 +16,7 @@ const settings = () => ({
         { id: 'disabled-csv', name: 'Disabled file', enabled: false,
             config: { ...defaultConfig, type: 'csv', csvText: 'geom\tvalue\nPOINT (-2 53)\t99\n', fileName: 'wkt.tsv', delimiter: '\t', geometryMode: 'wkt', geometryField: 'geom' } },
         { id: 'wfs-one', name: 'Daily WFS', enabled: false,
-            config: { ...defaultConfig, url: 'https://example.org/wfs?vendor=keep&token=example', layer: 'team:observations', version: '1.1.0', axis: 'yx', pageSize: '1234', limit: '9999', timeField: 'observed', geometryField: 'geom', sort: 'identifier' } }
+            config: { ...defaultConfig, url: 'https://example.org/wfs?vendor=keep&token=example', layer: 'team:observations', version: '1.1.0', axis: 'yx', pageSize: '1234', pagingEnd: 'short', ellipseMajorField: 'major', ellipseMinorField: 'minor', ellipseOrientationField: 'angle', ellipseMajorUnit: 'nm', limit: '9999', timeField: 'observed', geometryField: 'geom', sort: 'identifier' } }
     ],
     background: { url: 'https://tiles.example/{z}/{x}/{y}.png?style=one', attribution: 'Example ©', enabled: true },
     map: { center: [-1.54, 53.99], zoom: 12.5, pointSize: 4.5 }
@@ -72,11 +72,20 @@ async function modifiedBackup(edit, editFiles = () => {}) {
     return packArchive(files);
 }
 
+test('older backups default to empty-page completion and disabled ellipses', async () => {
+    const restored = await readBackup(await modifiedBackup(m => {
+        for (const source of m.settings.sources) for (const key of ['pagingEnd', 'ellipseMajorField', 'ellipseMinorField', 'ellipseOrientationField', 'ellipseMajorUnit', 'ellipseMinorUnit']) delete source.config[key];
+    }));
+    assert.ok(restored.sources.every(s => s.config.pagingEnd === 'empty' && s.config.ellipseMajorField === '' && s.config.ellipseMajorUnit === 'm'));
+});
+
 test('unsupported, incomplete and invalid manifests are rejected', async () => {
     const cases = [
         [m => m.version = 2, /version/],
         [m => m.settings.sources[1].id = 'csv-one', /more than once|duplicate/],
         [m => m.settings.sources[2].config.url = 'javascript:alert(1)', /HTTP/],
+        [m => m.settings.sources[2].config.pagingEnd = 'invalid', /WFS paging/],
+        [m => m.settings.sources[2].config.pagingEnd = true, /WFS paging/],
         [m => m.settings.map.zoom = 99, /map view/],
         [m => m.settings.sources[0].coloring.scale = 'invalid', /colour bin scale/],
         [m => m.settings.sources[0].color = ['bad', 0, 0], /colour/],

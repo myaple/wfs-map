@@ -204,6 +204,7 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                 "axis",
                 "sort",
                 "pageSize",
+                "pagingEnd",
                 "limit",
                 "timeField",
                 "geometryField",
@@ -224,6 +225,11 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
         )?;
         for value in c.values() {
             string(value)?;
+        }
+        if c.get("pagingEnd")
+            .is_some_and(|value| !matches!(value.as_str(), Some("empty" | "short")))
+        {
+            return Err("Invalid WFS paging completion");
         }
         let ellipse_fields = [
             "ellipseMajorField",
@@ -551,6 +557,18 @@ mod tests {
         }
         let mut v = state();
         v["settings"]["sources"] = serde_json::json!([{"id":"csv1","name":"CSV","enabled":true,"config":{"type":"csv","csvText":"SECRET"}}]);
+        assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn validates_wfs_paging_completion_and_accepts_older_configs() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"wfs","name":"Live WFS","enabled":true,"config":{"type":"wfs"}}]);
+        assert!(validate(&v).is_ok());
+        for mode in ["empty", "short"] {
+            v["settings"]["sources"][0]["config"]["pagingEnd"] = mode.into();
+            assert!(validate(&v).is_ok());
+        }
+        v["settings"]["sources"][0]["config"]["pagingEnd"] = "other".into();
         assert!(validate(&v).is_err());
     }
     #[test]

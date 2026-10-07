@@ -27,6 +27,13 @@ test('duplicate pagination fails loudly',()=>{
   const f=[feature(0),feature(1)],s=new Store(inferFields(f));s.append(f);
   assert.throws(()=>s.append(f),/Repeated feature ID/);
 });
+test('empty GML collections without count metadata complete normally',()=>{
+  for(const text of ['<FeatureCollection/>','<wfs:FeatureCollection xmlns:wfs="urn:wfs"></wfs:FeatureCollection>']) {
+    assert.deepEqual(decodePage(text),{features:[],numberMatched:undefined});
+    assert.equal(countFrom(text),undefined);
+  }
+  assert.throws(()=>decodePage('<other/>'),/Expected a GML FeatureCollection/);
+});
 test('GML 3 Point parsing, axis order, nulls and exceptions',()=>{
   const text=`<wfs:FeatureCollection xmlns:wfs="urn:wfs" xmlns:gml="urn:gml" xmlns:d="urn:demo" xmlns:xsi="urn:xsi" numberMatched="1"><wfs:member><d:points gml:id="abc"><d:geom><gml:Point><gml:pos>54 -1.5</gml:pos></gml:Point></d:geom><d:value>4.2</d:value><d:missing xsi:nil="true"/></d:points></wfs:member></wfs:FeatureCollection>`;
   const page=decodePage(text,'yx');assert.equal(page.numberMatched,1);assert.deepEqual(page.features[0].geometry.coordinates,[-1.5,54]);assert.equal(page.features[0].properties.missing,null);

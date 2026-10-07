@@ -2,9 +2,9 @@ import { ellipseConfigKeys, ellipseDefaults, validateEllipseConfig, validateElli
 import { validateServerFilters, type ServerFilter } from './server-filters.ts';
 import type { ColourScheme } from './colour-schemes.ts';
 import { createUUID } from './uuid.ts';
-export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField', 'fieldTypes', ...ellipseConfigKeys] as const;
+export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'pagingEnd', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField', 'fieldTypes', ...ellipseConfigKeys] as const;
 export type Config = Record<typeof configKeys[number], string>;
-export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '', fieldTypes: '{}', ...ellipseDefaults };
+export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', pagingEnd: 'empty', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '', fieldTypes: '{}', ...ellipseDefaults };
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
@@ -73,6 +73,7 @@ export function validateConfig(config: Config) {
     const url = new URL(config.url, location.href);
     if (!config.url.trim() || !['http:', 'https:'].includes(url.protocol)) throw Error('Enter an HTTP(S) WFS endpoint or a relative URL.');
     if (!config.layer.trim()) throw Error('Enter a feature type or discover the server’s layers.');
+    if (!['empty', 'short'].includes(config.pagingEnd)) throw Error('Choose when WFS paging should stop.');
     for (const [key, max] of [['pageSize', 100000], ['limit', 50000000]] as const) {
         const n = Number(config[key]);
         if (!Number.isSafeInteger(n) || n < 1 || n > max) throw Error(`${key === 'pageSize' ? 'Features per request' : 'Client point limit'} must be a whole number from 1 to ${max.toLocaleString()}.`);
