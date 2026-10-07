@@ -55,6 +55,7 @@ export class DataSources {
             <label for="geometryField">Geometry attribute (optional override)</label><input id="geometryField" placeholder="Auto-detect from schema"><p class="hint">Used for map area requests. Enter the server’s geometry property name, e.g. the_geom.</p>
             <label for="sort">Stable unique sort attribute (optional)</label><input id="sort" placeholder="e.g. id">
             <label for="pageSize">Features per request</label><input id="pageSize" type="number" min="1" max="100000" required>
+            <label for="pagingEnd">Stop paging</label><select id="pagingEnd" aria-describedby="pagingEndHelp"><option value="empty">After an empty page (default)</option><option value="short">After a short page</option></select><p id="pagingEndHelp" class="hint">A short page has fewer features than requested. Use this for live feeds to finish the load before more historical records arrive. If the server caps each page, keep the default or set Features per request at or below its cap. Neither mode requires a matched total.</p>
             <label for="limit">Client point limit</label><input id="limit" type="number" min="1" max="50000000" required>
             <p class="hint">Requires paged GeoJSON or simple GML points and CORS access. WFS 1.x paging depends on the server. Truncation at the client limit is reported.</p>
           </div></details>

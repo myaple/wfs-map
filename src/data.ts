@@ -34,7 +34,9 @@ export function decodePage(text: string, axis: 'xy'|'yx'='xy'): Page {
     return {features:data.features,numberMatched:Number.isSafeInteger(n)&&n>=0?n:undefined};
   }
   const fc=xmlDocument(text).FeatureCollection;
-  if(!fc) throw new Error('Expected a GML FeatureCollection');
+  if(fc===undefined) throw new Error('Expected a GML FeatureCollection');
+  // Without members or count attributes, the XML parser represents an empty root as ''.
+  if(fc==='') return {features:[],numberMatched:undefined};
   const members=[...list(fc.member),...list(fc.featureMember),...list(fc.featureMembers).flatMap(m=>Object.entries(m).filter(([k])=>!k.startsWith('@_')).flatMap(([k,v])=>list(v).map(x=>({[k]:x}))))];
   const features:Feature[]=members.map(m=>{
     const entry=Object.entries(m).find(([k])=>!k.startsWith('@_'));

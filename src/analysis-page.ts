@@ -760,7 +760,7 @@ async function performLoad(s: Source) {
             }
         };
         if (csv) s.worker!.postMessage({ type: 'loadCSV', config, bounds, fileUser, serverFilters });
-        else s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), limit: Number(config.limit), sort: config.sort, fields: schema.fields, filter: serverFilter, timeField: schema.queryFields.time } });
+        else s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), stopOnShortPage: config.pagingEnd === 'short', limit: Number(config.limit), sort: config.sort, fields: schema.fields, filter: serverFilter, timeField: schema.queryFields.time } });
     });
     if (session === s.request)
         s.complete = undefined;

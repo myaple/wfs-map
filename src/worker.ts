@@ -18,6 +18,7 @@ type Config = {
     srs: string;
     axis: 'xy' | 'yx';
     pageSize: number;
+    stopOnShortPage?: boolean;
     limit: number;
     sort: string;
     fields: Field[];
@@ -50,15 +51,16 @@ async function load(c: Config) {
     if (c.sort)
         common.sortBy = c.sort + ' A';
     let total: number | undefined, warning = '';
+    const completion = c.stopOnShortPage ? 'short page or limit' : 'empty page or limit';
     // resultType=hits was introduced in WFS 1.1. GeoServer's 1.0 response
     // reports zero rather than the dataset size, so it must not stop a load.
-    if (c.version === '1.0.0') warning = 'WFS 1.0 has no standard hits count; loading until empty page or limit. ';
+    if (c.version === '1.0.0') warning = `WFS 1.0 has no standard hits count; loading until ${completion}. `;
     else {
         try {
             total = countFrom(await fetchText(wfsURL(c.url, c.version, 'GetFeature', { ...common, resultType: 'hits' })));
         }
         catch {
-            warning = 'GetFeature hits unavailable; loading until empty page or limit. ';
+            warning = `GetFeature hits unavailable; loading until ${completion}. `;
         }
     }
     // Counts are estimates: each GeoServer page can see a different database state.
@@ -83,7 +85,8 @@ async function load(c: Config) {
         bytes += new TextEncoder().encode(text).byteLength;
         const pstart = performance.now(), page = decodePage(text, c.axis);
         if (!page.features.length) break;
-        if (page.features.length > Math.min(c.pageSize, c.limit - loaded))
+        const requested = Math.min(c.pageSize, c.limit - loaded);
+        if (page.features.length > requested)
             throw new Error('Server ignored the requested page count');
         if (page.numberMatched !== undefined) total = page.numberMatched;
         const signature = JSON.stringify([page.features[0], page.features.at(-1)]);
@@ -91,7 +94,8 @@ async function load(c: Config) {
             throw new Error('Server repeated a page; startIndex is not supported');
         previousSignature = signature;
         const next = loaded + page.features.length;
-        if (next < c.limit)
+        const lastPage = c.stopOnShortPage && page.features.length < requested;
+        if (!lastPage && next < c.limit)
             pending = prefetch(next);
         if (!store) {
             store = new Store(inferFields(page.features, c.fields));
@@ -105,8 +109,10 @@ async function load(c: Config) {
         loaded += page.features.length;
         pages++;
         post({ type: 'progress', loaded, total: total === undefined ? undefined : Math.max(loaded, total), pages, bytes, parseMs, elapsedMs: performance.now() - start });
+        if (lastPage) break;
     }
-    // Only an empty page proves exhaustion; a count must never stop pagination.
+    // The default requires an empty page; live feeds can opt into short-page completion.
+    // Reported counts never stop pagination in either mode.
     const truncated = loaded === c.limit;
     total = truncated ? total === undefined ? undefined : Math.max(loaded, total) : loaded;
     if (!store) { store = new Store(c.fields); post({ type: 'fields', fields: store.fields }); }
