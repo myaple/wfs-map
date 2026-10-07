@@ -95,6 +95,9 @@ test('CSV ellipse fields use the same native dropdowns as coordinates and save s
  }
  await page.locator('#ellipseMajorUnit').selectOption('nm');
  await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+ // Save writes the CSV to IndexedDB asynchronously; do not interrupt it with reload.
+ await expect(page.locator('#saveState')).toContainText('Saved in this browser');
+ await page.waitForFunction(()=>(window as any).__WFS_MAP__?.sources[0]?.done);
  await page.reload(); await page.waitForFunction(()=>(window as any).__WFS_MAP__?.done);
  await navigate(page,'configuration'); await page.getByRole('button',{name:'Configure Dropdown ellipses',exact:true}).click();
  await page.locator('#ellipseFields summary').click();
