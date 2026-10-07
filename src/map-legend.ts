@@ -60,6 +60,9 @@ class LegendValues {
         }
     }
     private render() {
+        const active = document.activeElement;
+        const focusedRow = active instanceof HTMLInputElement && this.rows.contains(active) ? active.closest<HTMLElement>('[data-key]') : null;
+        const focus = focusedRow ? { source: focusedRow.dataset.source, key: focusedRow.dataset.key } : undefined;
         const visible = Math.max(1, Math.ceil(this.viewport.clientHeight / rowHeight));
         const scaled = this.extent < this.total * rowHeight;
         const first = scaled ? Math.floor(this.viewport.scrollTop / Math.max(1, this.extent - this.viewport.clientHeight) * Math.max(0, this.total - visible)) : Math.floor(this.viewport.scrollTop / rowHeight);
@@ -100,6 +103,14 @@ class LegendValues {
                 row.append(toggle);
             }
             this.rows.append(row);
+        }
+        // Scroll and resize callbacks can replace a switch between focus and its key event.
+        // Restore the same value without scrolling, or keep focus in the list if it left the window.
+        if (focus) {
+            const replacement = Array.from(this.rows.querySelectorAll<HTMLElement>('[data-key]'))
+                .find(row => row.dataset.source === focus.source && row.dataset.key === focus.key)
+                ?.querySelector<HTMLInputElement>('input');
+            (replacement ?? this.viewport).focus({ preventScroll: true });
         }
     }
 }
