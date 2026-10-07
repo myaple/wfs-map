@@ -153,3 +153,48 @@ test('GPU date zoom keeps observations one millisecond apart distinct across a m
  expect(offsets).toEqual([0,4]);
  const hits=await page.evaluate(times=>{const h=(window as any).__WFS_MAP__,raw=h.workspace.views.get(h.workspace.specs[2].id).raw,b=h.workspace.results[2].raw.bounds,t1=(times[1]-b[0])/(b[2]-b[0]),t2=(times[2]-b[0])/(b[2]-b[0]),span=t2-t1;raw.interaction.view=[t1-span*.5,0,t2+span*.5,1];raw.draw(true);const canvas=raw.canvas,d=canvas.width/canvas.clientWidth,p=JSON.parse(canvas.dataset.plotRect),hits=[];for(const [x,y] of [[.25,.25],[.75,.75]]){const pixels=new Uint8Array(4);raw.gl.readPixels(Math.round((p.left+(p.right-p.left)*x)*d),Math.round((p.height-p.bottom+(p.bottom-p.top)*y)*d),1,1,raw.gl.RGBA,raw.gl.UNSIGNED_BYTE,pixels);hits.push((pixels[0]+pixels[1]*256+pixels[2]*65536+pixels[3]*16777216)-1);}raw.draw();return hits;},times);expect(hits).toEqual([1,2]);
 });
+
+for (const type of ['time', 'scatter', 'pie'] as const) for (const enlarged of [false, true]) test(`double-right-click clears dataset filters from ${type}${enlarged ? ' when enlarged' : ''} and preserves chart zoom`, async ({ page }) => {
+    await ready(page);
+    const id = await page.locator('.chart-card').nth(type === 'scatter' ? 2 : type === 'time' ? 1 : 0).getAttribute('data-chart-id');
+    const card = page.locator(`.chart-card[data-chart-id="${id}"]`);
+    if (type === 'pie') {
+        await card.getByLabel('Chart type').selectOption('pie');
+        await page.waitForFunction(() => (window as any).__WFS_MAP__.workspace.results[0].type === 'pie');
+    }
+    await page.evaluate(() => (window as any).__WFS_MAP__.workspace.select({ field: 'quality', op: 'gte', value: '50' }, 'High quality'));
+    await expect(page.locator('#rules .selection')).toHaveCount(1);
+    await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
+    if (enlarged) await card.getByRole('button', { name: 'Enlarge', exact: true }).click();
+    const canvas = card.locator('canvas');
+    await drag(page, canvas, 'left');
+    const view = (await canvas.getAttribute('data-view'))!;
+    await canvas.dblclick({ button: 'right', delay: 50, position: { x: 140, y: 100 } });
+    await expect(page.locator('#filterStatus')).toContainText('4,096 matches');
+    await expect(page.locator('#rules .selection')).toHaveCount(0);
+    await expect(canvas).toHaveAttribute('data-view', view);
+    // The first right click must not leave a deferred selection after reset.
+    await page.waitForTimeout(650);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression())).toEqual({ op: 'and', children: [] });
+});
+
+test('single right-click still selects and drags, cancellations and left clicks break the chart reset sequence', async ({ page }) => {
+    await ready(page);
+    const canvas = page.locator('.chart-card').first().locator('canvas');
+    await canvas.scrollIntoViewIfNeeded();
+    const b = (await canvas.boundingBox())!, p = JSON.parse((await canvas.getAttribute('data-plot-rect'))!);
+    const x = b.x + p.left + (p.right - p.left) * .1, y = b.y + p.top + (p.bottom - p.top) * .5;
+    await page.mouse.click(x, y, { button: 'right' });
+    await expect(page.locator('#rules .selection')).toHaveCount(1);
+    await page.waitForFunction(() => !(window as any).__WFS_MAP__.sources[0].filtering);
+    for (const interruption of ['drag', 'cancel', 'left']) {
+        const before = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children.length);
+        await page.mouse.click(x, y, { button: 'right' });
+        if (interruption === 'drag') await drag(page, canvas, 'right');
+        else if (interruption === 'cancel') await canvas.dispatchEvent('pointercancel');
+        else await page.mouse.click(x, y);
+        await page.mouse.click(x, y, { button: 'right' });
+        await page.waitForTimeout(650);
+        expect(await page.evaluate(() => (window as any).__WFS_MAP__.workspace.expression().children.length)).toBeGreaterThanOrEqual(before);
+    }
+});

@@ -192,7 +192,7 @@ test('load-area drawing can be cancelled and leaves the independent local area u
   expect(await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds)).toEqual(local);
 });
 
-for (const enlarged of [false, true]) test(`double-right-click clears every source's dataset filters and local area while preserving global bounds${enlarged ? ' in the enlarged map' : ''}`, async ({ page }) => {
+for (const surface of ['map', 'bar', 'raw']) for (const enlarged of [false, true]) test(`double-right-click on ${surface} clears every source's dataset filters and local area while preserving global bounds${enlarged ? ' when enlarged' : ''}`, async ({ page }) => {
   await seed(page, true);
   await page.addInitScript(() => {
     const settings = JSON.parse(localStorage.getItem('wfs-settings')!);
@@ -216,8 +216,18 @@ for (const enlarged of [false, true]) test(`double-right-click clears every sour
   const before = await page.evaluate(() => { const h = (window as any).__WFS_MAP__; return { bounds: h.queryBounds, requests: h.sources.map((s: any) => s.request), specs: h.sources.map((s: any) => s.workspace.specs) }; });
   expect(before.bounds.bbox).toBeDefined(); expect(before.bounds.time).toBeDefined();
   let requests = 0; page.on('request', r => { if (new URL(r.url()).searchParams.get('request') === 'GetFeature') requests++; });
-  if (enlarged) await page.locator('#enlargeMap').click();
-  const b = (await page.locator('#map canvas').boundingBox())!;
+  const id = await page.locator('#charts > .chart-card').nth(surface === 'raw' ? 2 : 0).getAttribute('data-chart-id');
+  const card = page.locator(`.chart-card[data-chart-id="${id}"]`);
+  if (surface === 'raw') {
+    await card.getByRole('button', { name: 'Settings', exact: true }).click();
+    await card.getByLabel('Binning', { exact: true }).selectOption('exact');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[0].workspace.results[2].raw);
+  }
+  if (enlarged) await (surface === 'map' ? page.locator('#enlargeMap') : card.getByRole('button', { name: 'Enlarge', exact: true })).click();
+  before.specs = await page.evaluate(() => (window as any).__WFS_MAP__.sources.map((s: any) => s.workspace.specs));
+  const canvas = surface === 'map' ? page.locator('#map canvas') : card.locator('canvas:not(.raw-scatter-axes):visible');
+  await canvas.scrollIntoViewIfNeeded();
+  const b = (await canvas.boundingBox())!;
   await page.mouse.dblclick(b.x + b.width * .5, b.y + b.height * .5, { button: 'right', delay: 50 });
   await page.waitForFunction(() => (window as any).__WFS_MAP__.sources.filter((s: any) => s.enabled).every((s: any) => !s.filtering && s.selected === s.loaded));
   expect(await page.evaluate(() => (window as any).__WFS_MAP__.localMapBounds)).toBeUndefined();

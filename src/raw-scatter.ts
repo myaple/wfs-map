@@ -19,20 +19,20 @@ export class RawScatter {
     private interaction: ChartInteraction;
     private highlight?: { sourceId: string; index: number };
     private onInspection = (e: Event) => { const ref = (e as CustomEvent).detail; this.highlight = ref ?? undefined; this.draw(); };
-    constructor(private select: (e: Expression, label: string, sourceId?: string) => void, private sourceId: () => string = () => '') {
+    constructor(private select: (e: Expression, label: string, sourceId?: string) => void, private sourceId: () => string, clearDatasetFilters: () => void) {
         this.container.className = 'raw-scatter';
         this.axes.className = 'raw-scatter-axes';
         this.axes.setAttribute('aria-hidden', 'true');
         this.labels.className = 'raw-scatter-labels';
         this.container.append(this.canvas, this.axes, this.labels);
-        this.canvas.setAttribute('aria-label', 'Unbinned scatter plot. Left-drag to zoom, right-drag to select, double-click to reset.');
+        this.canvas.setAttribute('aria-label', 'Unbinned scatter plot. Left-drag to zoom, right-drag to select, double-left-click to reset zoom, double-right-click to clear dataset filters.');
         this.canvas.tabIndex = 0;
         const gl = this.canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true })!;
         if (!gl)
             throw Error('WebGL 2 required for unbinned scatter');
         this.gl = gl;
         this.initialize();
-        this.interaction = new ChartInteraction(this.canvas, this.container, () => plotRect(this.canvas, this.result?.y?.kind === 'date', this.result?.x?.kind === 'date'), () => this.draw(), (a, b) => this.brush(a, b), p => this.pick(p));
+        this.interaction = new ChartInteraction(this.canvas, this.container, () => plotRect(this.canvas, this.result?.y?.kind === 'date', this.result?.x?.kind === 'date'), () => this.draw(), (a, b) => this.brush(a, b), p => this.pick(p), clearDatasetFilters);
         this.canvas.addEventListener('pointermove', e => {
             if (!this.result?.raw)
                 return;

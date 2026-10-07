@@ -36,7 +36,7 @@ export class Workspace {
     private views = new Map<string, ChartView>();
     private owners = new Map<string, { workspace: Workspace }>();
     private active?: HTMLDivElement;
-    constructor(private changed: () => void, private rules: HTMLElement = document.getElementById('rules')!, private charts: HTMLElement = document.getElementById('charts')!, private sourceId = '', private chartSources: () => ChartSource[] = () => [], private inspect?: (expression: Expression) => void) { }
+    constructor(private changed: () => void, private rules: HTMLElement = document.getElementById('rules')!, private charts: HTMLElement = document.getElementById('charts')!, private sourceId = '', private chartSources: () => ChartSource[] = () => [], private inspect?: (expression: Expression) => void, private clearDatasetFilters: () => void = () => this.clearFilters()) { }
     reset() {
         this.fields = [];
         this.specs = [];
@@ -248,7 +248,7 @@ export class Workspace {
             id => {
                 const target = owner.workspace.chartSources().find(s => s.id === id)?.workspace;
                 if (target) owner.workspace.moveChart(spec.id, target);
-            });
+            }, () => owner.workspace.clearDatasetFilters());
         this.views.set(spec.id, view);
         this.refreshSources();
     }
@@ -367,7 +367,7 @@ class ChartView {
     private pointSize = element('input');
     private pointSizeField = chartField(this.pointSize, 'Point size', 'Size of scatter points; binned circles retain relative counts.');
     private action = element('select');
-    constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string, inspection?: boolean, sourceId?: string) => void, sourceChanged: (id: string) => void) {
+    constructor(target: HTMLElement, private spec: ChartSpec, private fields: Field[], changed: () => void, remove: () => void, private select: (expr: Expression, label: string, inspection?: boolean, sourceId?: string) => void, sourceChanged: (id: string) => void, private clearDatasetFilters: () => void) {
         this.changed = changed;
         this.root.className = 'chart-card';
         this.root.dataset.chartId = spec.id;
@@ -468,7 +468,7 @@ class ChartView {
             const cell = this.cellAt(p);
             if (cell >= 0)
                 this.choose(cell, cell);
-        });
+        }, this.clearDatasetFilters);
         this.canvas.addEventListener('pointermove', e => {
             if (!this.result)
                 return;
@@ -654,7 +654,7 @@ class ChartView {
         }
         const total = result.raw ? result.raw.series?.reduce((n, s) => n + s.end - s.start, 0) ?? result.raw.rows.length : result.counts.reduce((a, b) => a + b, 0);
         this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing${this.spec.xScale === 'log10' || this.spec.yScale === 'log10' ? ' · Log10 omits non-positive values' : ''}`;
-        this.help.textContent = `${result.raw ? 'Individual observations.' : result.y ? 'Counted scatter bins.' : 'Click a segment to filter.'} Left-drag to zoom; right-drag to select; double-click to reset.`;
+        this.help.textContent = `${result.raw ? 'Individual observations.' : result.y ? 'Counted scatter bins.' : 'Click a segment to filter.'} Left-drag to zoom; right-drag to select; double-left-click to reset zoom; double-right-click to clear dataset filters.`;
         this.canvas.setAttribute('aria-label', `${result.type} chart of ${result.x.field}${result.y ? ' against ' + result.y.field : ''}. Arrow keys choose a bin; Enter filters it.`);
         this.list.replaceChildren();
         if (!result.y)
@@ -668,7 +668,7 @@ class ChartView {
         if (!r?.raw)
             return;
         if (this.root.isConnected && !document.getElementById('analysis')?.hidden) {
-            this.raw ??= new RawScatter((expr, label, sourceId) => this.select(expr, label, this.action.value === 'inspect', sourceId), () => this.root.dataset.sourceId ?? '');
+            this.raw ??= new RawScatter((expr, label, sourceId) => this.select(expr, label, this.action.value === 'inspect', sourceId), () => this.root.dataset.sourceId ?? '', this.clearDatasetFilters);
             if (!this.raw.container.isConnected)
                 this.canvas.after(this.raw.container);
             this.raw.setPointSize(this.spec.pointSize ?? 2);

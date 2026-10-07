@@ -94,23 +94,29 @@ export class ChartInteraction {
     private fitted: View = [0, 0, 1, 1];
     private start?: Point;
     private button = 0;
+    private moved = false;
+    private lastRightClick?: { time: number; point: Point };
     private clickTimer?: ReturnType<typeof setTimeout>;
     private box: HTMLDivElement;
-    constructor(private canvas: HTMLCanvasElement, container: HTMLElement, private rect: () => PlotRect, private redraw: () => void, private selected: (a: Point, b: Point) => void, private clicked: (p: Point) => void) {
+    constructor(private canvas: HTMLCanvasElement, container: HTMLElement, private rect: () => PlotRect, private redraw: () => void, private selected: (a: Point, b: Point) => void, private clicked: (p: Point) => void, private clearFilters: () => void) {
         this.box = document.createElement('div');
         this.box.className = 'chart-brush';
         this.box.hidden = true;
         container.append(this.box);
         canvas.addEventListener('contextmenu', e => e.preventDefault());
         canvas.onpointerdown = e => {
+            if (e.button !== 2) this.lastRightClick = undefined;
             if (![0, 2].includes(e.button))
                 return;
             clearTimeout(this.clickTimer);
             e.preventDefault();
             const p = this.point(e), r = this.rect();
-            if (p[0] < r.left || p[0] > r.right || p[1] < r.top || p[1] > r.bottom)
+            if (p[0] < r.left || p[0] > r.right || p[1] < r.top || p[1] > r.bottom) {
+                this.lastRightClick = undefined;
                 return;
+            }
             this.start = p;
+            this.moved = false;
             this.button = e.button;
             canvas.setPointerCapture(e.pointerId);
         };
@@ -118,6 +124,7 @@ export class ChartInteraction {
             if (!this.start)
                 return;
             const p = this.clamp(this.point(e)), a = this.start;
+            if (Math.hypot(a[0] - p[0], a[1] - p[1]) >= 5) this.moved = true;
             this.box.hidden = false;
             this.box.dataset.action = this.button === 0 ? 'zoom' : 'select';
             this.box.style.left = Math.min(a[0], p[0]) + 'px';
@@ -125,15 +132,26 @@ export class ChartInteraction {
             this.box.style.width = Math.abs(p[0] - a[0]) + 'px';
             this.box.style.height = Math.abs(p[1] - a[1]) + 'px';
         };
-        canvas.onpointercancel = () => this.cancel();
+        canvas.onpointercancel = () => { clearTimeout(this.clickTimer); this.cancel(); };
         canvas.onpointerup = e => {
-            const a = this.start, b = this.clamp(this.point(e));
+            const a = this.start, b = this.clamp(this.point(e)), previousClick = this.lastRightClick;
             this.cancel();
             if (!a)
                 return;
             if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 5) {
-                if (this.button === 2)
-                    this.clicked(b);
+                if (this.button === 2) {
+                    // Right-button dblclick events are not emitted by browsers.
+                    // Defer the single-click selection so it cannot race a reset.
+                    if (this.moved) return;
+                    const time = performance.now();
+                    if (previousClick && time - previousClick.time <= 500 && Math.hypot(b[0] - previousClick.point[0], b[1] - previousClick.point[1]) <= 6) {
+                        clearTimeout(this.clickTimer);
+                        this.clearFilters();
+                    } else {
+                        this.lastRightClick = { time, point: b };
+                        this.clickTimer = setTimeout(() => { this.lastRightClick = undefined; this.clicked(b); }, 500);
+                    }
+                }
                 else {
                     clearTimeout(this.clickTimer);
                     this.clickTimer = setTimeout(() => this.clicked(b), 500);
@@ -170,7 +188,7 @@ export class ChartInteraction {
         if (automatic) { this.view = [...view]; this.sync(); }
     }
     private sync() { this.canvas.dataset.view = JSON.stringify(this.view); }
-    cancel() { this.start = undefined; this.box.hidden = true; }
+    cancel() { this.start = undefined; this.lastRightClick = undefined; this.box.hidden = true; }
     destroy() { clearTimeout(this.clickTimer); this.cancel(); this.box.remove(); }
 }
 // Intersect a rectangular brush with bounded donut sectors, including boxes
