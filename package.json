@@ -22,7 +22,8 @@
     "test:public-wfs": "npm run build && node scripts/test-public-wfs.mjs && node scripts/test-public-wfs-time.mjs",
     "vendor:rust": "node scripts/vendor-rust.mjs",
     "install:rust-offline": "node scripts/install-rust-offline.mjs",
-    "start:api": "cargo run --manifest-path backend/Cargo.toml --offline --locked"
+    "start:api": "cargo run --manifest-path backend/Cargo.toml --offline --locked",
+    "benchmark:ellipses": "node scripts/benchmark-ellipses.mjs"
   },
   "dependencies": {
     "fast-xml-parser": "5.11.2",

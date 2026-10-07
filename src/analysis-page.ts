@@ -42,7 +42,7 @@ $('app').innerHTML = `
 <section id="configuration" hidden></section>
 <section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · no area bound on loading.</span><button id="drawArea" type="button" aria-pressed="false">Draw load area on map</button><button id="clearArea" hidden>Clear map area</button></div><details id="advancedServerFilters" class="server-filter-panel"><summary>Advanced server filters</summary></details></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorScheme">Colour scheme</label><select id="colorScheme"></select></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply to points already loaded for this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="query-area"><span id="localAreaSummary" class="hint" role="status">All loaded map areas · right-drag a box on the map to filter all sources.</span><button id="clearLocalArea" type="button" hidden>Clear local map area</button></div><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
 
-<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><span id="drawAreaHelp" class="hint" role="status" hidden>Left-drag to draw the load area · Escape to cancel</span><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">⤢</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
+<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><span id="drawAreaHelp" class="hint" role="status" hidden>Left-drag to draw the load area · Escape to cancel</span><button id="toggleEllipses" aria-label="Show ellipses" aria-pressed="false" title="Show ellipses"><svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><ellipse cx="11" cy="8" rx="9" ry="5" transform="rotate(-25 11 8)" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button><details id="ellipseResolution" class="ellipse-resolution"><summary aria-label="Ellipse settings" title="Ellipse settings">⚙</summary><div class="ellipse-options"><label for="ellipseVertices">Vertices per ellipse</label><input id="ellipseVertices" type="number" min="4" max="128" step="1" value="12"><span class="hint">4–128 · curved ends get more samples</span><label for="ellipseDetail">Outline detail</label><select id="ellipseDetail"><option value="auto">Automatic (fast in dense views)</option><option value="all">Every point</option></select></div></details><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">⤢</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Click a segment · left-drag charts to zoom · right-drag to select · double-click charts to reset</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section><div id="timelineHost" hidden></div>`;
 mountThemeToggle(document.querySelector('.topbar')!);
@@ -215,7 +215,7 @@ function renderSources() {
     pointColors.refresh();
     serverFilterPanel.refresh();
 }
-const sourceSettings = new DataSources(snapshot(), applySettings);
+const sourceSettings = new DataSources(snapshot(), applySettings, async config => (await describe(undefined, config)).fields.map(f => f.name));
 const pointColors = new PointColors(() => sources, (source, previous) => {
     const s = sources.find(s => s.id === source.id)!;
     s.layer.color = s.color;
@@ -267,6 +267,7 @@ function applySettings(next: Settings, restore = false) {
         if (restore) preserveMapView = true;
         $<HTMLInputElement>('size').value = String(mapSettings.pointSize);
         for (const s of sources) s.layer.pointSize = mapSettings.pointSize;
+        syncEllipses();
         map.jumpTo({ center: mapSettings.center, zoom: mapSettings.zoom });
     }
     applyBackground();
@@ -405,7 +406,7 @@ function clearInspection() {
 window.addEventListener('clearinspection', clearInspection);
 function rememberMap() {
     const center = map.getCenter().wrap();
-    mapSettings = { center: [center.lng, center.lat], zoom: map.getZoom(), pointSize: Number(value('size')) };
+    mapSettings = { ...mapSettings, center: [center.lng, center.lat], zoom: map.getZoom(), pointSize: Number(value('size')) };
     sourceSettings.syncMap(mapSettings);
     // Layout/initial camera events also emit moveend. Keep a first visit and
     // unsaved source drafts unpersisted until the user explicitly saves them.
@@ -424,6 +425,29 @@ map.keyboard.disableRotation();
 map.doubleClickZoom.disable();
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
 const mapPanel = document.querySelector<HTMLElement>('.map-panel')!;
+function syncEllipses() {
+    const enabled = mapSettings.ellipses ?? false;
+    const toggle = $<HTMLButtonElement>('toggleEllipses');
+    toggle.setAttribute('aria-pressed', String(enabled));
+    toggle.setAttribute('aria-label', enabled ? 'Hide ellipses' : 'Show ellipses');
+    toggle.title = enabled ? 'Hide ellipses' : 'Show ellipses';
+    $<HTMLInputElement>('ellipseVertices').value = String(mapSettings.ellipseVertices ?? 12);
+    $<HTMLSelectElement>('ellipseDetail').value = mapSettings.ellipseFullDetail ? 'all' : 'auto';
+    for (const s of sources) { s.layer.ellipsesEnabled = enabled; s.layer.ellipseVertices = mapSettings.ellipseVertices ?? 12; s.layer.ellipseFullDetail = mapSettings.ellipseFullDetail ?? false; }
+    map.triggerRepaint();
+}
+$('ellipseDetail').onchange = () => { mapSettings.ellipseFullDetail = value('ellipseDetail') === 'all'; syncEllipses(); rememberMap(); window.dispatchEvent(new Event('analysischange')); };
+$('toggleEllipses').onclick = () => { mapSettings.ellipses = !mapSettings.ellipses; syncEllipses(); rememberMap(); window.dispatchEvent(new Event('analysischange')); };
+$('ellipseVertices').oninput = () => {
+    const input = $<HTMLInputElement>('ellipseVertices');
+    if (input.value && input.checkValidity()) { mapSettings.ellipseVertices = Number(input.value); syncEllipses(); rememberMap(); window.dispatchEvent(new Event('analysischange')); }
+};
+$('ellipseVertices').onchange = () => {
+    const input = $<HTMLInputElement>('ellipseVertices');
+    if (!input.checkValidity()) { input.reportValidity(); input.value = String(mapSettings.ellipseVertices ?? 12); return; }
+    mapSettings.ellipseVertices = Number(input.value); syncEllipses(); rememberMap(); window.dispatchEvent(new Event('analysischange'));
+};
+syncEllipses();
 const enlargeMap = $<HTMLButtonElement>('enlargeMap');
 let mapDialog: HTMLDialogElement | undefined, mapPlaceholder: HTMLElement | undefined;
 function restoreMap() {
@@ -553,6 +577,9 @@ function clearSource(s: Source) {
     s.layer = new PointsLayer('source-' + s.id, s.color);
     s.layer.visible = s.mapVisible && !s.mapHidden.size;
     s.layer.pointSize = Number(value('size'));
+    s.layer.ellipsesEnabled = mapSettings.ellipses ?? false;
+    s.layer.ellipseVertices = mapSettings.ellipseVertices ?? 12;
+    s.layer.ellipseFullDetail = mapSettings.ellipseFullDetail ?? false;
     s.loaded = s.selected = 0;
     s.loading = s.done = false;
     s.total = undefined;
@@ -647,7 +674,7 @@ async function performLoad(s: Source) {
                 if (m.type === 'fields')
                     s.fields = m.fields;
                 if (m.type === 'chunk') {
-                    s.layer.append(m.offset, m.positions, m.indices, m.groups);
+                    s.layer.append(m.offset, m.positions, m.indices, m.groups, m.ellipses, m.ellipseRadius, m.ellipseValidCount);
                     if (!s.metrics.firstPointsMs)
                         s.metrics.firstPointsMs = performance.now() - began;
                 }
@@ -760,7 +787,7 @@ async function performLoad(s: Source) {
             }
         };
         if (csv) s.worker!.postMessage({ type: 'loadCSV', config, bounds, fileUser, serverFilters });
-        else s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), stopOnShortPage: config.pagingEnd === 'short', limit: Number(config.limit), sort: config.sort, fields: schema.fields, filter: serverFilter, timeField: schema.queryFields.time } });
+        else s.worker!.postMessage({ type: 'load', config: { url: endpoint(config), version: config.version, typeName: config.layer, format: config.format, srs: config.srs, axis: config.axis, pageSize: Number(config.pageSize), stopOnShortPage: config.pagingEnd === 'short', limit: Number(config.limit), sort: config.sort, fields: schema.fields, filter: serverFilter, timeField: schema.queryFields.time, ellipseMajorField: config.ellipseMajorField, ellipseMinorField: config.ellipseMinorField, ellipseOrientationField: config.ellipseOrientationField, ellipseMajorUnit: config.ellipseMajorUnit, ellipseMinorUnit: config.ellipseMinorUnit } });
     });
     if (session === s.request)
         s.complete = undefined;

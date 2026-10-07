@@ -1,3 +1,4 @@
+import { ellipseConfigKeys, ellipseDefaults } from './ellipses.ts';
 import { colourSchemes } from './colour-schemes.ts';
 import { validateServerFilters } from './server-filters.ts';
 import { createUUID } from './uuid.ts';
@@ -17,7 +18,8 @@ function validateSettings(input: unknown): asserts input is Settings {
     for (const source of input.sources) {
         if (!object(source) || typeof source.id !== 'string' || !source.id || source.id.length > 128 || ids.has(source.id)
             || typeof source.name !== 'string' || !source.name.trim() || source.name.length > 120 || typeof source.enabled !== 'boolean'
-            || !object(source.config) || configKeys.filter(k => !['fieldTypes', 'pagingEnd'].includes(k)).some(key => typeof source.config[key] !== 'string')) throw Error('Invalid or duplicate data source in backup.');
+            || !object(source.config) || configKeys.filter(k => !['fieldTypes', 'pagingEnd'].includes(k) && !ellipseConfigKeys.includes(k as typeof ellipseConfigKeys[number])).some(key => typeof source.config[key] !== 'string')) throw Error('Invalid or duplicate data source in backup.');
+        for (const key of ellipseConfigKeys) if (source.config[key] === undefined) source.config[key] = ellipseDefaults[key];
         if (source.config.pagingEnd === undefined) source.config.pagingEnd = defaultConfig.pagingEnd;
         if (typeof source.config.pagingEnd !== 'string') throw Error('Invalid WFS paging completion.');
         if (source.config.fieldTypes === undefined) source.config.fieldTypes = '{}';

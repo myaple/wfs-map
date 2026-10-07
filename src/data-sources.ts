@@ -1,3 +1,4 @@
+import { ellipseConfigKeys } from './ellipses.ts';
 import { createUUID } from './uuid.ts';
 import { currentAnalysis } from './saved-analysis.ts';
 import { readCSVText, readCSVBlob, stageCSVFile, unstageCSVFile, discardStagedCSVFiles, saveSettings } from './source-storage.ts';
@@ -7,6 +8,7 @@ import { wfsURL, xmlDocument } from './data.ts';
 import { configKeys, defaultConfig, csvFieldTypes, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const input = (id: string) => $<HTMLInputElement>(id);
+const ellipseFieldKeys = ['ellipseMajorField', 'ellipseMinorField', 'ellipseOrientationField'] as const;
 export class DataSources {
     private draft: Settings;
     private saved: Settings;
@@ -24,7 +26,10 @@ export class DataSources {
     private removed?: { source: SavedSource; index: number };
     private backupBusy = false;
     private pendingBackup?: Settings;
-    constructor(settings: Settings, private apply: (settings: Settings, restore?: boolean) => void) {
+    private ellipseColumnNames: string[] = [];
+    private ellipseDiscovery = 0;
+    private ellipseSchemaKey = '';
+    constructor(settings: Settings, private apply: (settings: Settings, restore?: boolean) => void, private discoverFields: (config: Config) => Promise<string[]>) {
         this.draft = structuredClone(settings);
         this.saved = structuredClone(settings);
         $('configuration').innerHTML = `
@@ -69,9 +74,23 @@ export class DataSources {
             <details id="csvTypes"><summary>Column types</summary><p class="hint">Automatic infers each column from the whole file. Text / category preserves numeric codes and leading zeros. Invalid values for an explicit type are reported as rejected rows. The selected time attribute must be Date / time or Automatic.</p><div id="csvTypeList" class="settings-fields"></div></details>
             <p class="hint">The imported file is saved in this browser with its settings. Available storage depends on your browser and device; a save error leaves your existing saved sources intact.</p>
           </fieldset>
+          <details id="ellipseFields"><summary>Ellipse fields (optional)</summary><div class="settings-fields">
+            <p class="hint">Axes are radii from each point’s centre. Orientation is degrees clockwise from north. Missing or invalid values skip the ellipse while retaining its point.</p>
+            <label for="ellipseMajorField">Semimajor axis field</label><select id="ellipseMajorField"></select><input id="ellipseMajorFieldCustom" aria-label="Custom semimajor axis field" placeholder="Enter field name" hidden>
+            <label for="ellipseMajorUnit">Semimajor units</label><select id="ellipseMajorUnit"><option value="m">Metres</option><option value="nm">Nautical miles</option></select>
+            <label for="ellipseMinorField">Semiminor axis field</label><select id="ellipseMinorField"></select><input id="ellipseMinorFieldCustom" aria-label="Custom semiminor axis field" placeholder="Enter field name" hidden>
+            <label for="ellipseMinorUnit">Semiminor units</label><select id="ellipseMinorUnit"><option value="m">Metres</option><option value="nm">Nautical miles</option></select>
+            <label for="ellipseOrientationField">Orientation field</label><select id="ellipseOrientationField"></select><input id="ellipseOrientationFieldCustom" aria-label="Custom orientation field" placeholder="Enter field name" hidden>
+          </div></details>
           <p id="sourceError" class="error" role="alert" hidden></p>
         </div><div class="source-dialog-footer"><span class="hint">Save analysis to apply.</span><button id="cancelSource" type="button">Cancel</button><button id="updateSource" class="primary" type="submit">Add to list</button></div></form></dialog>`;
-        $('type').onchange = () => { this.stopDiscovery(); this.showType(); };
+        $('type').onchange = () => { this.stopDiscovery(); this.invalidateEllipseColumns(); this.showType(); };
+        for (const key of ellipseFieldKeys) $(key).onchange = () => {
+            const custom = $<HTMLSelectElement>(key).selectedOptions[0]?.dataset.custom === 'true';
+            input(key + 'Custom').hidden = !custom;
+            if (custom) input(key + 'Custom').focus();
+        };
+        $('ellipseFields').addEventListener('toggle', () => { if ($<HTMLDetailsElement>('ellipseFields').open) void this.loadEllipseColumns(); });
         $('geometryMode').onchange = () => this.showGeometry();
         $('delimiter').onchange = () => { if (this.csvBlob) void this.inspectCSV(this.csvBlob, undefined, ++this.fileRevision); };
         $('csvFile').onchange = () => void this.readCSV();
@@ -92,13 +111,16 @@ export class DataSources {
         for (const id of ['closeSource', 'cancelSource']) $(id).onclick = () => this.close();
         $<HTMLDialogElement>('sourceDialog').addEventListener('cancel', () => this.close());
         $('sourceForm').onsubmit = e => { e.preventDefault(); this.updateSource(); };
-        for (const id of ['url', 'version']) $(id).addEventListener('input', () => { this.stopDiscovery(); this.resetLayers(); $('discoveryStatus').textContent = ''; });
+        for (const id of ['url', 'version']) $(id).addEventListener('input', () => { this.stopDiscovery(); this.resetLayers(); $('discoveryStatus').textContent = ''; this.invalidateEllipseColumns(false); });
+        $('layer').addEventListener('input', () => this.invalidateEllipseColumns(false));
+        for (const id of ['url', 'version', 'layer']) $(id).addEventListener('change', () => { if ($<HTMLDetailsElement>('ellipseFields').open) void this.loadEllipseColumns(); });
         $('layerSelect').onchange = () => {
             const name = $<HTMLSelectElement>('layerSelect').value;
             if (name) input('layer').value = name;
             this.showCustomLayer();
             if (name) this.updateDiscoveredFormat();
             else input('layer').focus();
+            this.invalidateEllipseColumns();
         };
         $('discover').onclick = () => void this.discover();
         $('undoRemove').onclick = () => { if (this.removed) this.draft.sources.splice(this.removed.index, 0, this.removed.source); this.removed = undefined; this.render(); };
@@ -228,7 +250,9 @@ export class DataSources {
     private open(config: Config = defaultConfig, name = '', source?: SavedSource) {
         this.editing = source;
         this.fileRevision++;
-        for (const key of configKeys) if (!['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'fieldTypes'].includes(key)) input(key).value = config[key];
+        this.ellipseDiscovery++; this.ellipseSchemaKey = ''; this.ellipseColumnNames = [];
+        $<HTMLDetailsElement>('ellipseFields').open = false;
+        for (const key of configKeys) if (!['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'fieldTypes', ...ellipseFieldKeys].includes(key)) input(key).value = config[key];
         this.fieldTypes = csvFieldTypes(config);
         this.csvRef = config.csvRef; this.csvText = config.csvText; this.fileName = config.fileName;
         this.csvBlob = undefined; this.csvHeaderNames = [];
@@ -242,6 +266,7 @@ export class DataSources {
         this.stopDiscovery(); this.resetLayers(true);
         $('sourceError').hidden = true; $('discoveryStatus').textContent = '';
         $<HTMLDetailsElement>('wfsCompatibility').open = false;
+        $<HTMLDetailsElement>('ellipseFields').open = false;
         $<HTMLDialogElement>('sourceDialog').showModal();
         input('sourceName').focus();
         if (config.type === 'csv') {
@@ -301,6 +326,47 @@ export class DataSources {
             const fields = $<HTMLFieldSetElement>(id); fields.hidden = !active; fields.disabled = !active;
         }
         this.showGeometry();
+        this.ellipseColumns();
+    }
+    private ellipseFieldValue(key: typeof ellipseFieldKeys[number]) {
+        const select = $<HTMLSelectElement>(key);
+        return select.selectedOptions[0]?.dataset.custom === 'true' ? input(key + 'Custom').value.trim() : select.value;
+    }
+    private ellipseColumns(config?: Config) {
+        const csv = input('type').value === 'csv', headers = csv ? this.csvHeaderNames : this.ellipseColumnNames;
+        for (const key of ellipseFieldKeys) {
+            const select = $<HTMLSelectElement>(key), previous = config ? config[key] : this.ellipseFieldValue(key);
+            const custom = !config && !csv && select.selectedOptions[0]?.dataset.custom === 'true';
+            const columns = [...new Set([...headers, ...(previous ? [previous] : [])])];
+            select.replaceChildren(new Option(key === 'ellipseMajorField' ? 'No ellipses' : csv ? 'Choose column…' : 'Choose field…', ''), ...columns.map(h => new Option(h, h)));
+            if (!csv) {
+                let value = '__custom__'; while (columns.includes(value)) value += '_';
+                const option = new Option('Custom field name…', value); option.dataset.custom = 'true'; select.append(option);
+                if (custom) select.value = value;
+            }
+            if (!custom) select.value = previous;
+            input(key + 'Custom').hidden = !custom;
+            if (config) input(key + 'Custom').value = '';
+        }
+    }
+    private invalidateEllipseColumns(discover = true) {
+        this.ellipseDiscovery++; this.ellipseSchemaKey = ''; this.ellipseColumnNames = [];
+        this.ellipseColumns();
+        if (discover && $<HTMLDetailsElement>('ellipseFields').open) void this.loadEllipseColumns();
+    }
+    private async loadEllipseColumns() {
+        if (!$<HTMLDialogElement>('sourceDialog').open) return;
+        const config = this.config();
+        if (config.type === 'csv' || !config.url || !config.layer) return;
+        const key = JSON.stringify([config.url, config.version, config.layer]);
+        if (this.ellipseSchemaKey === key) return;
+        this.ellipseSchemaKey = key;
+        const revision = ++this.ellipseDiscovery;
+        try {
+            const fields = await this.discoverFields(config);
+            if (revision !== this.ellipseDiscovery || !$<HTMLDialogElement>('sourceDialog').open) return;
+            this.ellipseColumnNames = fields; this.ellipseColumns();
+        } catch { if (revision === this.ellipseDiscovery) this.ellipseSchemaKey = ''; }
     }
     private showGeometry() {
         const xy = input('geometryMode').value === 'xy';
@@ -311,6 +377,7 @@ export class DataSources {
     }
     private csvColumns(config?: Config) {
         const headers = this.csvHeaderNames;
+        this.ellipseColumns(config);
         const restoring = !headers.length && !!this.csvRef;
         for (const id of ['longitudeField', 'latitudeField', 'csvGeometry', 'csvTime']) {
             const select = $<HTMLSelectElement>(id), previous = config ? config[id === 'csvGeometry' ? 'geometryField' : id === 'csvTime' ? 'timeField' : id as 'longitudeField' | 'latitudeField'] : select.value;
@@ -357,7 +424,7 @@ export class DataSources {
             const headers = await csvHeaders(file, input('delimiter').value);
             if (revision !== this.fileRevision) return;
             if (this.editing?.config.type === 'csv') {
-                const mapped = ['longitudeField', 'latitudeField', 'geometryField', 'timeField'] as const;
+                const mapped = ['longitudeField', 'latitudeField', 'geometryField', 'timeField', ...ellipseConfigKeys.filter(k => k.endsWith('Field'))] as const;
                 const savedFields = currentAnalysis?.state.analyses.find(s => s.id === this.editing!.id)?.fields.map(f => f.name) ?? [];
                 const missing = [...new Set([...mapped.map(k => this.editing!.config[k]), ...savedFields, ...(this.editing!.serverFilters ?? []).map(r => r.field), ...Object.keys(this.fieldTypes)])].filter(k => k && !headers.includes(k));
                 if (missing.length) throw Error('The chosen CSV is missing configured columns: ' + missing.join(', '));
@@ -369,6 +436,7 @@ export class DataSources {
     }
     private config(): Config {
         const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'fieldTypes'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
+        for (const key of ellipseFieldKeys) config[key] = this.ellipseFieldValue(key);
         if (config.type === 'csv') Object.assign(config, { csvText: this.csvText, csvRef: this.csvRef, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value, fieldTypes: JSON.stringify(this.fieldTypes) });
         return config;
     }
@@ -438,6 +506,7 @@ export class DataSources {
             select.value = layers.has(input('layer').value) ? input('layer').value : '';
             this.showCustomLayer();
             this.updateDiscoveredFormat();
+            this.invalidateEllipseColumns();
         } catch (e) { if (this.discovery === controller && $<HTMLDialogElement>('sourceDialog').open) $('discoveryStatus').textContent = `Discovery failed: ${(e as Error).message}. You can enter a feature type manually.`; }
         finally { clearTimeout(timeout); if (this.discovery === controller) { $<HTMLButtonElement>('discover').disabled = false; this.discovery = undefined; } }
     }

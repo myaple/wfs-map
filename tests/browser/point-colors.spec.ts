@@ -86,12 +86,12 @@ test('Log10 colour bins recompute codes, keep full-data ranges and persist indep
     await expect(page.locator('#colorLegend')).toContainText('Log10'); await expect(page.locator('#colorLegend')).toContainText('2 non-positive values');
     expect(await codes()).toEqual([0, 2, 5, 7, 255, 255, 255]); expect(await codes()).not.toEqual(linear);
     await page.locator('.map-legend-summary').click();
-    const viewport = page.locator('.map-legend-viewport');
-    // Opening details schedules a toggle event; the virtual list is populated by
-    // that handler. Scrolling an empty viewport would leave us at the first bins.
-    await expect(viewport.locator('.map-legend-row').first()).toBeVisible();
-    await viewport.evaluate(el => el.scrollTop = el.scrollHeight);
-    await expect(page.locator('#mapLegend')).toContainText('Missing / non-positive value');
+    // The details toggle populates virtual rows asynchronously; wait before scrolling.
+    await expect(page.locator('.map-legend-row').first()).toBeVisible();
+    await page.locator('.map-legend-viewport').evaluate(el => el.scrollTop = el.scrollHeight);
+    const missing = page.locator('.map-legend-row').filter({ hasText: 'Missing / non-positive value' });
+    await expect(missing).toBeVisible();
+    await expect(missing.locator('.map-legend-swatch')).toHaveCSS('background-color', 'rgb(128, 128, 128)');
     const log = await codes();
     await page.locator('#colorScheme').selectOption('inferno'); expect(await codes()).toEqual(log);
     await openFilters(page);

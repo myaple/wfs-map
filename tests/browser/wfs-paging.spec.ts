@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test';
 import { navigate } from '../navigation.ts';
 import { defaultConfig } from '../../src/source-settings.ts';
 
-const point = (id: number) => ({ type: 'Feature', id: `point.${id}`, geometry: { type: 'Point', coordinates: [-1 + id * .1, 54] }, properties: { value: id, category: 'point' } });
-type PagingCase = { name: string; hits?: number | string; totals: (number | string | undefined)[]; sizes: number[]; limit?: number; short?: boolean; version?: string };
+const point = (id: number) => ({ type: 'Feature', id: `point.${id}`, geometry: { type: 'Point', coordinates: [-1 + id * .1, 54] }, properties: { value: id, category: 'point', major: id + 1, minor: .5, angle: 90 } });
+type PagingCase = { name: string; hits?: number | string; totals: (number | string | undefined)[]; sizes: number[]; limit?: number; short?: boolean; ellipses?: boolean; version?: string };
 const cases: PagingCase[] = [
     { name: 'growing totals exceed the initial allocation', hits: 2, totals: [2, 5, 6], sizes: [2, 2, 1] },
     { name: 'shrinking totals allow an early empty page', hits: 10, totals: [10, 4], sizes: [2, 1] },
@@ -15,6 +15,7 @@ const cases: PagingCase[] = [
     { name: 'short page stops a live feed with growing totals', hits: 2, totals: [5, 8, 12], sizes: [2, 1, 2, 2, 2], short: true },
     { name: 'short page stops with unknown totals', hits: 'unknown', totals: ['unknown'], sizes: [2, 1, 2, 2], short: true },
     { name: 'short page stops without hits or page totals', totals: [], sizes: [2, 1, 2, 2], short: true },
+    { name: 'short final page retains ellipse attributes without totals', totals: [], sizes: [2, 1, 2], short: true, ellipses: true },
     { name: 'short first page stops without totals', totals: [], sizes: [1, 2, 2], short: true },
     { name: 'empty-page mode works without hits or page totals', totals: [], sizes: [2, 1, 2] },
     { name: 'short-page mode still stops at the point limit', hits: 'unknown', totals: [], sizes: [2, 1, 2], limit: 3, short: true },
@@ -26,10 +27,10 @@ for (const format of ['json', 'gml']) for (const scenario of cases) test(`${form
     const errors: string[] = [], requests: { offset: number; count: number; sort: string | null }[] = [];
     page.on('pageerror', e => errors.push(e.message));
     const limit = scenario.limit ?? 12;
-    await page.addInitScript(({ config, format, limit, short, version }) => localStorage.setItem('wfs-settings', JSON.stringify({ sources: [
+    await page.addInitScript(({ config, format, limit, short, version, ellipses }) => localStorage.setItem('wfs-settings', JSON.stringify({ sources: [
         { id: 'paged', name: 'Paged points', enabled: true, config: { ...config, url: '/paging-wfs', layer: 'demo:points',
-            format: format === 'json' ? 'application/json' : 'application/gml+xml; version=3.2', sort: 'value', pageSize: '2', limit: String(limit), pagingEnd: short ? 'short' : 'empty', version } },
-    ], background: { enabled: false, url: '', attribution: '' } })), { config: defaultConfig, format, limit, short: scenario.short, version: scenario.version ?? '2.0.0' });
+            format: format === 'json' ? 'application/json' : 'application/gml+xml; version=3.2', sort: 'value', pageSize: '2', limit: String(limit), pagingEnd: short ? 'short' : 'empty', version, ...(ellipses ? { ellipseMajorField: 'major', ellipseMinorField: 'minor', ellipseOrientationField: 'angle', ellipseMajorUnit: 'nm', ellipseMinorUnit: 'm' } : {}) } },
+    ], background: { enabled: false, url: '', attribution: '' } })), { config: defaultConfig, format, limit, short: scenario.short, version: scenario.version ?? '2.0.0', ellipses: scenario.ellipses });
     await page.route('**/paging-wfs?*', async route => {
         const params = new URL(route.request().url()).searchParams;
         if (params.get('request') === 'DescribeFeatureType') return route.fulfill({ status: 404, body: 'No schema' });
@@ -40,7 +41,7 @@ for (const format of ['json', 'gml']) for (const scenario of cases) test(`${form
         const features = Array.from({ length: Math.min(scenario.sizes[index] ?? 0, count) }, (_, i) => point(offset + i));
         const total = scenario.totals[index] ?? scenario.hits;
         if (format === 'json') return route.fulfill({ contentType: 'application/json', json: { type: 'FeatureCollection', ...(total === undefined ? {} : { numberMatched: total }), features } });
-        const members = features.map(f => `<wfs:member><d:points gml:id="${f.id}"><d:geom><gml:Point><gml:pos>${f.geometry.coordinates.join(' ')}</gml:pos></gml:Point></d:geom><d:value>${f.properties.value}</d:value><d:category>point</d:category></d:points></wfs:member>`).join('');
+        const members = features.map(f => `<wfs:member><d:points gml:id="${f.id}"><d:geom><gml:Point><gml:pos>${f.geometry.coordinates.join(' ')}</gml:pos></gml:Point></d:geom><d:value>${f.properties.value}</d:value><d:category>point</d:category><d:major>${f.properties.major}</d:major><d:minor>${f.properties.minor}</d:minor><d:angle>${f.properties.angle}</d:angle></d:points></wfs:member>`).join('');
         return route.fulfill({ contentType: 'application/gml+xml', body: `<wfs:FeatureCollection xmlns:wfs="urn:wfs" xmlns:gml="urn:gml" xmlns:d="urn:demo"${total === undefined ? '' : ` numberMatched="${total}"`}>${members}</wfs:FeatureCollection>` });
     });
     await page.goto('/?time=all&autoload=1');
@@ -64,6 +65,7 @@ for (const format of ['json', 'gml']) for (const scenario of cases) test(`${form
         return { done: s.done, error: s.error, loaded: s.loaded, total: s.total, status: s.status, warning: s.metrics.warning,
             truncated: s.metrics.truncated, capacity: layer.capacity, gpuError: gl.getError(),
             positions: Array.from(positions), indices: Array.from(indices),
+            ellipses: layer.chunks.flatMap((c: any) => Array.from(c.ellipses ?? [])),
             expectedPositions: layer.chunks.flatMap((c: any) => Array.from(c.positions)), expectedIndices: layer.chunks.flatMap((c: any) => Array.from(c.indices)) };
     });
     expect(state.error, state.status).toBe(false); expect(state.done).toBe(true); expect(state.loaded).toBe(loaded);
@@ -72,6 +74,10 @@ for (const format of ['json', 'gml']) for (const scenario of cases) test(`${form
     expect(state.warning).toBe(scenario.version === '1.0.0' ? `WFS 1.0 has no standard hits count; loading until ${completion}.` : scenario.hits === undefined ? `GetFeature hits unavailable; loading until ${completion}.` : ''); expect(state.status).not.toMatch(/changed|snapshot|premature|Warning/i);
     expect(state.capacity).toBeGreaterThanOrEqual(loaded); expect(state.capacity).toBeLessThanOrEqual(limit);
     expect(state.gpuError).toBe(0); expect(state.positions).toEqual(state.expectedPositions); expect(state.indices).toEqual(state.expectedIndices);
+    if (scenario.ellipses) {
+        const expected = new Float32Array(Array.from({ length: loaded }, (_, id) => [(id + 1) * 1852 / 6371008.8, .5 / 6371008.8, Math.PI / 2, 54 * Math.PI / 180]).flat());
+        expect(state.ellipses).toEqual(Array.from(expected));
+    }
     expect(requests.every(r => r.sort === 'value A' && r.count <= Math.min(2, limit - r.offset))).toBe(true);
     expect(requests.map(r => r.offset)).toEqual(offsets); expect(errors).toEqual([]);
 });

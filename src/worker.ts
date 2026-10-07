@@ -1,3 +1,4 @@
+import { packEllipses, ellipseWarning, type EllipseConfig } from './ellipses.ts';
 import type { ServerFilter } from './server-filters.ts';
 import { readCSVBlob } from './source-storage.ts';
 import { ingestCSV, csvImportSummary, describeCSV } from './csv.ts';
@@ -10,7 +11,7 @@ import { Store } from './store.ts';
 import { RecordsIndex, recordsCSV } from './records.ts';
 import { joinSnapshot } from './derived-datasets.ts';
 import { exportCSV } from './csv-export.ts';
-type Config = {
+type Config = EllipseConfig & {
     url: string;
     version: string;
     typeName: string;
@@ -66,7 +67,7 @@ async function load(c: Config) {
     // Counts are estimates: each GeoServer page can see a different database state.
     // Start small when hits are unavailable and let the map grow up to the limit.
     post({ type: 'init', capacity: Math.min(Math.max(total ?? c.pageSize, c.pageSize), c.limit), limit: c.limit, total, warning });
-    let loaded = 0, pages = 0, parseMs = 0, bytes = 0, previousSignature = '', clamped = 0;
+    let loaded = 0, pages = 0, parseMs = 0, bytes = 0, previousSignature = '', clamped = 0, invalidEllipses = 0;
     const getPage = (offset: number) => fetchText(wfsURL(c.url, c.version, 'GetFeature', { ...common, outputFormat: c.format, startIndex: String(offset), [countParam]: String(Math.min(c.pageSize, c.limit - offset)) }));
     // One bounded lookahead request overlaps server generation/transfer with column packing.
     // Wrap rejections immediately so a failing prefetched request is never unhandled.
@@ -105,7 +106,8 @@ async function load(c: Config) {
         const spatial = spatialPage(positions, loaded);
         store.append(page.features);
         parseMs += performance.now() - pstart;
-        post({ type: 'chunk', offset: loaded, positions, ...spatial }, [positions.buffer, spatial.indices.buffer, spatial.groups.buffer]);
+        const ellipse = packEllipses(page.features, c); invalidEllipses += ellipse.invalid;
+        post({ type: 'chunk', offset: loaded, positions, ...spatial, ellipses: ellipse.data, ellipseRadius: ellipse.radius, ellipseValidCount: ellipse.data ? ellipse.data.length/4-ellipse.invalid : 0 }, [positions.buffer, spatial.indices.buffer, spatial.groups.buffer, ...(ellipse.data ? [ellipse.data.buffer] : [])]);
         loaded += page.features.length;
         pages++;
         post({ type: 'progress', loaded, total: total === undefined ? undefined : Math.max(loaded, total), pages, bytes, parseMs, elapsedMs: performance.now() - start });
@@ -120,13 +122,13 @@ async function load(c: Config) {
     if (store)
         analyzer = new Analyzer(store);
     post({ type: 'done', loaded, total, timeline: timelineExtent(c.timeField), bounds: store?.bounds, pages, bytes, parseMs, elapsedMs: performance.now() - start,
-        truncated, warning: [warning.trim(), loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '', latitudeClampWarning(clamped)].filter(Boolean).join(' ') });
+        truncated, warning: [warning.trim(), loaded && store?.chunks.some(c => c.ids.some(x => x === null)) ? 'Some features have no IDs; duplicate detection is limited.' : '', latitudeClampWarning(clamped), ellipseWarning(invalidEllipses)].filter(Boolean).join(' ') });
 }
 async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: string, rules: ServerFilter[] = []) {
     const start = performance.now();
     if (!config) throw Error('CSV source settings are missing.');
     const file = config.csvText ? new Blob([config.csvText]) : await readCSVBlob(config.csvRef, fileUser);
-    let pages = 0, clamped = 0, loaded = 0, capacity = 0;
+    let pages = 0, clamped = 0, loaded = 0, capacity = 0, invalidEllipses = 0;
     const dataset = await ingestCSV(file, config, bounds, (fields, size, limit) => {
         store = new Store(fields); capacity = limit;
         post({ type: 'init', capacity: size, limit, total: capacity });
@@ -135,11 +137,12 @@ async function loadCSV(config: SourceConfig, bounds: QueryBounds, fileUser?: str
         const offset = loaded;
         const positions = packPositions(features, count => clamped += count), spatial = spatialPage(positions, offset);
         store!.append(features); pages++; loaded += features.length;
-        post({ type: 'chunk', offset, positions, ...spatial }, [positions.buffer, spatial.indices.buffer, spatial.groups.buffer]);
+        const ellipse = packEllipses(features, config); invalidEllipses += ellipse.invalid;
+        post({ type: 'chunk', offset, positions, ...spatial, ellipses: ellipse.data, ellipseRadius: ellipse.radius, ellipseValidCount: ellipse.data ? ellipse.data.length/4-ellipse.invalid : 0 }, [positions.buffer, spatial.indices.buffer, spatial.groups.buffer, ...(ellipse.data ? [ellipse.data.buffer] : [])]);
         post({ type: 'progress', loaded, total: capacity, pages, elapsedMs: performance.now() - start });
     }, (phase, bytes, rows) => { if (phase === 'scan') post({ type: 'csvScan', bytes, fileBytes: file.size, rows }); }, rules);
     store!.finish(); analyzer = new Analyzer(store!);
-    post({ type: 'done', loaded, total: loaded, timeline: timelineExtent(config.timeField), bounds: store!.bounds, pages, bytes: file.size, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false, csvReport: dataset.report, warning: [csvImportSummary(dataset.report), latitudeClampWarning(clamped)].filter(Boolean).join('\n') });
+    post({ type: 'done', loaded, total: loaded, timeline: timelineExtent(config.timeField), bounds: store!.bounds, pages, bytes: file.size, parseMs: performance.now() - start, elapsedMs: performance.now() - start, truncated: false, csvReport: dataset.report, warning: [csvImportSummary(dataset.report), latitudeClampWarning(clamped), ellipseWarning(invalidEllipses)].filter(Boolean).join('\n') });
 }
 function timelineExtent(configured?: string) {
     if (!store || !analyzer) return;
