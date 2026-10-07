@@ -79,3 +79,47 @@ test('automatic detail bounds dense outlines; every-point mode keeps full fideli
  await page.evaluate(()=>(window as any).__WFS_MAP__.map.jumpTo({center:[-1.54,54],zoom:18}));
  await expect.poll(()=>page.evaluate(()=>(window as any).__WFS_MAP__.layer.ellipsesDrawnLastFrame)).toBeLessThan(5000);
 });
+
+test('CSV ellipse fields use the same native dropdowns as coordinates and save selected columns', async ({page}) => {
+ await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
+ await page.locator('#sourceName').fill('Dropdown ellipses'); await page.locator('#type').selectOption('csv');
+ await page.locator('#csvFile').setInputFiles({name:'ellipses.csv',mimeType:'text/csv',buffer:Buffer.from(csv)});
+ await expect(page.locator('#csvFileStatus')).toContainText('5 columns');
+ await page.locator('#ellipseFields summary').click();
+ const style = (id:string) => page.locator('#'+id).evaluate(el => { const s=getComputedStyle(el); return {tag:el.tagName,height:s.height,padding:s.padding,border:s.border,borderRadius:s.borderRadius,font:s.font}; });
+ const coordinateStyle=await style('longitudeField');
+ for(const [key,value] of [['ellipseMajorField','major'],['ellipseMinorField','minor'],['ellipseOrientationField','angle']]) {
+  expect(await style(key)).toEqual(coordinateStyle);
+  expect(await page.locator('#'+key+' option').evaluateAll(options=>options.slice(1).map(o=>(o as HTMLOptionElement).value))).toEqual(['lon','lat','major','minor','angle']);
+  await page.locator('#'+key).selectOption(value);
+ }
+ await page.locator('#ellipseMajorUnit').selectOption('nm');
+ await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+ await page.reload(); await page.waitForFunction(()=>(window as any).__WFS_MAP__?.done);
+ await navigate(page,'configuration'); await page.getByRole('button',{name:'Configure Dropdown ellipses',exact:true}).click();
+ await page.locator('#ellipseFields summary').click();
+ for(const [key,value] of [['ellipseMajorField','major'],['ellipseMinorField','minor'],['ellipseOrientationField','angle'],['ellipseMajorUnit','nm']]) await expect(page.locator('#'+key)).toHaveValue(value);
+ await expect(page.locator('#ellipseMajorFieldCustom')).toBeHidden();
+});
+
+test('WFS ellipse dropdowns discover schema fields and retain custom mappings without discovery', async ({page}) => {
+ await page.goto('/?time=all#configuration'); await page.locator('#addSource').click();
+ await page.locator('#sourceName').fill('WFS dropdowns'); await page.locator('#url').fill('/wfs?points=16'); await page.locator('#layer').fill('demo:points');
+ await page.locator('#ellipseFields summary').click();
+ await expect(page.locator('#ellipseMajorField option[value="value"]')).toHaveCount(1);
+ for(const [key,value] of [['ellipseMajorField','value'],['ellipseMinorField','quality'],['ellipseOrientationField','id']]) await page.locator('#'+key).selectOption(value);
+ await page.locator('#updateSource').click(); await page.locator('#saveSettings').click();
+ await page.waitForFunction(()=>(window as any).__WFS_MAP__?.done);
+ await page.getByRole('button',{name:'Configure WFS dropdowns',exact:true}).click(); await page.locator('#ellipseFields summary').click();
+ for(const [key,value] of [['ellipseMajorField','value'],['ellipseMinorField','quality'],['ellipseOrientationField','id']]) await expect(page.locator('#'+key)).toHaveValue(value);
+ await page.route('**/no-schema?*', route=>route.fulfill({status:404,body:'Schema unavailable'}));
+ await page.locator('#url').fill('/no-schema'); await page.locator('#url').press('Tab');
+ for(const [key,value] of [['ellipseMajorField','radius_a'],['ellipseMinorField','radius_b'],['ellipseOrientationField','bearing']]) {
+  await page.locator('#'+key).selectOption({label:'Custom field name…'}); await page.locator('#'+key+'Custom').fill(value);
+ }
+ await page.locator('#updateSource').click(); await page.getByLabel('Enable WFS dropdowns',{exact:true}).uncheck(); await page.locator('#saveSettings').click();
+ const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('wfs-settings')!).sources[0].config);
+ expect(saved).toMatchObject({ellipseMajorField:'radius_a',ellipseMinorField:'radius_b',ellipseOrientationField:'bearing'});
+ await page.getByRole('button',{name:'Configure WFS dropdowns',exact:true}).click(); await page.locator('#ellipseFields summary').click();
+ for(const [key,value] of [['ellipseMajorField','radius_a'],['ellipseMinorField','radius_b'],['ellipseOrientationField','bearing']]) await expect(page.locator('#'+key)).toHaveValue(value);
+});

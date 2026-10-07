@@ -215,7 +215,7 @@ function renderSources() {
     pointColors.refresh();
     serverFilterPanel.refresh();
 }
-const sourceSettings = new DataSources(snapshot(), applySettings);
+const sourceSettings = new DataSources(snapshot(), applySettings, async config => (await describe(undefined, config)).fields.map(f => f.name));
 const pointColors = new PointColors(() => sources, (source, previous) => {
     const s = sources.find(s => s.id === source.id)!;
     s.layer.color = s.color;
