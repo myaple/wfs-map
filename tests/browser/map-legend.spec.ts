@@ -142,6 +142,26 @@ test('eight datasets produce eight collapsed entries even with categorical domai
 const settledMask = async (page: Page, id: string) => page.waitForFunction(id => !(window as any).__WFS_MAP__.sources.find((s: any) => s.id === id).mapMaskPending, id);
 const valueToggle = (page: Page, name: string) => page.getByRole('switch', { name, exact: true });
 
+test('legend redraws preserve keyboard focus without stealing it from other controls', async ({ page }) => {
+    await seed(page); await expand(page, 'categories');
+    const viewport = source(page, 'categories').locator('.map-legend-viewport');
+    const toggle = valueToggle(page, 'Show Category-000 for Categories on map');
+    const resize = async (height: number) => viewport.evaluate(async (el, height) => {
+        el.style.height = `${height}px`;
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    }, height);
+    await toggle.focus();
+    await resize(176);
+    await expect(toggle).toBeFocused();
+    await page.keyboard.press('Space'); await settledMask(page, 'categories');
+    await expect(toggle).not.toBeChecked(); await expect(toggle).toBeFocused();
+    await resize(132);
+    await expect(toggle).toBeFocused(); await expect(toggle).not.toBeChecked();
+    // A pending observer callback must not refocus the legend after the user leaves it.
+    await page.locator('#fit').focus(); await resize(88);
+    await expect(page.locator('#fit')).toBeFocused();
+});
+
 test('category switches hide exact values, preserve focus, and survive scrolling, palette edits and source switches', async ({ page }) => {
     await seed(page); await expand(page, 'categories');
     await page.locator('#colorSource').selectOption('categories');
