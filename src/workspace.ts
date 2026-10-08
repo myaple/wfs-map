@@ -1,3 +1,4 @@
+import { HIGHLIGHT_COLOR, highlightCounts, onHighlights, replaceHighlights, selectHighlights } from './highlights.ts';
 import { transform, axisBounds, type Scale } from './scales.ts';
 import { seriesColors, visibleSeries } from './multi-charts.ts';
 import { themeColor } from './theme.ts';
@@ -363,6 +364,10 @@ class ChartView {
     private focus = 0;
     private onThemeChange = () => this.draw();
     private hit = new Float32Array(0);
+    private stopHighlights = onHighlights(() => { void this.refreshHighlights(); });
+    private highlightGeneration = 0;
+    private selectedCounts: Uint32Array[] = [];
+    private marks: { cell: number; series: number; box: View }[] = [];
     private fullResult?: ChartResult;
     private pointSize = element('input');
     private pointSizeField = chartField(this.pointSize, 'Point size', 'Size of scatter points; binned circles retain relative counts.');
@@ -468,7 +473,7 @@ class ChartView {
             const cell = this.cellAt(p);
             if (cell >= 0)
                 this.choose(cell, cell);
-        }, this.clearDatasetFilters);
+        }, this.clearDatasetFilters, (a, b) => this.highlightRectangle(a, b), () => replaceHighlights());
         this.canvas.addEventListener('pointermove', e => {
             if (!this.result)
                 return;
@@ -643,6 +648,7 @@ class ChartView {
         }
         this.interaction.setFit(fit);
         this.result = result;
+        void this.refreshHighlights();
         this.focus = Math.min(this.focus, Math.max(0, result.counts.length - 1));
         this.canvas.hidden = !!result.raw;
         if (result.raw)
@@ -654,7 +660,7 @@ class ChartView {
         }
         const total = result.raw ? result.raw.series?.reduce((n, s) => n + s.end - s.start, 0) ?? result.raw.rows.length : result.counts.reduce((a, b) => a + b, 0);
         this.note.textContent = `${total.toLocaleString()} plotted · ${result.missing.toLocaleString()} missing${this.spec.xScale === 'log10' || this.spec.yScale === 'log10' ? ' · Log10 omits non-positive values' : ''}`;
-        this.help.textContent = `${result.raw ? 'Individual observations.' : result.y ? 'Counted scatter bins.' : 'Click a segment to filter.'} Left-drag to zoom; right-drag to select; double-left-click to reset zoom; double-right-click to clear dataset filters.`;
+        this.help.textContent = `${result.raw ? 'Individual observations.' : result.y ? 'Counted scatter bins.' : 'Click a segment to filter.'} Left-drag to zoom; right-drag to select; double-left-click to reset zoom; double-right-click to clear dataset filters. Middle-drag to highlight; double-middle-click to clear highlights.`;
         this.canvas.setAttribute('aria-label', `${result.type} chart of ${result.x.field}${result.y ? ' against ' + result.y.field : ''}. Arrow keys choose a bin; Enter filters it.`);
         this.list.replaceChildren();
         if (!result.y)
@@ -678,6 +684,40 @@ class ChartView {
             this.raw?.destroy();
             this.raw = undefined;
         }
+    }
+    private async refreshHighlights() {
+        const token = ++this.highlightGeneration, r = this.result;
+        this.selectedCounts = [];
+        if (!r || r.raw) return;
+        const members = r.series ?? [{ sourceId: this.root.dataset.sourceId ?? '', result: r }];
+        try {
+            const counts = await Promise.all(members.map(s => highlightCounts(s.sourceId, s.result)));
+            if (token !== this.highlightGeneration || this.result !== r) return;
+            this.selectedCounts = counts;
+            this.canvas.dataset.highlighted = String(counts.reduce((n, c) => n + c.reduce((a, b) => a + b, 0), 0));
+            this.draw();
+        } catch (error) {
+            if (token === this.highlightGeneration) { this.canvas.dataset.highlighted = '0'; this.draw(); console.error('Highlight projection failed', error); }
+        }
+    }
+    private highlightRectangle(a: Point, b: Point) {
+        const r = this.result;
+        if (!r) return;
+        const members = r.series ?? [{ sourceId: this.root.dataset.sourceId ?? '', result: r }];
+        const cells = members.map(() => new Set<number>());
+        if (r.type === 'pie') {
+            const lo = this.interaction.data([Math.min(a[0], b[0]), Math.max(a[1], b[1])]), hi = this.interaction.data([Math.max(a[0], b[0]), Math.min(a[1], b[1])]);
+            const w = this.canvas.clientWidth, h = this.canvas.clientHeight, radius = Math.min(w, h) * .36;
+            // Flatten in the same order as the rendered sectors.
+            const sectors: number[] = [];
+            for (let i = 0; i < r.counts.length; i++) for (const member of members) sectors.push(member.result.counts[i]);
+            const hits = pieSegments(Uint32Array.from(sectors), [lo[0] * w, (1 - hi[1]) * h, hi[0] * w, (1 - lo[1]) * h], w / 2, h / 2, radius * .51, radius);
+            for (const hit of hits) cells[hit % members.length].add(Math.floor(hit / members.length));
+        } else {
+            const box: View = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
+            for (const mark of this.marks) if (mark.box[0] <= box[2] && mark.box[2] >= box[0] && mark.box[1] <= box[3] && mark.box[3] >= box[1]) cells[mark.series].add(mark.cell);
+        }
+        void selectHighlights(members.map((member, i) => ({ sourceId: member.sourceId, chart: member.result, cells: [...cells[i]] })));
     }
     private description(i: number) {
         const r = this.result!, nx = r.x.labels.length;
@@ -778,6 +818,7 @@ class ChartView {
         if (!r)
             return;
         this.hit = new Float32Array(0);
+        this.marks = [];
         const datasets = r.series?.map(s => s.result) ?? [r], yScale = this.spec.yScale ?? 'linear', finite = datasets.flatMap(s => Array.from(s.values ?? s.counts).filter(v => Number.isFinite(v) && (yScale !== 'log10' || v > 0))), low = yScale === 'log10' || r.values ? Math.min(...finite) : 0;
         const nx = r.x.labels.length, ny = r.y?.labels.length ?? 1, max = finite.length ? Math.max(...finite) : 1, total = r.counts.reduce((a, b) => a + b, 0);
         if (!r.counts.some(v => v > 0)) {
@@ -797,7 +838,7 @@ class ChartView {
             ctx.translate(-v[0] * w, -(1 - v[3]) * h);
             let angle = -Math.PI / 2;
             for (let i = 0; i < r.counts.length; i++) {
-                const slices = r.series?.map(s => ({ count: s.result.counts[i], color: s.color })) ?? [{ count: r.counts[i], color: colors[i % colors.length] }];
+                const slices = r.series?.map((s, k) => ({ count: s.result.counts[i], color: s.color, selected: this.selectedCounts[k]?.[i] ?? 0 })) ?? [{ count: r.counts[i], color: colors[i % colors.length], selected: this.selectedCounts[0]?.[i] ?? 0 }];
                 for (const slice of slices) {
                 const end = angle + slice.count / total * Math.PI * 2;
                 ctx.beginPath();
@@ -806,6 +847,10 @@ class ChartView {
                 ctx.closePath();
                 ctx.fillStyle = slice.color;
                 ctx.fill();
+                if (slice.selected && slice.count) {
+                    ctx.beginPath(); ctx.arc(w / 2, h / 2, radius - 2, angle, end);
+                    ctx.strokeStyle = HIGHLIGHT_COLOR; ctx.lineWidth = 5; ctx.stroke();
+                }
                 angle = end;
                 }
             }
@@ -843,8 +888,13 @@ class ChartView {
             this.hit.set([lo[0], lo[1], hi[0], hi[1]], i * 4);
             ctx.fillStyle = i === this.focus && document.activeElement === canvas ? '#d29032' : color;
             if (!r.y && !Number.isFinite(transform(plotted[i], yScale))) { prevY = NaN; continue; }
-            if (r.type === 'bar')
-                ctx.fillRect(this.hit[i * 4] + seriesIndex * dx / datasets.length + 1, y, Math.max(1, dx / datasets.length - 2), this.interaction.screen([0, yScale === 'log10' ? 0 : (0 - yBounds[0]) / (yBounds[1] - yBounds[0])])[1] - y);
+            const highlighted = (this.selectedCounts[seriesIndex]?.[i] ?? 0) > 0;
+            if (r.type === 'bar') {
+                const bx = this.hit[i * 4] + seriesIndex * dx / datasets.length + 1, bw = Math.max(1, dx / datasets.length - 2), baseline = this.interaction.screen([0, yScale === 'log10' ? 0 : (0 - yBounds[0]) / (yBounds[1] - yBounds[0])])[1];
+                ctx.fillRect(bx, y, bw, baseline - y);
+                if (dataset.counts[i]) this.marks.push({ cell: i, series: seriesIndex, box: [bx, Math.min(y, baseline), bx + bw, Math.max(y, baseline)] });
+                if (highlighted) { ctx.strokeStyle = HIGHLIGHT_COLOR; ctx.lineWidth = 3; ctx.strokeRect(bx, y, bw, baseline - y); }
+            }
             else if (r.type === 'time') {
                 if (!Number.isFinite(plotted[i])) {
                     prevY = NaN;
@@ -861,15 +911,20 @@ class ChartView {
                 ctx.beginPath();
                 ctx.arc(x, y, 3, 0, Math.PI * 2);
                 ctx.fill();
+                if (dataset.counts[i]) this.marks.push({ cell: i, series: seriesIndex, box: [x - 3, y - 3, x + 3, y + 3] });
+                if (highlighted) { ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fillStyle = HIGHLIGHT_COLOR; ctx.fill(); }
                 prevX = x;
                 prevY = y;
             }
             else if (dataset.counts[i]) {
                 ctx.globalAlpha = .35 + .65 * Math.sqrt(dataset.counts[i] / max);
                 ctx.beginPath();
-                ctx.arc(x, y, Math.max(1, Math.min(dx, dy) * .48 * Math.sqrt(dataset.counts[i] / max) * (this.spec.pointSize ?? 2) / 2), 0, Math.PI * 2);
+                const radius = Math.max(1, Math.min(dx, dy) * .48 * Math.sqrt(dataset.counts[i] / max) * (this.spec.pointSize ?? 2) / 2);
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                this.marks.push({ cell: i, series: seriesIndex, box: [x - radius, y - radius, x + radius, y + radius] });
                 ctx.fill();
                 ctx.globalAlpha = 1;
+                if (highlighted) { ctx.strokeStyle = HIGHLIGHT_COLOR; ctx.lineWidth = 3; ctx.stroke(); }
             }
         }
         }
@@ -902,6 +957,6 @@ class ChartView {
         this.expand.focus();
         this.draw();
     }
-    suspend() { this.fullResult = undefined; this.raw?.destroy(); this.raw = undefined; this.canvas.hidden = false; this.result = undefined; this.list.replaceChildren(); this.note.textContent = 'Load this source to calculate charts.'; this.draw(); }
-    destroy() { window.removeEventListener('themechange', this.onThemeChange); this.restoreSize(); this.interaction.destroy(); this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
+    suspend() { this.highlightGeneration++; this.selectedCounts = []; this.fullResult = undefined; this.raw?.destroy(); this.raw = undefined; this.canvas.hidden = false; this.result = undefined; this.list.replaceChildren(); this.note.textContent = 'Load this source to calculate charts.'; this.draw(); }
+    destroy() { this.stopHighlights(); this.highlightGeneration++; window.removeEventListener('themechange', this.onThemeChange); this.restoreSize(); this.interaction.destroy(); this.raw?.destroy(); this.observer.disconnect(); this.root.remove(); }
 }

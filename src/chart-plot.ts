@@ -96,17 +96,20 @@ export class ChartInteraction {
     private button = 0;
     private moved = false;
     private lastRightClick?: { time: number; point: Point };
+    private lastMiddleClick?: { time: number; point: Point };
     private clickTimer?: ReturnType<typeof setTimeout>;
     private box: HTMLDivElement;
-    constructor(private canvas: HTMLCanvasElement, container: HTMLElement, private rect: () => PlotRect, private redraw: () => void, private selected: (a: Point, b: Point) => void, private clicked: (p: Point) => void, private clearFilters: () => void) {
+    constructor(private canvas: HTMLCanvasElement, container: HTMLElement, private rect: () => PlotRect, private redraw: () => void, private selected: (a: Point, b: Point) => void, private clicked: (p: Point) => void, private clearFilters: () => void, private highlighted: (a: Point, b: Point) => void, private clearHighlights: () => void) {
         this.box = document.createElement('div');
         this.box.className = 'chart-brush';
         this.box.hidden = true;
         container.append(this.box);
         canvas.addEventListener('contextmenu', e => e.preventDefault());
+        canvas.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
         canvas.onpointerdown = e => {
             if (e.button !== 2) this.lastRightClick = undefined;
-            if (![0, 2].includes(e.button))
+            if (e.button !== 1) this.lastMiddleClick = undefined;
+            if (![0, 1, 2].includes(e.button))
                 return;
             clearTimeout(this.clickTimer);
             e.preventDefault();
@@ -126,7 +129,7 @@ export class ChartInteraction {
             const p = this.clamp(this.point(e)), a = this.start;
             if (Math.hypot(a[0] - p[0], a[1] - p[1]) >= 5) this.moved = true;
             this.box.hidden = false;
-            this.box.dataset.action = this.button === 0 ? 'zoom' : 'select';
+            this.box.dataset.action = this.button === 0 ? 'zoom' : this.button === 1 ? 'highlight' : 'select';
             this.box.style.left = Math.min(a[0], p[0]) + 'px';
             this.box.style.top = Math.min(a[1], p[1]) + 'px';
             this.box.style.width = Math.abs(p[0] - a[0]) + 'px';
@@ -134,12 +137,18 @@ export class ChartInteraction {
         };
         canvas.onpointercancel = () => { clearTimeout(this.clickTimer); this.cancel(); };
         canvas.onpointerup = e => {
-            const a = this.start, b = this.clamp(this.point(e)), previousClick = this.lastRightClick;
+            const a = this.start, b = this.clamp(this.point(e)), previousClick = this.lastRightClick, previousMiddleClick = this.lastMiddleClick;
             this.cancel();
             if (!a)
                 return;
             if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 5) {
-                if (this.button === 2) {
+                if (this.button === 1) {
+                    if (this.moved) return;
+                    const time = performance.now();
+                    if (previousMiddleClick && time - previousMiddleClick.time <= 500 && Math.hypot(b[0] - previousMiddleClick.point[0], b[1] - previousMiddleClick.point[1]) <= 6) this.clearHighlights();
+                    else this.lastMiddleClick = { time, point: b };
+                }
+                else if (this.button === 2) {
                     // Right-button dblclick events are not emitted by browsers.
                     // Defer the single-click selection so it cannot race a reset.
                     if (this.moved) return;
@@ -158,6 +167,7 @@ export class ChartInteraction {
                 }
                 return;
             }
+            if (this.button === 1) { this.highlighted(a, b); return; }
             if (this.button === 2) {
                 this.selected(a, b);
                 return;
@@ -188,7 +198,7 @@ export class ChartInteraction {
         if (automatic) { this.view = [...view]; this.sync(); }
     }
     private sync() { this.canvas.dataset.view = JSON.stringify(this.view); }
-    cancel() { this.start = undefined; this.lastRightClick = undefined; this.box.hidden = true; }
+    cancel() { this.start = undefined; this.lastRightClick = undefined; this.lastMiddleClick = undefined; this.box.hidden = true; }
     destroy() { clearTimeout(this.clickTimer); this.cancel(); this.box.remove(); }
 }
 // Intersect a rectangular brush with bounded donut sectors, including boxes

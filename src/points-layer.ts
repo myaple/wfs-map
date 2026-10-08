@@ -17,6 +17,7 @@ flat out vec3 v_color;
 uniform vec4 u_center;
 uniform vec2 u_scale;
 uniform float u_size;
+uniform bool u_highlight;
 uniform bool u_pick;
 uniform vec2 u_pickCenter;
 uniform vec2 u_pickScale;
@@ -29,7 +30,7 @@ void main() {
   gl_Position=vec4(clip,0.0,1.0);
   gl_PointSize=u_size;
   v_visible=a_visible;
-  v_color=u_colored?(u_categorical?vec3(a_bin)/255.0:(a_bin.x==255u?vec3(.5):u_palette[min(a_bin.x,63u)])):u_color;
+  v_color=u_highlight?vec3(1.,.55,0.):u_colored?(u_categorical?vec3(a_bin)/255.0:(a_bin.x==255u?vec3(.5):u_palette[min(a_bin.x,63u)])):u_color;
   uint id=uint(gl_VertexID)+1u;
   v_id=vec4(float(id&255u),float((id>>8u)&255u),float((id>>16u)&255u),float((id>>24u)&255u))/255.0;
 }`;
@@ -99,6 +100,9 @@ export class PointsLayer implements CustomLayerInterface {
     drawnLastFrame = 0;
     indices: Uint32Array | null = null;
     private uniform: Record<string, WebGLUniformLocation | null> = {};
+    highlighted: Uint32Array = new Uint32Array();
+    private visibleHighlights: Uint32Array = new Uint32Array();
+    private highlightBuffer!: WebGLBuffer;
     private framebuffer?: WebGLFramebuffer;
     private texture?: WebGLTexture;
     onAdd(map: LibreMap, gl: WebGL2RenderingContext) {
@@ -122,12 +126,13 @@ export class PointsLayer implements CustomLayerInterface {
             gl.deleteShader(s);
         if (!gl.getProgramParameter(this.program, gl.LINK_STATUS))
             throw new Error(gl.getProgramInfoLog(this.program) ?? 'Shader link failed');
-        for (const name of ['center', 'scale', 'size', 'pick', 'pickCenter', 'pickScale', 'color', 'colored', 'categorical', 'palette'])
+        for (const name of ['center', 'scale', 'size', 'highlight', 'pick', 'pickCenter', 'pickScale', 'color', 'colored', 'categorical', 'palette'])
             this.uniform[name] = gl.getUniformLocation(this.program, 'u_' + name);
         this.vao = gl.createVertexArray()!;
         this.positionBuffer = gl.createBuffer()!;
         this.indexBuffer = gl.createBuffer()!;
         this.spatialBuffer = gl.createBuffer()!;
+        this.highlightBuffer = gl.createBuffer()!;
         gl.bindVertexArray(this.vao);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, this.capacity * 16, gl.STATIC_DRAW);
@@ -155,6 +160,7 @@ export class PointsLayer implements CustomLayerInterface {
         this.mapMaskBuffer = gl.createBuffer()!;
         this.uploadMapMask();
         gl.bindVertexArray(null);
+        this.setHighlights(this.highlighted);
         this.framebuffer = undefined;
         this.texture = undefined;
         if (this.chunks.some(c => c.ellipses)) this.initializeEllipses();
@@ -219,6 +225,7 @@ export class PointsLayer implements CustomLayerInterface {
     }
     filter(indices: Uint32Array | null) {
         this.indices = indices;
+        this.setHighlights(this.highlighted);
         this.ellipses?.setFilter(indices);
         const gl = this.gl;
         gl.bindVertexArray(this.vao);
@@ -229,6 +236,37 @@ export class PointsLayer implements CustomLayerInterface {
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, 0, gl.DYNAMIC_DRAW);
         gl.bindVertexArray(null);
         this.map.triggerRepaint();
+    }
+    setHighlights(rows: Uint32Array) {
+        this.highlighted = rows;
+        const allowed = this.indices ? new Set(this.indices) : undefined;
+        this.visibleHighlights = allowed ? rows.filter(i => allowed.has(i)) : rows;
+        if (!this.gl || !this.highlightBuffer) return;
+        const gl = this.gl;
+        gl.bindVertexArray(this.vao);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.highlightBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.visibleHighlights, gl.DYNAMIC_DRAW);
+        gl.bindVertexArray(null);
+        this.map.triggerRepaint();
+    }
+    pickRectangle(a: [number, number], b: [number, number]): Uint32Array {
+        if (!this.visible || !this.count) return new Uint32Array();
+        const rect = this.map.getCanvas().getBoundingClientRect(), world = 512 * 2 ** this.map.getZoom();
+        const [cx, cy] = mercator(this.map.getCenter().lng, this.map.getCenter().lat);
+        const left = cx + (Math.min(a[0], b[0]) - rect.width / 2) / world, right = cx + (Math.max(a[0], b[0]) - rect.width / 2) / world;
+        const top = cy + (Math.min(a[1], b[1]) - rect.height / 2) / world, bottom = cy + (Math.max(a[1], b[1]) - rect.height / 2) / world;
+        const allowed = this.indices ? new Set(this.indices) : undefined, hits: number[] = [];
+        for (const chunk of this.chunks) for (let g = 0; g < chunk.groups.length; g += 6) {
+            const groups = chunk.groups;
+            if (groups[g + 2] > right || groups[g + 4] < left || groups[g + 3] > bottom || groups[g + 5] < top) continue;
+            for (let k = groups[g] - chunk.offset, end = k + groups[g + 1]; k < end; k++) {
+                const index = chunk.indices[k];
+                if (allowed && !allowed.has(index) || this.mapMask && !this.mapMask[index]) continue;
+                const i = (index - chunk.offset) * 4, p = chunk.positions, x = p[i] + p[i + 2], y = p[i + 1] + p[i + 3];
+                if (x >= left && x <= right && y >= top && y <= bottom) hits.push(index);
+            }
+        }
+        return Uint32Array.from(hits);
     }
     setColors(codes: Uint8Array | undefined, stops: readonly string[] = ['#2463d4', '#ee5539'], bins = 24, categorical = false) {
         this.ellipseStylesDirty = true;
@@ -279,7 +317,7 @@ export class PointsLayer implements CustomLayerInterface {
     ] = [0, 0], scale: [
         number,
         number
-    ] = [1, 1], ellipses = false) {
+    ] = [1, 1], ellipses = false, highlightsOnly = false) {
         if (!this.visible)
             return;
         const gl = this.gl, canvas = this.map.getCanvas(), size = this.map.getContainer().getBoundingClientRect();
@@ -288,6 +326,7 @@ export class PointsLayer implements CustomLayerInterface {
         const dpr = canvas.width / size.width;
         gl.useProgram(this.program);
         gl.uniform3f(this.uniform.color, ...this.color);
+        gl.uniform1i(this.uniform.highlight, 0);
         gl.uniform1i(this.uniform.colored, this.colorCodes ? 1 : 0);
         gl.uniform1i(this.uniform.categorical, this.categorical ? 1 : 0);
         gl.uniform3fv(this.uniform.palette, this.palette);
@@ -316,7 +355,7 @@ export class PointsLayer implements CustomLayerInterface {
         };
         const eligibleFraction = this.count ? Math.min(1,this.ellipseValidCount/this.count) * (this.maskCount === undefined ? 1 : this.maskCount/this.count) : 1;
         const budget = Math.max(2000, Math.floor(size.width * size.height / 100));
-        if (this.indices) {
+        if (!highlightsOnly && this.indices) {
             if (ellipses && !this.ellipseFullDetail) {
                 const halfX = size.width / world / 2 + this.ellipseRadius, halfY = size.height / world / 2 + this.ellipseRadius;
                 const area = (this.bounds[2]-this.bounds[0])*(this.bounds[3]-this.bounds[1]);
@@ -331,7 +370,7 @@ export class PointsLayer implements CustomLayerInterface {
                 else this.drawnLastFrame = this.indices.length;
             }
         }
-        else {
+        else if (!highlightsOnly) {
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.spatialBuffer);
             const margin = picking ? Math.max(this.pointSize, 6) : this.pointSize;
             const radius = ellipses ? this.ellipseRadius : 0;
@@ -385,10 +424,18 @@ export class PointsLayer implements CustomLayerInterface {
                 else this.drawnLastFrame = drawn;
             }
         }
+        if (highlightsOnly && this.visibleHighlights.length) {
+            gl.uniform1i(this.uniform.highlight, 1);
+            gl.uniform1f(this.uniform.size, Math.max(8, this.pointSize + 4) * dpr);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.highlightBuffer);
+            gl.drawElements(gl.POINTS, this.visibleHighlights.length, gl.UNSIGNED_INT, 0);
+        }
         gl.bindVertexArray(null);
         gl.activeTexture(gl.TEXTURE0);
         gl.enable(gl.BLEND);
     }
+    // Draw in the shared final overlay so later source layers cannot cover a highlight.
+    drawHighlights() { if (this.visibleHighlights.length && this.gl) this.draw(false, [0, 0], [1, 1], false, true); }
     render(_gl: WebGL2RenderingContext, _options: CustomRenderMethodInput) {
         this.ellipsesDrawnLastFrame = 0;
         if (this.count) {
@@ -485,6 +532,7 @@ export class PointsLayer implements CustomLayerInterface {
         gl.deleteVertexArray(this.vao);
         gl.deleteBuffer(this.positionBuffer);
         gl.deleteBuffer(this.indexBuffer);
+        gl.deleteBuffer(this.highlightBuffer);
         gl.deleteBuffer(this.spatialBuffer);
         gl.deleteBuffer(this.colorBuffer);
         gl.deleteBuffer(this.mapMaskBuffer);
@@ -493,5 +541,5 @@ export class PointsLayer implements CustomLayerInterface {
         if (this.texture)
             gl.deleteTexture(this.texture);
     }
-    get gpuBytes() { return (this.ellipses?.gpuBytes ?? 0) + this.capacity * 20 + (this.colorCodes?.byteLength ?? 0) + (this.indices?.byteLength ?? 0) + (this.mapMask?.byteLength ?? 0); }
+    get gpuBytes() { return (this.ellipses?.gpuBytes ?? 0) + this.capacity * 20 + (this.colorCodes?.byteLength ?? 0) + (this.indices?.byteLength ?? 0) + (this.mapMask?.byteLength ?? 0) + this.visibleHighlights.byteLength; }
 }

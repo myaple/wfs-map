@@ -173,6 +173,21 @@ ctx.onmessage = (event: MessageEvent) => {
             if (m.type === 'recordsExport') { const blob = await recordsCSV(localStore, rows, m.columns, m.sourceName, () => r !== recordsRevision); if (r === recordsRevision) post({ type: 'recordsExported', request: m.request, blob, total: rows.length }); }
         }).catch(e => { if (!cancelled()) post({ type: 'recordsError', request: m.request, message: (e as Error).message }); });
     }
+    if ((m.type === 'highlightRows' || m.type === 'highlightCounts') && store) {
+        const dataRevision = revision;
+        const cancelled = () => dataRevision !== revision;
+        const analysis = new Analyzer(store);
+        const task = m.type === 'highlightCounts'
+            ? analysis.highlightCounts(m.chart, m.rows, applied, cancelled)
+            : m.chart ? analysis.chartRows(m.chart, m.cells, applied, cancelled) : analysis.run(m.expression, [], cancelled).then(result => {
+                const rows = result.indices ?? Uint32Array.from({ length: store!.length }, (_, i) => i);
+                const allowed = applied ? new Set(applied) : undefined;
+                return allowed ? rows.filter(i => allowed.has(i)) : rows;
+            });
+        void task.then(result => post({ type: 'chartReply', token: m.token, result }, [result.buffer]))
+            .catch(e => post({ type: 'chartReply', token: m.token, error: (e as Error).message }));
+        return;
+    }
     if (m.type === 'inspectExpression' && store) {
         const r = revision;
         void new Analyzer(store).run(m.expression, []).then(result => {
