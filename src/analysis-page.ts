@@ -1,4 +1,5 @@
 import { configureHighlights, highlightedRows, onHighlights, replaceHighlights, forgetHighlights } from './highlights.ts';
+import { MapMeasure } from './map-measure.ts';
 import { MapCoordinates } from './map-coordinates.ts';
 import { ServerFilterPanel } from './server-filter-panel.ts';
 import { validateServerFilters, type ServerFilter } from './server-filters.ts';
@@ -44,7 +45,7 @@ $('app').innerHTML = `
 <section id="configuration" hidden></section>
 <section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · no area bound on loading.</span><button id="drawArea" type="button" aria-pressed="false">Draw load area on map</button><button id="clearArea" hidden>Clear map area</button></div><details id="advancedServerFilters" class="server-filter-panel"><summary>Advanced server filters</summary></details></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorScheme">Colour scheme</label><select id="colorScheme"></select></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply to points already loaded for this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="query-area"><span id="localAreaSummary" class="hint" role="status">All loaded map areas · right-drag a box on the map to filter all sources.</span><button id="clearLocalArea" type="button" hidden>Clear local map area</button></div><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
 
-<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><span id="drawAreaHelp" class="hint" role="status" hidden>Left-drag to draw the load area · Escape to cancel</span><button id="toggleEllipses" aria-label="Show ellipses" aria-pressed="false" title="Show ellipses"><svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><ellipse cx="11" cy="8" rx="9" ry="5" transform="rotate(-25 11 8)" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button><details id="ellipseResolution" class="ellipse-resolution"><summary aria-label="Ellipse settings" title="Ellipse settings">⚙</summary><div class="ellipse-options">
+<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><span id="drawAreaHelp" class="hint" role="status" hidden>Left-drag to draw the load area · Escape to cancel</span><button id="toggleEllipses" aria-label="Show ellipses" aria-pressed="false" title="Show ellipses"><svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><ellipse cx="11" cy="8" rx="9" ry="5" transform="rotate(-25 11 8)" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button><button id="measureMap" type="button" aria-label="Measure distance" aria-pressed="false" title="Measure distance"><svg width="22" height="18" viewBox="0 0 22 18" aria-hidden="true"><path d="M3 14 16 1 21 6 8 19Z" transform="translate(0 -2)" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m7 8 3 3m1-7 3 3m1-7 3 3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button><details id="ellipseResolution" class="ellipse-resolution"><summary aria-label="Ellipse settings" title="Ellipse settings">⚙</summary><div class="ellipse-options">
 <div class="ellipse-option"><label for="ellipseVertices">Vertices per ellipse</label><input id="ellipseVertices" type="number" min="4" max="128" step="1" value="12" aria-describedby="ellipseVerticesHint"><p id="ellipseVerticesHint" class="hint">4–128 · curved ends get more samples</p></div>
 <div class="ellipse-option"><label for="ellipseDetail">Outline detail</label><select id="ellipseDetail"><option value="auto">Automatic (fast in dense views)</option><option value="all">Every point</option></select></div>
 </div></details><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">⤢</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Middle-drag to highlight · double-middle-click to clear highlights · Click a segment · left-drag charts to zoom · right-drag to select · double-left-click to reset zoom · double-right-click to clear dataset filters</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
@@ -440,6 +441,7 @@ map.doubleClickZoom.disable();
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
 map.addControl(new MapCoordinates(), 'bottom-left');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 100 }), 'bottom-right');
+const measurement = new MapMeasure(map, $<HTMLButtonElement>('measureMap'));
 const mapPanel = document.querySelector<HTMLElement>('.map-panel')!;
 function syncEllipses() {
     const enabled = mapSettings.ellipses ?? false;
@@ -895,6 +897,7 @@ function showMetadata(data: any, source: Source) {
 }
 map.on('dblclick', e => {
     e.preventDefault();
+    if (measurement.active) return;
     const refs: RecordRef[] = [];
     for (const s of layerOrder) if (s.enabled && s.done && !s.filtering) for (const index of s.layer.pickAll(e.point.x, e.point.y)) refs.push({ sourceId: s.id, index });
     inspectionToken++; chooseRecords(refs);
@@ -1063,7 +1066,7 @@ mapCanvas.addEventListener('mousedown', e => { if (e.button === 1) { e.preventDe
 mapCanvas.addEventListener('pointerdown', e => {
     if (e.button !== 2) lastRightClick = undefined;
     if (e.button !== 1) lastMiddleClick = undefined;
-    if (geoStart || !mapReady || !(e.button === 1 || e.button === 2 || e.button === 0 && drawingLoadArea)) return;
+    if (measurement.picking || geoStart || !mapReady || !(e.button === 1 || e.button === 2 || e.button === 0 && drawingLoadArea)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     geoTarget = e.button === 0 ? 'load' : e.button === 1 ? 'highlight' : 'local';
     geoBox.dataset.action = geoTarget;
@@ -1120,7 +1123,11 @@ window.addEventListener('keydown', e => {
         cancelGeo(); armLoadArea(false); e.preventDefault(); e.stopImmediatePropagation();
     }
 }, true);
+$('measureMap').onclick = () => {
+    cancelGeo(); armLoadArea(false); measurement.toggle();
+};
 $('drawArea').onclick = () => {
+    measurement.clear();
     cancelGeo(); armLoadArea(!drawingLoadArea);
     if (drawingLoadArea) { location.hash = '#analysis'; mapCanvas.focus(); }
 };
