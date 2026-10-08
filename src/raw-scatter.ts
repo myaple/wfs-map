@@ -1,3 +1,4 @@
+import { highlightedRows, onHighlights, replaceHighlights } from './highlights.ts';
 import { transform, untransform } from './scales.ts';
 import { themeColor } from './theme.ts';
 import type { ChartResult, Expression, Axis } from './analysis.ts';
@@ -13,6 +14,9 @@ export class RawScatter {
     private gl: WebGL2RenderingContext;
     private program!: WebGLProgram;
     private buffer!: WebGLBuffer;
+    private highlightBuffer!: WebGLBuffer;
+    private highlightOffsets = new Uint32Array();
+    private stopHighlights = onHighlights(() => { this.updateHighlights(); this.draw(); });
     private result?: ChartResult;
     private observer: ResizeObserver;
     private onThemeChange = () => this.draw();
@@ -25,14 +29,14 @@ export class RawScatter {
         this.axes.setAttribute('aria-hidden', 'true');
         this.labels.className = 'raw-scatter-labels';
         this.container.append(this.canvas, this.axes, this.labels);
-        this.canvas.setAttribute('aria-label', 'Unbinned scatter plot. Left-drag to zoom, right-drag to select, double-left-click to reset zoom, double-right-click to clear dataset filters.');
+        this.canvas.setAttribute('aria-label', 'Unbinned scatter plot. Left-drag to zoom, right-drag to select, double-left-click to reset zoom, double-right-click to clear dataset filters. Middle-drag to highlight; double-middle-click to clear highlights.');
         this.canvas.tabIndex = 0;
         const gl = this.canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true })!;
         if (!gl)
             throw Error('WebGL 2 required for unbinned scatter');
         this.gl = gl;
         this.initialize();
-        this.interaction = new ChartInteraction(this.canvas, this.container, () => plotRect(this.canvas, this.result?.y?.kind === 'date', this.result?.x?.kind === 'date'), () => this.draw(), (a, b) => this.brush(a, b), p => this.pick(p), clearDatasetFilters);
+        this.interaction = new ChartInteraction(this.canvas, this.container, () => plotRect(this.canvas, this.result?.y?.kind === 'date', this.result?.x?.kind === 'date'), () => this.draw(), (a, b) => this.brush(a, b), p => this.pick(p), clearDatasetFilters, (a, b) => this.brushHighlights(a, b), () => replaceHighlights());
         this.canvas.addEventListener('pointermove', e => {
             if (!this.result?.raw)
                 return;
@@ -84,6 +88,7 @@ export class RawScatter {
         if (!gl.getProgramParameter(this.program, gl.LINK_STATUS))
             throw Error(gl.getProgramInfoLog(this.program)!);
         this.buffer = gl.createBuffer()!;
+        this.highlightBuffer = gl.createBuffer()!;
     }
     private visibleObservation(index: number, direction: number) {
         const raw = this.result?.raw;
@@ -109,6 +114,34 @@ export class RawScatter {
             return { op: 'or', children: indices.map(i => translate(axis.rules[i])) };
         };
         for (const member of members) this.select({ op: 'and', children: [axisSelection(r.x, member.x, lo[0], hi[0], bounds[0], bounds[2]), axisSelection(r.y!, member.y, lo[1], hi[1], bounds[1], bounds[3])].flatMap(e => e.op === 'and' && 'children' in e ? e.children : [e]) }, `${member.x} × ${member.y} rectangle`, member.sourceId);
+    }
+    private brushHighlights(a: Point, b: Point) {
+        const raw = this.result?.raw;
+        if (!raw) return;
+        const lo = this.interaction.data([Math.min(a[0], b[0]), Math.max(a[1], b[1])]), hi = this.interaction.data([Math.max(a[0], b[0]), Math.min(a[1], b[1])]);
+        const selected = new Map<string, Uint32Array>(), stride = raw.precise ? 4 : 2;
+        for (const range of raw.series ?? [{ sourceId: this.sourceId(), start: 0, end: raw.rows.length }]) {
+            const rows: number[] = [];
+            for (let i = range.start; i < range.end; i++) {
+                const k = i * stride, x = (raw.positions[k] + (raw.precise ? raw.positions[k + 2] : 0) + 1) / 2, y = (raw.positions[k + 1] + (raw.precise ? raw.positions[k + 3] : 0) + 1) / 2;
+                if (x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1]) rows.push(raw.rows[i]);
+            }
+            selected.set(range.sourceId, Uint32Array.from(rows));
+        }
+        replaceHighlights(selected);
+    }
+    private updateHighlights() {
+        const raw = this.result?.raw, offsets: number[] = [];
+        if (raw) for (const range of raw.series ?? [{ sourceId: this.sourceId(), start: 0, end: raw.rows.length }]) {
+            const rows = highlightedRows.get(range.sourceId);
+            if (!rows?.length) continue;
+            const selected = new Set(rows);
+            for (let i = range.start; i < range.end; i++) if (selected.has(raw.rows[i])) offsets.push(i);
+        }
+        this.highlightOffsets = Uint32Array.from(offsets);
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.highlightBuffer);
+        this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, this.highlightOffsets, this.gl.DYNAMIC_DRAW);
+        this.canvas.dataset.highlighted = String(offsets.length);
     }
     private pick(p: Point) {
         const r = this.result;
@@ -145,6 +178,7 @@ export class RawScatter {
         const gl = this.gl;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
         if (!samePositions) gl.bufferData(gl.ARRAY_BUFFER, r.raw!.positions, gl.STATIC_DRAW);
+        this.updateHighlights();
         this.draw();
     }
     private draw(picking = false) {
@@ -180,6 +214,12 @@ export class RawScatter {
             gl.uniform3f(gl.getUniformLocation(this.program, 'pointColor'), ...([1, 3, 5].map(i => parseInt(member.color.slice(i, i + 2), 16) / 255) as [number, number, number]));
             gl.drawArrays(gl.POINTS, member.start, member.end - member.start);
         } else gl.drawArrays(gl.POINTS, 0, this.result.raw.rows.length);
+        if (!picking && this.highlightOffsets.length) {
+            gl.uniform3f(gl.getUniformLocation(this.program, 'pointColor'), 1, .55, 0);
+            gl.uniform1f(gl.getUniformLocation(this.program, 'size'), Math.max(8, this.pointSize + 4) * d);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.highlightBuffer);
+            gl.drawElements(gl.POINTS, this.highlightOffsets.length, gl.UNSIGNED_INT, 0);
+        }
         if (!picking && this.highlight !== undefined) {
             const range = members?.find(s => s.sourceId === this.highlight!.sourceId);
             const position = members ? range ? this.result.raw.rows.subarray(range.start, range.end).indexOf(this.highlight.index) : -1 : this.highlight.sourceId === this.sourceId() ? this.result.raw.rows.indexOf(this.highlight.index) : -1;
@@ -200,5 +240,5 @@ export class RawScatter {
     }
     setPointSize(size: number) { if (this.pointSize === size) return; this.pointSize = size; this.draw(); }
     fit() { this.interaction.reset(); }
-    destroy() { window.removeEventListener('recordinspection', this.onInspection); window.removeEventListener('themechange', this.onThemeChange); this.observer.disconnect(); this.interaction.destroy(); this.gl.deleteBuffer(this.buffer); this.gl.deleteProgram(this.program); this.result = undefined; this.container.remove(); this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
+    destroy() { this.stopHighlights(); this.gl.deleteBuffer(this.highlightBuffer); window.removeEventListener('recordinspection', this.onInspection); window.removeEventListener('themechange', this.onThemeChange); this.observer.disconnect(); this.interaction.destroy(); this.gl.deleteBuffer(this.buffer); this.gl.deleteProgram(this.program); this.result = undefined; this.container.remove(); this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
 }

@@ -1013,3 +1013,5 @@ html { scroll-padding-bottom: var(--workspace-dock-height, 48px); }
   border-color: var(--text);
   font: 11px/1.5 ui-monospace, monospace;
 }
+
+.chart-brush[data-action="highlight"], .geo-box[data-action="highlight"] { border-color: #ff8c00; background: #ff8c0026; }

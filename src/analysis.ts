@@ -426,6 +426,57 @@ export class Analyzer {
         }
         return mask;
     }
+    private highlightAxis(axis: Axis) {
+        const column = this.store.fields.findIndex(f => f.name === axis.field);
+        if (column < 0) throw Error(`Unknown chart attribute ${axis.field}`);
+        const c = this.store.columns[column];
+        const lookup = new Map(axis.rules.flatMap((rule, i) => 'field' in rule && rule.op === 'eq' ? [[String(rule.value), i] as const] : []));
+        const other = axis.rules.findIndex(rule => 'field' in rule && rule.op === 'notin');
+        const bin = (v: number) => {
+            if (c.field.kind === 'string') return v < 0 ? -1 : lookup.get(c.dictionary[v]) ?? other;
+            if (!Number.isFinite(v) || axis.scale === 'log10' && v <= 0) return -1;
+            if (c.field.kind === 'boolean') return v;
+            const ranges = axis.ranges;
+            if (!ranges || !axis.labels.length) return -1;
+            let lo = 0, hi = axis.labels.length;
+            while (lo + 1 < hi) { const mid = (lo + hi) >>> 1; if (v >= ranges[mid]) lo = mid; else hi = mid; }
+            return lo;
+        };
+        return { column, bin };
+    }
+    async chartRows(chart: ChartResult, cells: number[], applied: Uint32Array | null, cancelled: () => boolean = () => false) {
+        const x = this.highlightAxis(chart.x), y = chart.y ? this.highlightAxis(chart.y) : undefined;
+        const selected = new Set(cells), allowed = applied ? new Set(applied) : undefined, rows: number[] = [];
+        for (const chunk of this.store.chunks) for (let base = 0; base < chunk.length; base += BLOCK) {
+            for (let i = base, end = Math.min(chunk.length, base + BLOCK); i < end; i++) {
+                const row = chunk.offset + i;
+                if (allowed && !allowed.has(row)) continue;
+                const xb = x.bin(chunk.values[x.column][i]), yb = y ? y.bin(chunk.values[y.column][i]) : 0;
+                if (xb >= 0 && yb >= 0 && selected.has(yb * chart.x.labels.length + xb)) rows.push(row);
+            }
+            await yieldEvents(); if (cancelled()) throw Error('Superseded');
+        }
+        return Uint32Array.from(rows);
+    }
+    /** Project row identities onto the exact axes of an existing binned plot. */
+    async highlightCounts(chart: ChartResult, rows: Uint32Array, applied: Uint32Array | null, cancelled: () => boolean = () => false) {
+        const x = this.highlightAxis(chart.x), y = chart.y ? this.highlightAxis(chart.y) : undefined;
+        const counts = new Uint32Array(chart.counts.length), allowed = applied ? new Set(applied) : undefined;
+        // Sorted IDs permit one pass through store chunks, independent of dataset size.
+        const sorted = rows.slice().sort();
+        let chunkIndex = 0;
+        for (let k = 0; k < sorted.length; k++) {
+            const row = sorted[k];
+            if (allowed && !allowed.has(row)) continue;
+            while (chunkIndex < this.store.chunks.length && row >= this.store.chunks[chunkIndex].offset + this.store.chunks[chunkIndex].length) chunkIndex++;
+            const chunk = this.store.chunks[chunkIndex];
+            if (!chunk || row < chunk.offset) continue;
+            const i = row - chunk.offset, xb = x.bin(chunk.values[x.column][i]), yb = y ? y.bin(chunk.values[y.column][i]) : 0;
+            if (xb >= 0 && yb >= 0) counts[yb * chart.x.labels.length + xb]++;
+            if (k % BLOCK === 0) { await yieldEvents(); if (cancelled()) throw Error('Superseded'); }
+        }
+        return counts;
+    }
     async run(expression: Expression, specs: ChartSpec[], cancelled: () => boolean = () => false, domains?: { x: ChartDomain; y?: ChartDomain }, timeline?: TimelineSelection) {
         if (specs.length > 12)
             throw new Error('Up to 12 charts are supported');
