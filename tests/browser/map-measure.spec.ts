@@ -69,6 +69,8 @@ for (const deviceScaleFactor of [1, 2]) test.describe(`measure at DPR ${deviceSc
         if (deviceScaleFactor === 1) await page.locator('.map-panel').screenshot({ path: 'docs/screenshots/map-measure.png' });
         await page.locator('#enlargeMap').click();
         await expect(dialog(page)).toBeVisible(); await expect(dialog(page)).toHaveText(locked!);
+        const popupBounds = (await dialog(page).boundingBox())!, legendBounds = (await page.locator('#mapLegend').boundingBox())!;
+        expect(popupBounds.y).toBeGreaterThan(legendBounds.y + legendBounds.height);
         if (deviceScaleFactor === 1) await page.locator('.map-dialog').screenshot({ path: 'docs/screenshots/map-measure-enlarged.png' });
         await page.setViewportSize({ width: 390, height: 844 });
         await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; window.dispatchEvent(new Event('themechange')); });

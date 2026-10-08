@@ -88,6 +88,7 @@ export class MapMeasure {
     };
 
     private render = () => {
+        if (!this.active) return;
         const end = this.end ?? this.preview;
         const a = this.start && this.map.project(this.start);
         const b = end && this.map.project(end);

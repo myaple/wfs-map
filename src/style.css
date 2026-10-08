@@ -1025,7 +1025,7 @@ html { scroll-padding-bottom: var(--workspace-dock-height, 48px); }
 .map-measure-line circle { fill: var(--surface); stroke: var(--text); stroke-width: 2; }
 .map-measure-help, .map-measure-dialog { position: absolute; top: 10px; left: 10px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 3px 12px #0002; }
 .map-measure-help { padding: 8px 12px; font-size: 12px; }
-.map-measure-dialog { width: 230px; max-width: calc(100% - 20px); padding: 12px; pointer-events: auto; }
+.map-measure-dialog { top: auto; left: auto; right: 10px; bottom: 80px; width: 230px; max-width: calc(100% - 20px); padding: 12px; pointer-events: auto; }
 .map-measure-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .map-measure-heading button { padding: 0; width: 26px; height: 26px; font-size: 20px; line-height: 1; }
 .map-measure-dialog dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; margin: 12px 0 0; font-size: 12px; }
