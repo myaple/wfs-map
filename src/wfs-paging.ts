@@ -9,20 +9,30 @@ export async function* parallelPages<T>(options: {
         throw Error('Maximum parallel requests must be a whole number from 1 to 100.');
     type Result = { page: T } | { error: unknown };
     const pending = new Map<number, { controller: AbortController; requested: number; stride: number; result: Promise<Result> }>();
-    let offset = 0, next = 0, stride = pageSize;
+    let offset = 0, next = 0, stride = pageSize, boundary = limit, generation = 0;
     const fill = (maximum: number) => {
-        while (pending.size < maximum && next < limit) {
+        while (pending.size < maximum && next < limit && next <= boundary) {
             const at = next, requested = Math.min(pageSize, limit - at), step = Math.min(stride, limit - at);
-            const controller = new AbortController();
+            const controller = new AbortController(), epoch = generation;
             // Attach rejection handling at launch, including synchronous callback errors.
             const result: Promise<Result> = Promise.resolve().then(() => fetchPage(at, requested, controller.signal))
-                .then(page => ({ page }), error => ({ error }));
+                .then(page => {
+                    const count = featureCount(page);
+                    if (epoch === generation && (!count || (options.stopOnShortPage && count < requested))) {
+                        // A later page can reveal the end before earlier transfers finish.
+                        // Keep those earlier pages, but stop launching/retain no later work.
+                        boundary = Math.min(boundary, at);
+                        for (const [offset, request] of pending) if (offset > boundary) request.controller.abort();
+                    }
+                    return { page };
+                }).catch(error => ({ error }));
             pending.set(at, { controller, requested, stride: step, result });
             next += step;
         }
     };
     const discard = async () => {
         const requests = [...pending.values()];
+        generation++; boundary = limit;
         pending.clear();
         for (const request of requests) request.controller.abort();
         // Drain aborted requests before starting replacement offsets, maintaining the cap.

@@ -61,6 +61,13 @@ for (const short of [false, true]) test(`ordered ${short ? 'short' : 'empty'} en
     else assert.ok(s.requests.some(r => r.offset === 3));
 });
 
+test('an out-of-order empty page stops new speculation while earlier pages finish', async () => {
+    const s = server({ size: 4, delay: o => o === 2 ? 25 : o >= 6 ? 100 : 1 });
+    assert.deepEqual(rows(await collect({ fetchPage: s.fetchPage, maxParallelRequests: 3 })), expected(4));
+    assert.deepEqual(s.requests.map(r => r.offset), [0, 2, 4, 6]);
+    assert.ok(s.aborted.includes(6)); assert.equal(s.active, 0);
+});
+
 test('short mode retains the first short page and does not request another', async () => {
     const s = server({ size: 100, cap: () => 1 });
     assert.deepEqual(rows(await collect({ fetchPage: s.fetchPage, stopOnShortPage: true })), [0]);
