@@ -7,7 +7,7 @@ import { defaultConfig } from '../../src/source-settings.ts';
 const headers = (user = 'alice') => ({ Cookie: `wfs_test_user=${user}`, 'X-Workspace-Request': '1' });
 async function create(request: APIRequestContext, state = emptyState(), user = 'alice') {
     const response = await request.post('/api/analyses', { headers: headers(user), data: { name: `E2E ${randomUUID()}`, state } });
-    expect(response.status()).toBe(200);
+    expect(response.status(), await response.text()).toBe(200);
     return await response.json() as AnalysisDocument;
 }
 async function remove(request: APIRequestContext, id: string, user = 'alice') {
@@ -70,6 +70,39 @@ test('real API accepts normal GETs and empty mutations, enforces ownership and r
         expect((await request.get('/api/analyses/' + copy.id, { headers: headers('alice') })).status()).toBe(404);
         expect((await request.delete(path + '/share', { headers: headers() })).status()).toBe(200);
         expect((await request.get(sharedPath, { headers: headers('bob') })).status()).toBe(404);
+    } finally {
+        await remove(request, doc.id);
+        if (copy) await remove(request, copy.id, 'bob');
+    }
+});
+
+test('remote saves, sharing and copies retain per-source parallel request limits', async ({ request }) => {
+    const state = wfsState(7);
+    state.settings.sources[0].config.maxParallelRequests = '3';
+    state.settings.sources.push({ id: 'second', name: 'Second WFS', enabled: false, config: { ...state.settings.sources[0].config, maxParallelRequests: defaultConfig.maxParallelRequests, url: '/wfs', layer: 'demo:points' } });
+    const limits = (state: AnalysisDocument['state']) => state.settings.sources.map(s => s.config.maxParallelRequests);
+    const doc = await create(request, state), path = '/api/analyses/' + doc.id;
+    let copy: AnalysisDocument | undefined;
+    try {
+        expect(limits(doc.state)).toEqual(['3', '10']);
+        expect(limits((await (await request.get(path, { headers: headers() })).json()).state)).toEqual(['3', '10']);
+        state.settings.sources[0].config.maxParallelRequests = '1';
+        const updated = await request.put(path, { headers: headers(), data: { name: doc.name, state, revision: doc.revision } });
+        expect(updated.status(), await updated.text()).toBe(200);
+        const saved = await updated.json() as AnalysisDocument;
+        expect(limits(saved.state)).toEqual(['1', '10']);
+        state.settings.sources[0].config.maxParallelRequests = '101';
+        const rejected = await request.put(path, { headers: headers(), data: { name: doc.name, state, revision: saved.revision } });
+        expect(rejected.status()).toBe(400);
+        expect((await (await request.get(path, { headers: headers() })).json()).revision).toBe(saved.revision);
+        const share = await request.post(path + '/share', { headers: headers() });
+        expect(share.status()).toBe(200);
+        const shared = await request.get('/api/shared/' + (await share.json()).token, { headers: headers('bob') });
+        expect(shared.status()).toBe(200);
+        const sharedState = (await shared.json()).state;
+        expect(limits(sharedState)).toEqual(['1', '10']);
+        copy = await create(request, sharedState, 'bob');
+        expect(limits(copy.state)).toEqual(['1', '10']);
     } finally {
         await remove(request, doc.id);
         if (copy) await remove(request, copy.id, 'bob');
