@@ -7,6 +7,7 @@ import type { QueryBounds } from './wfs-query.ts';
 import { Analyzer, all } from './analysis.ts';
 import { timeField } from './timeline-data.ts';
 import { decodePage, countFrom, inferFields, packPositions, latitudeClampWarning, spatialPage, wfsURL, type Field, type Rule } from './data.ts';
+import { parallelPages } from './wfs-paging.ts';
 import { Store } from './store.ts';
 import { RecordsIndex, recordsCSV } from './records.ts';
 import { joinSnapshot } from './derived-datasets.ts';
@@ -19,6 +20,7 @@ type Config = EllipseConfig & {
     srs: string;
     axis: 'xy' | 'yx';
     pageSize: number;
+    maxParallelRequests?: number;
     stopOnShortPage?: boolean;
     limit: number;
     sort: string;
@@ -31,10 +33,10 @@ let store: Store | undefined, revision = 0, colorRevision = 0, mapRevision = 0, 
 const chartRevisions = new Map<string, number>();
 let applied: Uint32Array | null = null, records: RecordsIndex | undefined, recordsRevision = 0;
 function post(message: unknown, transfers: Transferable[] = []) { ctx.postMessage(message, transfers); }
-async function fetchText(url: string) {
+async function fetchText(url: string, signal?: AbortSignal) {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 120000);
     try {
-        const r = await fetch(url, { signal: controller.signal, credentials: 'same-origin' });
+        const r = await fetch(url, { signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal, credentials: 'same-origin' });
         if (!r.ok)
             throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 300)}`);
         return await r.text();
@@ -68,36 +70,27 @@ async function load(c: Config) {
     // Start small when hits are unavailable and let the map grow up to the limit.
     post({ type: 'init', capacity: Math.min(Math.max(total ?? c.pageSize, c.pageSize), c.limit), limit: c.limit, total, warning });
     let loaded = 0, pages = 0, parseMs = 0, bytes = 0, previousSignature = '', clamped = 0, invalidEllipses = 0;
-    const getPage = (offset: number) => fetchText(wfsURL(c.url, c.version, 'GetFeature', { ...common, outputFormat: c.format, startIndex: String(offset), [countParam]: String(Math.min(c.pageSize, c.limit - offset)) }));
-    // One bounded lookahead request overlaps server generation/transfer with column packing.
-    // Wrap rejections immediately so a failing prefetched request is never unhandled.
-    let pending: Promise<{
-        text: string;
-    } | {
-        error: unknown;
-    }> | undefined;
-    const prefetch = (offset: number) => getPage(offset).then(text => ({ text }), error => ({ error }));
-    while (loaded < c.limit) {
-        const response = await (pending ?? prefetch(loaded));
-        pending = undefined;
-        if ('error' in response)
-            throw response.error;
-        const text = response.text;
-        bytes += new TextEncoder().encode(text).byteLength;
-        const pstart = performance.now(), page = decodePage(text, c.axis);
-        if (!page.features.length) break;
-        const requested = Math.min(c.pageSize, c.limit - loaded);
-        if (page.features.length > requested)
-            throw new Error('Server ignored the requested page count');
+    const maxParallelRequests = c.maxParallelRequests ?? 10;
+    for await (const { page, offset } of parallelPages({
+        pageSize: c.pageSize, limit: c.limit, maxParallelRequests, stopOnShortPage: c.stopOnShortPage,
+        fetchPage: async (offset, requested, signal) => {
+            const text = await fetchText(wfsURL(c.url, c.version, 'GetFeature', { ...common, outputFormat: c.format, startIndex: String(offset), [countParam]: String(requested) }), signal);
+            // Include completed speculative transfers/decoding in load metrics too.
+            bytes += new TextEncoder().encode(text).byteLength;
+            const pstart = performance.now(), page = decodePage(text, c.axis);
+            parseMs += performance.now() - pstart;
+            return page;
+        },
+        featureCount: page => page.features.length,
+    })) {
+        const pstart = performance.now();
         if (page.numberMatched !== undefined) total = page.numberMatched;
         const signature = JSON.stringify([page.features[0], page.features.at(-1)]);
         if (pages > 0 && signature === previousSignature)
             throw new Error('Server repeated a page; startIndex is not supported');
         previousSignature = signature;
-        const next = loaded + page.features.length;
-        const lastPage = c.stopOnShortPage && page.features.length < requested;
-        if (!lastPage && next < c.limit)
-            pending = prefetch(next);
+        // Only ordered, contiguous pages reach Store or the GPU.
+        loaded = offset;
         if (!store) {
             store = new Store(inferFields(page.features, c.fields));
             post({ type: 'fields', fields: store.fields });
@@ -111,7 +104,6 @@ async function load(c: Config) {
         loaded += page.features.length;
         pages++;
         post({ type: 'progress', loaded, total: total === undefined ? undefined : Math.max(loaded, total), pages, bytes, parseMs, elapsedMs: performance.now() - start });
-        if (lastPage) break;
     }
     // The default requires an empty page; live feeds can opt into short-page completion.
     // Reported counts never stop pagination in either mode.

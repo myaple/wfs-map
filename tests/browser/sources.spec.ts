@@ -113,7 +113,13 @@ test('sources with different schemas expose only their own fields and counts', a
     await page.locator('#updateSource').click();
     await page.locator('#saveSettings').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.sources[1].metrics.analysisCharts);
-    expect(offsets).toEqual([0, 2]);
+    // Parallel paging can speculatively request up to ten pages after the first.
+    // Only rows before the first empty page may enter the dataset.
+    expect(offsets.slice(0, 2)).toEqual([0, 2]);
+    expect(offsets.length).toBeLessThanOrEqual(11);
+    expect(new Set(offsets).size).toBe(offsets.length);
+    expect(offsets.every(offset => offset >= 0 && offset <= 20 && offset % 2 === 0)).toBe(true);
+    expect(await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].loaded)).toBe(2);
     await navigate(page, 'analysis');
     const id = await page.evaluate(() => (window as any).__WFS_MAP__.sources[1].id);
     await openFilters(page);

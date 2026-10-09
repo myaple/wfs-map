@@ -204,6 +204,7 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                 "axis",
                 "sort",
                 "pageSize",
+                "maxParallelRequests",
                 "pagingEnd",
                 "limit",
                 "timeField",
@@ -230,6 +231,14 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
             .is_some_and(|value| !matches!(value.as_str(), Some("empty" | "short")))
         {
             return Err("Invalid WFS paging completion");
+        }
+        if c.get("maxParallelRequests").is_some_and(|value| {
+            !value
+                .as_str()
+                .and_then(|s| s.trim().parse::<f64>().ok())
+                .is_some_and(|n| (1.0..=100.0).contains(&n) && n.fract() == 0.0)
+        }) {
+            return Err("Invalid maximum parallel requests");
         }
         let ellipse_fields = [
             "ellipseMajorField",
@@ -570,6 +579,26 @@ mod tests {
         }
         v["settings"]["sources"][0]["config"]["pagingEnd"] = "other".into();
         assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn validates_parallel_request_limits_and_accepts_older_configs() {
+        for source_type in ["wfs", "csv"] {
+            let mut v = state();
+            v["settings"]["sources"] = serde_json::json!([{"id":"source","name":"Source","enabled":true,"config":{"type":source_type}}]);
+            assert!(validate(&v).is_ok());
+            for limit in ["1", "3", "10", "100", "1.0", "1e1"] {
+                v["settings"]["sources"][0]["config"]["maxParallelRequests"] = limit.into();
+                assert!(validate(&v).is_ok(), "Rejected valid limit {limit}");
+            }
+            for limit in ["", "0", "-1", "1.5", "101", "NaN", "inf", "payload"] {
+                v["settings"]["sources"][0]["config"]["maxParallelRequests"] = limit.into();
+                assert!(validate(&v).is_err(), "Accepted invalid limit {limit}");
+            }
+            for limit in [serde_json::json!(10), Value::Null, serde_json::json!(true)] {
+                v["settings"]["sources"][0]["config"]["maxParallelRequests"] = limit;
+                assert!(validate(&v).is_err());
+            }
+        }
     }
     #[test]
     fn ellipse_settings_allow_only_configuration() {
