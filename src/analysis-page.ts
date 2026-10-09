@@ -1,6 +1,7 @@
 import { configureHighlights, highlightedRows, onHighlights, replaceHighlights, forgetHighlights } from './highlights.ts';
 import { MapMeasure } from './map-measure.ts';
 import { MapCoordinates } from './map-coordinates.ts';
+import { fitMapPanel } from './map-layout.ts';
 import { ServerFilterPanel } from './server-filter-panel.ts';
 import { validateServerFilters, type ServerFilter } from './server-filters.ts';
 import { sharedDomain, combineSeries, seriesColors } from './multi-charts.ts';
@@ -443,6 +444,7 @@ map.addControl(new MapCoordinates(), 'bottom-left');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 100 }), 'bottom-right');
 const measurement = new MapMeasure(map, $<HTMLButtonElement>('measureMap'));
 const mapPanel = document.querySelector<HTMLElement>('.map-panel')!;
+fitMapPanel(mapPanel);
 function syncEllipses() {
     const enabled = mapSettings.ellipses ?? false;
     const toggle = $<HTMLButtonElement>('toggleEllipses');
