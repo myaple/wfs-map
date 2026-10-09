@@ -29,7 +29,7 @@ for (const format of ['json', 'gml']) for (const scenario of cases) test(`${form
     const limit = scenario.limit ?? 12;
     await page.addInitScript(({ config, format, limit, short, version, ellipses }) => localStorage.setItem('wfs-settings', JSON.stringify({ sources: [
         { id: 'paged', name: 'Paged points', enabled: true, config: { ...config, url: '/paging-wfs', layer: 'demo:points',
-            format: format === 'json' ? 'application/json' : 'application/gml+xml; version=3.2', sort: 'value', pageSize: '2', limit: String(limit), pagingEnd: short ? 'short' : 'empty', version, ...(ellipses ? { ellipseMajorField: 'major', ellipseMinorField: 'minor', ellipseOrientationField: 'angle', ellipseMajorUnit: 'nm', ellipseMinorUnit: 'm' } : {}) } },
+            format: format === 'json' ? 'application/json' : 'application/gml+xml; version=3.2', sort: 'value', pageSize: '2', maxParallelRequests: '1', limit: String(limit), pagingEnd: short ? 'short' : 'empty', version, ...(ellipses ? { ellipseMajorField: 'major', ellipseMinorField: 'minor', ellipseOrientationField: 'angle', ellipseMajorUnit: 'nm', ellipseMinorUnit: 'm' } : {}) } },
     ], background: { enabled: false, url: '', attribution: '' } })), { config: defaultConfig, format, limit, short: scenario.short, version: scenario.version ?? '2.0.0', ellipses: scenario.ellipses });
     await page.route('**/paging-wfs?*', async route => {
         const params = new URL(route.request().url()).searchParams;
@@ -102,7 +102,7 @@ for (const failure of ['repeated page', 'duplicate ID', 'ignored count']) test(`
 test('paging completion is per source, defaults for older settings, and persists through editing and reload', async ({ page }) => {
     await page.addInitScript(config => {
         // An older saved source has no pagingEnd setting.
-        const { pagingEnd, ...legacy } = config;
+        const { pagingEnd, maxParallelRequests, ...legacy } = config;
         if (!localStorage.getItem('wfs-settings')) localStorage.setItem('wfs-settings', JSON.stringify({ sources: [
             { id: 'live', name: 'Live feed', enabled: false, config: { ...legacy, url: '/wfs', layer: 'demo:points' } },
             { id: 'capped', name: 'Capped server', enabled: false, config: { ...legacy, url: '/wfs', layer: 'demo:points' } },
@@ -113,16 +113,20 @@ test('paging completion is per source, defaults for older settings, and persists
     await page.getByRole('button', { name: 'Configure Live feed', exact: true }).click();
     await page.locator('#wfsCompatibility > summary').click();
     await expect(page.getByLabel('Stop paging', { exact: true })).toHaveValue('empty');
+    await expect(page.getByLabel('Maximum parallel requests', { exact: true })).toHaveValue('10');
+    await page.getByLabel('Maximum parallel requests', { exact: true }).fill('3');
     await page.getByLabel('Stop paging', { exact: true }).selectOption('short');
     await page.locator('#updateSource').click();
     await page.locator('#saveSettings').click();
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('wfs-settings')!).sources.map((s: any) => s.config.pagingEnd))).toEqual(['short', 'empty']);
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('wfs-settings')!).sources.map((s: any) => s.config.maxParallelRequests))).toEqual(['3', '10']);
     await page.reload();
     await navigate(page, 'configuration');
     for (const [name, mode] of [['Live feed', 'short'], ['Capped server', 'empty']]) {
         await page.getByRole('button', { name: 'Configure ' + name, exact: true }).click();
         await page.locator('#wfsCompatibility > summary').click();
         await expect(page.getByLabel('Stop paging', { exact: true })).toHaveValue(mode);
+        await expect(page.getByLabel('Maximum parallel requests', { exact: true })).toHaveValue(name === 'Live feed' ? '3' : '10');
         await page.locator('#closeSource').click();
     }
 });

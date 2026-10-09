@@ -49,8 +49,10 @@ test('shared local map bounds persist separately from load bounds and source OR 
 });
 
 test('WFS paging completion survives saved and shared analysis serialization', () => {
-    const settings = { sources: [{ id: 'wfs', name: 'Live feed', enabled: true, config: { ...defaultConfig, pagingEnd: 'short' } }], background: { url: '', attribution: '', enabled: false } };
+    const settings = { sources: [{ id: 'wfs', name: 'Live feed', enabled: true, config: { ...defaultConfig, pagingEnd: 'short', maxParallelRequests: '4' } }], background: { url: '', attribution: '', enabled: false } };
     const saved = configurationState(settings, { choice: 'all', bounds: {} }, []);
     assert.equal(saved.settings.sources[0].config.pagingEnd, 'short');
     assert.equal(localSettings(saved).sources[0].config.pagingEnd, 'short');
+    assert.equal(saved.settings.sources[0].config.maxParallelRequests, '4');
+    assert.equal(localSettings(saved).sources[0].config.maxParallelRequests, '4');
 });
