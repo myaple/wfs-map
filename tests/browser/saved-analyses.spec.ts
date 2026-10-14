@@ -2,12 +2,13 @@ import { navigate } from '../navigation.ts';
 import { test, expect, type BrowserContext } from '@playwright/test';
 import { defaultConfig } from '../../src/source-settings.ts';
 import { configurationState, emptyState, type AnalysisDocument } from '../../src/analysis-state.ts';
-async function service(context: BrowserContext, initial: AnalysisDocument[] = []) {
+async function service(context: BrowserContext, initial: AnalysisDocument[] = [], siteConfig = {}) {
     const docs = new Map(initial.map(d => [d.id, structuredClone(d)])); const payloads: string[] = []; let next = 0;
     await context.route('**/api/**', async route => {
         const request = route.request(), path = new URL(request.url()).pathname.slice(4), method = request.method();
         if (path.startsWith('/test-wfs')) return route.continue();
         const send = (value: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+        if (path === '/site-config') return send(siteConfig);
         if (path === '/me') return send({ user: 'analyst' });
         if (method === 'GET' && path === '/analyses') return send([...docs.values()].map(({ state, readOnly, ...rest }) => rest));
         if (method === 'POST' && path === '/analyses') {
@@ -45,6 +46,34 @@ test('landing selector creates named analyses and opens the configured data sour
     await page.getByLabel('New analysis name').fill('Morning review'); await page.getByRole('button', { name: 'Create analysis' }).click();
     await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue('Morning review');
     expect(db.docs.get('created-1')?.state.settings.sources).toHaveLength(0);
+    expect(db.docs.get('created-1')?.state.settings.background).toEqual({ url: '', attribution: '', enabled: false });
+});
+test('every new analysis gets the deployment basemap without importing browser defaults', async ({ context, page }) => {
+    const background = { url: '/tiles/{z}/{x}/{y}.png', attribution: 'Internal mapping', enabled: true };
+    const existing = document('existing', 0);
+    existing.state.settings.background = { url: '/saved-tiles/{z}/{x}/{y}.png', attribution: 'Saved map', enabled: false };
+    const db = await service(context, [existing], { defaultBasemapUrl: background.url, defaultBasemapAttribution: background.attribution });
+    await context.addInitScript(settings => {
+        if (!localStorage.getItem('wfs-settings')) localStorage.setItem('wfs-settings', JSON.stringify(settings));
+    }, document('browser').state.settings);
+    await context.route('**/tiles/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jD1sAAAAASUVORK5CYII=', 'base64') }));
+    for (const name of ['First analysis', 'Second analysis']) {
+        await page.goto('/');
+        await expect(page.getByRole('checkbox')).toHaveCount(0);
+        await page.getByLabel('New analysis name').fill(name);
+        await page.getByRole('button', { name: 'Create analysis' }).click();
+        await expect(page.getByLabel('Analysis name', { exact: true })).toHaveValue(name);
+        await expect(page.locator('#basemap')).toBeChecked();
+        const saved = [...db.docs.values()].find(d => d.name === name)!;
+        expect(saved.state.settings.sources).toEqual([]);
+        expect(saved.state.settings.background).toEqual(background);
+        await page.reload();
+        await expect(page.locator('#basemap')).toBeChecked();
+    }
+    await page.goto('/?analysis=existing#configuration');
+    await expect(page.locator('#basemap')).not.toBeChecked();
+    const settings = await page.evaluate(() => JSON.parse(localStorage.getItem('wfs-analysis-settings:analyst:existing')!));
+    expect(settings.background).toEqual(existing.state.settings.background);
 });
 test('different tabs keep separate analyses and saves detect concurrent edits of the same analysis', async ({ context, page }) => {
     const db = await service(context, [document('alpha', 7), document('beta', 11)]);

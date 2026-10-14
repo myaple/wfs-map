@@ -38,6 +38,7 @@ export function localSettings(state: AnalysisState): Settings {
     if (state.schemaVersion !== 1) throw Error('Unsupported analysis version.');
     return { ...structuredClone(state.settings), sources: state.settings.sources.map(s => ({ ...structuredClone(s), config: { ...defaultConfig, ...s.config, csvText: '' } })) };
 }
-export function emptyState(): AnalysisState {
-    return configurationState({ sources: [], background: { url: '', attribution: '', enabled: false } }, { choice: '24', bounds: {} }, []);
+export function emptyState(defaultBasemapUrl = '', defaultBasemapAttribution = ''): AnalysisState {
+    const url = defaultBasemapUrl.trim();
+    return configurationState({ sources: [], background: { url, attribution: url ? defaultBasemapAttribution : '', enabled: !!url } }, { choice: '24', bounds: {} }, []);
 }

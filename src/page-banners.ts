@@ -1,9 +1,7 @@
+import type { SiteConfig } from './site-config.ts';
 /** Deployment-wide text, kept outside #app so page rendering cannot remove it. */
-export async function mountPageBanners() {
+export function mountPageBanners(config: SiteConfig) {
     try {
-        const response = await fetch('/api/site-config', { cache: 'no-store' });
-        if (!response.ok) return;
-        const config = await response.json();
         if (typeof config.bannerText !== 'string' || !config.bannerText.trim()) return;
         const text = config.bannerText.replace(/[\r\n\u2028\u2029]+/g, ' ');
         const background = typeof config.bannerBackground === 'string' && CSS.supports('color', config.bannerBackground)

@@ -186,7 +186,7 @@ Kubernetes objects extensible.
 | Naming and metadata | `nameOverride`, `fullnameOverride`, `namespaceOverride`, `commonLabels`, `commonAnnotations`, deployment/pod/service/ingress/ServiceAccount metadata |
 | Image | `image.*`, `global.imageRegistry`, `global.imagePullSecrets` |
 | Replicas and rollout | `replicaCount`, `revisionHistoryLimit`, `updateStrategy`, `minReadySeconds` |
-| Runtime | `app.containerPort`, `bindAddress`, `assetDir`, `auth.*`, `banner.text/background`, `extraConfig` |
+| Runtime | `app.containerPort`, `bindAddress`, `assetDir`, `auth.*`, `banner.text/background`, `defaultBasemap.url/attribution`, `extraConfig` |
 | Database | `externalDatabase.*`, existing URI/password Secrets, TLS mode and libpq parameters |
 | Security | `podSecurityContext`, `containerSecurityContext`, `serviceAccount.*`, `automountServiceAccountToken` |
 | Container | `resources`, `command`, `args`, `workingDir`, `lifecycleHooks`, `gracefulShutdown`, `terminationGracePeriodSeconds` |
@@ -257,3 +257,5 @@ and invalid configuration variants, validates native resources against
 Kubernetes 1.30 schemas, and packages the chart. CNPG custom resources are
 render-tested separately; their CRDs/operator validate them in the cluster.
 No live cluster installation is performed by these tests.
+
+Set `app.defaultBasemap.url` to an HTTP(S) or relative XYZ tile URL containing `{z}`, `{x}`, and `{y}` to automatically populate and enable the basemap for every new named analysis. `app.defaultBasemap.attribution` supplies optional attribution. These map to `DEFAULT_BASEMAP_URL` and `DEFAULT_BASEMAP_ATTRIBUTION` at runtime. An empty URL uses the offline grid. Existing analyses retain their saved basemaps.

@@ -24,6 +24,8 @@ async fn ownership_revisions_sharing_and_configuration_only_storage() {
     let config: Value = config.0.into_body().into_json().await.unwrap();
     assert!(config["bannerText"].is_string());
     assert!(config["bannerBackground"].is_string());
+    assert!(config["defaultBasemapUrl"].is_string());
+    assert!(config["defaultBasemapAttribution"].is_string());
     client
         .get("/api/me")
         .header("x-analyst-id", &alice)

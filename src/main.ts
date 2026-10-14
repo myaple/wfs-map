@@ -3,9 +3,9 @@ import { formatUTC } from './time.ts';
 import './style.css';
 import { mountPageBanners } from './page-banners.ts';
 import { createAnalysis, getAnalysis, listAnalyses, api, saveAnalysis } from './analyses-api.ts';
-import { emptyState, configurationState } from './analysis-state.ts';
+import { emptyState } from './analysis-state.ts';
 import { prepareAnalysis } from './saved-analysis.ts';
-import { readSettings } from './source-settings.ts';
+import { readSiteConfig } from './site-config.ts';
 initializeTheme();
 const root = document.getElementById('app')!;
 const params = new URLSearchParams(location.search);
@@ -18,15 +18,13 @@ async function selector() {
     const form = el('form'); form.className = 'row';
     const name = el('input'); name.placeholder = 'Analysis name'; name.required = true; name.maxLength = 120; name.setAttribute('aria-label', 'New analysis name');
     const create = el('button', 'Create analysis'); create.type = 'submit'; create.className = 'primary';
-    const fromBrowser = el('input'); fromBrowser.type = 'checkbox';
-    const fromLabel = el('label', 'Start with this browser’s sources and map'); fromLabel.prepend(fromBrowser);
     const status = el('p'); status.setAttribute('role', 'status');
     const list = el('div'); list.className = 'analysis-list';
-    body.append(form, status, list); form.append(name, create, fromLabel); root.append(header, body); mountThemeToggle(header);
+    body.append(form, status, list); form.append(name, create); root.append(header, body); mountThemeToggle(header);
     form.onsubmit = async event => {
         event.preventDefault(); create.disabled = true;
         try {
-            const state = fromBrowser.checked ? configurationState(readSettings(), { choice: '24', bounds: {} }, []) : emptyState();
+            const state = emptyState(siteConfig.defaultBasemapUrl, siteConfig.defaultBasemapAttribution);
             const doc = await createAnalysis(name.value.trim(), state); location.href = '/?analysis=' + doc.id;
         } catch (e) { status.textContent = (e as Error).message; } finally { create.disabled = false; }
     };
@@ -66,5 +64,6 @@ async function start() {
         await import('./analysis-page.ts');
     } else await selector();
 }
-await mountPageBanners();
+const siteConfig = await readSiteConfig();
+mountPageBanners(siteConfig);
 await start();

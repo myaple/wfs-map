@@ -2,6 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { configurationState, localSettings, shareExpression, emptyState } from '../src/analysis-state.ts';
 import { defaultConfig } from '../src/source-settings.ts';
+test('fresh analyses enable the deployment basemap only when its URL is configured', () => {
+    const state = emptyState(' /tiles/{z}/{x}/{y}.png ', 'Internal mapping');
+    assert.deepEqual(state.settings.background, { url: '/tiles/{z}/{x}/{y}.png', attribution: 'Internal mapping', enabled: true });
+    assert.deepEqual(state.settings.sources, []);
+    assert.deepEqual(emptyState('   ', 'Unused attribution').settings.background, { url: '', attribution: '', enabled: false });
+});
 test('remote workspace serialization contains configuration and no CSV bytes or runtime results', () => {
     const source={id:'csv',name:'Stations',enabled:true,config:{...defaultConfig,type:'csv',csvText:'lon,lat,secret\n1,2,SENSITIVE_ROW',csvRef:'file-id',longitudeField:'lon',latitudeField:'lat'},coloring:{scheme:'cividis',field:'lon',bins:8,low:'#112233',high:'#445566',scale:'log10'},features:['SENSITIVE_ROW'],metrics:{secret:'SENSITIVE_ROW'}};
     const fields=[{name:'lon',kind:'number'},{name:'lat',kind:'number'}];
