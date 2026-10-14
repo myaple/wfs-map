@@ -1,5 +1,5 @@
 use poem::{Server, listener::TcpListener};
-use wfs_workspaces::{Auth, app, database};
+use wfs_workspaces::{Auth, app_with_decision_model, csv_inference::DecisionModel, database};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let url = std::env::var("DATABASE_URL")
@@ -18,11 +18,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
     let bind = std::env::var("BIND").unwrap_or_else(|_| "127.0.0.1:8787".into());
     let assets = std::env::var("ASSET_DIR").unwrap_or_else(|_| "dist".into());
+    let model = DecisionModel::from_env()?;
     let pool = database(&url)?;
     println!("WFS workspace configuration service listening on {bind}");
     Server::new(TcpListener::bind(bind))
         .run_with_graceful_shutdown(
-            app(pool, auth, &assets),
+            app_with_decision_model(pool, auth, &assets, model),
             async {
                 let _ = tokio::signal::ctrl_c().await;
             },

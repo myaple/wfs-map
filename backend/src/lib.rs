@@ -1,3 +1,4 @@
+pub mod csv_inference;
 pub mod site_config;
 pub mod state;
 use chrono::{DateTime, Utc};
@@ -399,7 +400,20 @@ async fn bounded_request(mut req: Request) -> poem::Result<Request> {
     Ok(req)
 }
 pub fn app(pool: DbPool, auth: Auth, assets: &str) -> Route {
-    let api = OpenApiService::new(Api { pool }, "WFS analysis workspaces", "1.0.0").server("/api");
+    app_with_decision_model(pool, auth, assets, None)
+}
+pub fn app_with_decision_model(
+    pool: DbPool,
+    auth: Auth,
+    assets: &str,
+    model: Option<csv_inference::DecisionModel>,
+) -> Route {
+    let api = OpenApiService::new(
+        (Api { pool }, csv_inference::CsvApi { model }),
+        "WFS analysis workspaces",
+        "1.0.0",
+    )
+    .server("/api");
     let spec = api.spec_endpoint();
     let routes = Route::new()
         .at("/openapi.json", spec)

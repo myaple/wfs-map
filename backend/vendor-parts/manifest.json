@@ -1,7 +1,7 @@
 {
-  "bytes": 29842120,
-  "sha256": "b64503ecfa3a9c301240fd5619329508886160c4e9aa7d36151fd4580ba4e7d7",
-  "cargoLockSha256": "a09057da6278476b28de35984bc049c9b4ca8accaf6ea231fd6377f85b1869d9",
+  "bytes": 33754628,
+  "sha256": "49041a58f87349d1b8943fe0cc550a674343f874279a6c1d7cc3bdaa67b4f145",
+  "cargoLockSha256": "6ab9d9633e1ccbd9f9e37320bb78b76b9a8a783bb7153c72ab858150a28a3c18",
   "parts": [
     "000.bin",
     "001.bin",
@@ -42,6 +42,12 @@
     "036.bin",
     "037.bin",
     "038.bin",
-    "039.bin"
+    "039.bin",
+    "040.bin",
+    "041.bin",
+    "042.bin",
+    "043.bin",
+    "044.bin",
+    "045.bin"
   ]
 }

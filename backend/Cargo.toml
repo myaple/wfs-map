@@ -16,3 +16,4 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 openssl-sys = { version = "0.9", features = ["vendored"] }
+reqwest = { version = "=0.12.24", default-features = false, features = ["json", "native-tls"] }

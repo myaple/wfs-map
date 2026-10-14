@@ -30,6 +30,7 @@ RUN --network=none cargo build --release --locked --offline
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 COPY --from=rust-build /app/backend/target/release/wfs-workspaces ./wfs-workspaces
+COPY --from=rust-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /app/dist ./dist
 # Ship the complete, dependency-free deployment chart with the application.
 COPY charts/wfs-map ./charts/wfs-map

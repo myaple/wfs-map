@@ -1,0 +1,16 @@
+# Optional header-only CSV mapping with a private SGLang Clef server.
+# Merge with your site's database/network configuration. The Secret must exist
+# in the release namespace, and egress must allow the model if policies are on.
+app:
+  extraConfig:
+    DECISION_MODEL_ENDPOINT: http://clef.inference.svc:30000/v1/systemone
+    DECISION_MODEL_NAME: Cloudflare/clef
+    DECISION_MODEL_TIMEOUT_MS: "6000"
+    DECISION_MODEL_MIN_PROBABILITY: "0.55"
+    DECISION_MODEL_MIN_MARGIN: "0.10"
+extraEnvVars:
+  - name: DECISION_MODEL_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: wfs-map-decision-model
+        key: api-key
