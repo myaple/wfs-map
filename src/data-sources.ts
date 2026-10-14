@@ -3,6 +3,7 @@ import { createUUID } from './uuid.ts';
 import { currentAnalysis } from './saved-analysis.ts';
 import { readCSVText, readCSVBlob, stageCSVFile, unstageCSVFile, discardStagedCSVFiles, saveSettings } from './source-storage.ts';
 import { csvHeaders } from './csv.ts';
+import { inferCSVFields, csvInferencePatch, inferredFieldKeys } from './csv-inference.ts';
 import { createBackup, readBackup } from './source-backup.ts';
 import { wfsURL, xmlDocument } from './data.ts';
 import { configKeys, defaultConfig, csvFieldTypes, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
@@ -23,6 +24,8 @@ export class DataSources {
     private saving = false;
     private fileName = '';
     private fileRevision = 0;
+    private csvInference?: AbortController;
+    private csvInferenceTouched = new Set<typeof inferredFieldKeys[number]>();
     private removed?: { source: SavedSource; index: number };
     private backupBusy = false;
     private pendingBackup?: Settings;
@@ -67,6 +70,7 @@ export class DataSources {
           </div></details>
           </fieldset><fieldset id="csvFields" class="source-type-fields" hidden disabled>
             <label for="csvFile">CSV file</label><input id="csvFile" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values"><p id="csvFileStatus" class="hint" role="status"></p>
+            <p id="csvInferenceStatus" class="hint" role="status"></p>
             <label for="delimiter">Delimiter</label><select id="delimiter"><option value=",">Comma</option><option value=";">Semicolon</option><option value="&#9;">Tab</option></select>
             <label for="geometryMode">Geometry format</label><select id="geometryMode"><option value="xy">Longitude / latitude columns</option><option value="wkt">WKT Point column</option><option value="geojson">GeoJSON Point column</option></select>
             <div id="csvXY" class="settings-fields"><label for="longitudeField">Longitude column</label><select id="longitudeField" required></select><label for="latitudeField">Latitude column</label><select id="latitudeField" required></select></div>
@@ -85,7 +89,7 @@ export class DataSources {
           </div></details>
           <p id="sourceError" class="error" role="alert" hidden></p>
         </div><div class="source-dialog-footer"><span class="hint">Save analysis to apply.</span><button id="cancelSource" type="button">Cancel</button><button id="updateSource" class="primary" type="submit">Add to list</button></div></form></dialog>`;
-        $('type').onchange = () => { this.stopDiscovery(); this.invalidateEllipseColumns(); this.showType(); };
+        $('type').onchange = () => { this.stopCSVInference(); this.stopDiscovery(); this.invalidateEllipseColumns(); this.showType(); };
         for (const key of ellipseFieldKeys) $(key).onchange = () => {
             const custom = $<HTMLSelectElement>(key).selectedOptions[0]?.dataset.custom === 'true';
             input(key + 'Custom').hidden = !custom;
@@ -93,7 +97,8 @@ export class DataSources {
         };
         $('ellipseFields').addEventListener('toggle', () => { if ($<HTMLDetailsElement>('ellipseFields').open) void this.loadEllipseColumns(); });
         $('geometryMode').onchange = () => this.showGeometry();
-        $('delimiter').onchange = () => { if (this.csvBlob) void this.inspectCSV(this.csvBlob, undefined, ++this.fileRevision); };
+        $('delimiter').onchange = () => { this.stopCSVInference(); if (this.csvBlob) void this.inspectCSV(this.csvBlob, undefined, ++this.fileRevision, true); };
+        for (const key of inferredFieldKeys) $(key === 'timeField' ? 'csvTime' : key).addEventListener('change', () => this.csvInferenceTouched.add(key));
         $('csvFile').onchange = () => void this.readCSV();
         $('exportBackup').onclick = () => void this.exportBackup();
         $('importBackup').onclick = () => input('backupFile').click();
@@ -249,6 +254,7 @@ export class DataSources {
         this.updateState();
     }
     private open(config: Config = defaultConfig, name = '', source?: SavedSource) {
+        this.stopCSVInference();
         this.editing = source;
         this.fileRevision++;
         this.ellipseDiscovery++; this.ellipseSchemaKey = ''; this.ellipseColumnNames = [];
@@ -289,7 +295,7 @@ export class DataSources {
         this.discovery?.abort(); this.discovery = undefined;
         $<HTMLButtonElement>('discover').disabled = false;
     }
-    private close() { this.fileRevision++; this.csvText = ''; this.csvBlob = undefined; this.csvHeaderNames = []; this.editing = undefined; this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
+    private close() { this.stopCSVInference(); this.fileRevision++; this.csvText = ''; this.csvBlob = undefined; this.csvHeaderNames = []; this.editing = undefined; this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
     private resetLayers(selectCurrent = false) {
         this.capabilities = undefined;
         const name = input('layer').value;
@@ -406,18 +412,36 @@ export class DataSources {
         });
         $('csvFileStatus').textContent = this.fileName ? restoring ? `Reading ${this.fileName}…` : `${this.fileName} · ${headers.length} columns · Rows are validated during import.` : 'Choose a file to populate its columns.';
     }
+    private stopCSVInference() {
+        this.csvInference?.abort(); this.csvInference = undefined; this.csvInferenceTouched.clear();
+        $('csvInferenceStatus').textContent = '';
+    }
+    private async suggestCSVFields(headers: string[], revision: number) {
+        this.stopCSVInference();
+        const controller = this.csvInference = new AbortController(), before = this.config();
+        $('csvInferenceStatus').textContent = 'Checking column suggestions… You can continue configuring this file.';
+        const result = await inferCSVFields(headers, controller.signal);
+        if (controller.signal.aborted || revision !== this.fileRevision || input('type').value !== 'csv' || !$<HTMLDialogElement>('sourceDialog').open) return;
+        this.csvInference = undefined;
+        if (!result) { $('csvInferenceStatus').textContent = ''; return; }
+        const patch = csvInferencePatch(result, headers, before, this.config(), this.editing?.config, this.csvInferenceTouched);
+        for (const key of inferredFieldKeys) if (patch[key] !== undefined) input(key === 'timeField' ? 'csvTime' : key).value = patch[key]!;
+        $('csvInferenceStatus').textContent = Object.keys(patch).length ? 'Column suggestions applied. Check the mappings and units before saving.' : 'No additional column suggestions. Choose any missing mappings below.';
+    }
     private showError(e: unknown) { $('sourceError').textContent = (e as Error).message; $('sourceError').hidden = false; }
-    private async inspectCSV(file: Blob, config?: Config, revision = this.fileRevision) {
+    private async inspectCSV(file: Blob, config?: Config, revision = this.fileRevision, suggest = false) {
         $<HTMLButtonElement>('updateSource').disabled = true;
         try {
             const headers = await csvHeaders(file, input('delimiter').value);
             if (revision !== this.fileRevision) return;
             this.csvBlob = file; this.csvHeaderNames = headers;
             this.csvColumns(config); $('sourceError').hidden = true;
+            if (suggest) void this.suggestCSVFields(headers, revision);
         } catch (e) { if (revision === this.fileRevision) this.showError(e); }
         finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
     }
     private async readCSV() {
+        this.stopCSVInference();
         const file = input('csvFile').files?.[0], revision = ++this.fileRevision;
         if (!file) return;
         $<HTMLButtonElement>('updateSource').disabled = true;
@@ -432,6 +456,7 @@ export class DataSources {
             }
             this.csvText = ''; this.csvBlob = file; this.csvHeaderNames = headers; this.csvRef = createUUID(); this.fileName = file.name;
             this.csvColumns(this.editing?.config); $('sourceError').hidden = true;
+            void this.suggestCSVFields(headers, revision);
         } catch (e) { if (revision === this.fileRevision) this.showError(e); }
         finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
     }

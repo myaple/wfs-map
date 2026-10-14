@@ -259,3 +259,6 @@ render-tested separately; their CRDs/operator validate them in the cluster.
 No live cluster installation is performed by these tests.
 
 Set `app.defaultBasemap.url` to an HTTP(S) or relative XYZ tile URL containing `{z}`, `{x}`, and `{y}` to automatically populate and enable the basemap for every new named analysis. `app.defaultBasemap.attribution` supplies optional attribution. These map to `DEFAULT_BASEMAP_URL` and `DEFAULT_BASEMAP_ATTRIBUTION` at runtime. An empty URL uses the offline grid. Existing analyses retain their saved basemaps.
+## Optional CSV decision model
+
+Merge `examples/decision-model.yaml` into your site values to connect the Rust backend to a Clef/SystemOne endpoint. Store the API key in the referenced existing Secret. Enable model-service egress when using NetworkPolicy. All settings, request limits and fallback behaviour are documented in [the CSV decision-model guide](../../docs/csv-decision-model.md).

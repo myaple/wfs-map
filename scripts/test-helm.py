@@ -297,6 +297,16 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(spec["ingress"], [])
         self.assertEqual(spec["egress"], [])
 
+    def test_decision_model_example_keeps_key_in_existing_secret(self):
+        docs = render(files=[CHART / "examples" / "decision-model.yaml"])
+        config = resource(docs, "ConfigMap")["data"]
+        self.assertEqual(config["DECISION_MODEL_ENDPOINT"], "http://clef.inference.svc:30000/v1/systemone")
+        self.assertEqual(config["DECISION_MODEL_NAME"], "Cloudflare/clef")
+        self.assertNotIn("DECISION_MODEL_API_KEY", config)
+        env = pod(docs)["containers"][0]["env"]
+        token = next(item for item in env if item["name"] == "DECISION_MODEL_API_KEY")
+        self.assertEqual(token["valueFrom"]["secretKeyRef"], {"name": "wfs-map-decision-model", "key": "api-key"})
+
     def test_invalid_values_fail_early(self):
         invalid = [
             {"externalDatabase": {"existingSecret": "", "url": "", "host": ""}},
