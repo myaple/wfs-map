@@ -38,6 +38,10 @@ app:
   banner:
     text: ""
     background: "#eaf0f4"
+  # Automatically enabled XYZ basemap for new named analyses; empty uses the grid.
+  defaultBasemap:
+    url: ""
+    attribution: ""
   # Additional non-secret environment entries in the managed ConfigMap.
   extraConfig: {}
 

@@ -3,6 +3,26 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { start } from '../server/server.ts';
 import { decodePage } from '../src/data.ts';
+test('site config exposes runtime basemap defaults without authentication or caching', async () => {
+  const s = start(0); await once(s, 'listening'); const base = `http://127.0.0.1:${s.address().port}`;
+  const keys = ['DEFAULT_BASEMAP_URL', 'DEFAULT_BASEMAP_ATTRIBUTION'];
+  const previous = keys.map(key => process.env[key]);
+  try {
+    for (const key of keys) delete process.env[key];
+    let response = await fetch(base + '/api/site-config');
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    let config = await response.json();
+    assert.equal(config.defaultBasemapUrl, ''); assert.equal(config.defaultBasemapAttribution, '');
+    process.env.DEFAULT_BASEMAP_URL = '/tiles/{z}/{x}/{y}.png';
+    process.env.DEFAULT_BASEMAP_ATTRIBUTION = 'Internal mapping';
+    config = await (await fetch(base + '/api/site-config')).json();
+    assert.equal(config.defaultBasemapUrl, '/tiles/{z}/{x}/{y}.png');
+    assert.equal(config.defaultBasemapAttribution, 'Internal mapping');
+  } finally {
+    keys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i]; });
+    s.closeAllConnections(); await new Promise(r => s.close(r));
+  }
+});
 test('development WFS discovery, hits, capped paging, gzip, GML and validation',async()=>{
   const s=start(0);await once(s,'listening');const base=`http://127.0.0.1:${s.address().port}/wfs`;
   const get=async p=>fetch(base+'?'+new URLSearchParams({service:'WFS',version:'2.0.0',typeNames:'demo:points',points:'105',...p}));

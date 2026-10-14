@@ -10,7 +10,7 @@ metadata:
   annotations: {{- toYaml . | nindent 4 }}
   {{- end }}
 data:
-  {{- $core := dict "BIND" (printf "%s:%v" .Values.app.bindAddress .Values.app.containerPort) "ASSET_DIR" .Values.app.assetDir "AUTH_MODE" .Values.app.auth.mode "USER_ID_HEADER" .Values.app.auth.userIdHeader "DEV_USER" .Values.app.auth.developmentUser "PAGE_BANNER_TEXT" .Values.app.banner.text "PAGE_BANNER_BACKGROUND" .Values.app.banner.background }}
+  {{- $core := dict "BIND" (printf "%s:%v" .Values.app.bindAddress .Values.app.containerPort) "ASSET_DIR" .Values.app.assetDir "AUTH_MODE" .Values.app.auth.mode "USER_ID_HEADER" .Values.app.auth.userIdHeader "DEV_USER" .Values.app.auth.developmentUser "PAGE_BANNER_TEXT" .Values.app.banner.text "PAGE_BANNER_BACKGROUND" .Values.app.banner.background "DEFAULT_BASEMAP_URL" .Values.app.defaultBasemap.url "DEFAULT_BASEMAP_ATTRIBUTION" .Values.app.defaultBasemap.attribution }}
   {{- range $key, $value := mergeOverwrite (deepCopy .Values.app.extraConfig) $core }}
   {{ $key }}: {{ toString $value | quote }}
   {{- end }}

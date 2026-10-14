@@ -105,6 +105,22 @@ class ChartTests(unittest.TestCase):
                             resource(b, "Deployment")["spec"]["template"]["metadata"]
                             ["annotations"]["checksum/config"])
 
+    def test_default_basemap_config_and_rollout(self):
+        defaults = resource(render(), "ConfigMap")["data"]
+        self.assertEqual(defaults["DEFAULT_BASEMAP_URL"], "")
+        self.assertEqual(defaults["DEFAULT_BASEMAP_ATTRIBUTION"], "")
+        a = render({"app": {"defaultBasemap": {
+            "url": "https://tiles.internal/{z}/{x}/{y}.png",
+            "attribution": "Internal mapping"}}})
+        b = render({"app": {"defaultBasemap": {"url": "/tiles/{z}/{x}/{y}.png"}}})
+        data = resource(a, "ConfigMap")["data"]
+        self.assertEqual(data["DEFAULT_BASEMAP_URL"], "https://tiles.internal/{z}/{x}/{y}.png")
+        self.assertEqual(data["DEFAULT_BASEMAP_ATTRIBUTION"], "Internal mapping")
+        self.assertNotEqual(resource(a, "Deployment")["spec"]["template"]["metadata"]
+                            ["annotations"]["checksum/config"],
+                            resource(b, "Deployment")["spec"]["template"]["metadata"]
+                            ["annotations"]["checksum/config"])
+
     def test_full_uri_stays_in_secret(self):
         uri = "postgresql://user:p%40ss@postgres.example/wfs?sslmode=verify-full"
         docs = render({"externalDatabase": {"existingSecret": "", "url": uri}})

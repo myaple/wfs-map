@@ -8,6 +8,8 @@ services:
       USER_ID_HEADER: ${USER_ID_HEADER:-x-user-id}
       PAGE_BANNER_TEXT: ${PAGE_BANNER_TEXT:-}
       PAGE_BANNER_BACKGROUND: ${PAGE_BANNER_BACKGROUND:-#eaf0f4}
+      DEFAULT_BASEMAP_URL: ${DEFAULT_BASEMAP_URL:-}
+      DEFAULT_BASEMAP_ATTRIBUTION: ${DEFAULT_BASEMAP_ATTRIBUTION:-}
     depends_on:
       database:
         condition: service_healthy

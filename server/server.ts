@@ -29,7 +29,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse, testWfs 
     if (req.method !== 'GET') { res.writeHead(405, { Allow: 'GET' }); res.end(); return; }
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'no-store');
-    res.end(JSON.stringify({ bannerText: process.env.PAGE_BANNER_TEXT ?? '', bannerBackground: process.env.PAGE_BANNER_BACKGROUND ?? '#eaf0f4' })); return;
+    res.end(JSON.stringify({ bannerText: process.env.PAGE_BANNER_TEXT ?? '', bannerBackground: process.env.PAGE_BANNER_BACKGROUND ?? '#eaf0f4', defaultBasemapUrl: process.env.DEFAULT_BASEMAP_URL ?? '', defaultBasemapAttribution: process.env.DEFAULT_BASEMAP_ATTRIBUTION ?? '' })); return;
   }
   if (u.pathname === '/api/test-wfs' || u.pathname === '/api/test-wfs/start') {
     res.setHeader('Content-Type', 'application/json');
