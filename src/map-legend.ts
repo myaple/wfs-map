@@ -54,7 +54,7 @@ class LegendValues {
     private syncVisibility() {
         for (const row of this.rows.querySelectorAll<HTMLElement>('[data-key]')) {
             const source = this.groups.find(g => g.source.id === row.dataset.source)!.source;
-            const visible = !source.mapHidden.has(row.dataset.key!);
+            const visible = source.mapVisible && !source.mapHidden.has(row.dataset.key!);
             row.classList.toggle('map-legend-value-hidden', !visible);
             row.querySelector<HTMLInputElement>('input')!.checked = visible;
         }
@@ -97,7 +97,7 @@ class LegendValues {
                 const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.className = 'map-legend-toggle map-legend-value-toggle'; toggle.setAttribute('role', 'switch');
                 toggle.setAttribute('aria-label', `Show ${label} for ${s.name} on map`);
                 toggle.title = 'Show or hide these points on the map only';
-                toggle.checked = !s.mapHidden.has(key);
+                toggle.checked = s.mapVisible && !s.mapHidden.has(key);
                 toggle.addEventListener('change', () => this.visibility(s.id, key, toggle.checked));
                 row.classList.toggle('map-legend-value-hidden', !toggle.checked);
                 row.append(toggle);

@@ -181,7 +181,12 @@ test('category switches hide exact values, preserve focus, and survive scrolling
     expect(await hits()).toHaveLength(239);
     await viewport.evaluate(el => el.scrollTop = 0); await expect(toggle).not.toBeChecked();
     await valueToggle(page,'Show Categories on map').uncheck(); expect(await hits()).toHaveLength(0);
-    await valueToggle(page,'Show Categories on map').check(); expect(await hits()).toHaveLength(239);
+    await valueToggle(page,'Show Categories on map').check(); await settledMask(page,'categories'); expect(await hits()).toHaveLength(241);
+    await expect(toggle).toBeChecked();
+    await toggle.uncheck();
+    await viewport.evaluate(el => el.scrollTop = el.scrollHeight);
+    await valueToggle(page,'Show Missing value for Categories on map').uncheck(); await settledMask(page,'categories');
+    await viewport.evaluate(el => el.scrollTop = 0);
     expect(await snapshot()).toEqual(before);
     await page.getByLabel('Colour for Category-000',{exact:true}).fill('#00ffff'); await settledMask(page,'categories');
     await expect(toggle).not.toBeChecked(); expect(await hits()).not.toContain(0);
@@ -229,3 +234,45 @@ test('rapid subcategory changes settle on the latest mask, preserve palette edit
     expect(await page.evaluate(()=>(window as any).__WFS_MAP__.sources.find((s:any)=>s.id==='gradient').layer.mapMask)).toBeUndefined();
     await expect(source(page,'gradient').locator('.map-legend-row input').first()).toBeChecked();
 });
+
+for (const id of ['categories', 'gradient']) {
+    test(`dataset switch toggles all ${id} values, including virtualized and missing rows`, async ({ page }) => {
+        await seed(page);
+        const entry = source(page, id), parent = entry.locator(':scope > input');
+        const other = source(page, id === 'categories' ? 'gradient' : 'categories');
+        // Bulk changes must also reach values in a collapsed legend.
+        await parent.uncheck();
+        await expand(page, id);
+        const rows = entry.locator('.map-legend-row input');
+        await expect.poll(() => rows.evaluateAll(inputs => inputs.every(input => !(input as HTMLInputElement).checked))).toBe(true);
+        const viewport = entry.locator('.map-legend-viewport');
+        await viewport.evaluate(el => el.scrollTop = el.scrollHeight);
+        const missing = entry.getByRole('switch', { name: `Show Missing value for ${id === 'categories' ? 'Categories' : 'Gradient'} on map`, exact: true });
+        await expect(missing).not.toBeChecked();
+        await expect(other.locator(':scope > input')).toBeChecked();
+        await parent.check(); await settledMask(page, id);
+        await expect(missing).toBeChecked();
+        await expect.poll(() => rows.evaluateAll(inputs => inputs.every(input => (input as HTMLInputElement).checked))).toBe(true);
+        await viewport.evaluate(el => el.scrollTop = 0);
+        await expect(rows.first()).toBeChecked();
+        await rows.first().uncheck(); await settledMask(page, id);
+        // Enabling a parent restores previously hidden values as well.
+        await parent.uncheck(); await parent.check(); await settledMask(page, id);
+        await expect(rows.first()).toBeChecked();
+        expect(await page.evaluate(id => {
+            const s = (window as any).__WFS_MAP__.sources.find((s: any) => s.id === id);
+            return { visible: s.layer.visible, hidden: s.mapHidden.size, mask: s.layer.mapMask };
+        }, id)).toEqual({ visible: true, hidden: 0, mask: undefined });
+        // A child remains usable after a bulk hide and only restores its own points.
+        await parent.uncheck();
+        await viewport.evaluate(el => el.scrollTop = el.scrollHeight);
+        await missing.check(); await settledMask(page, id);
+        await expect(parent).toBeChecked();
+        await expect(missing).toBeChecked();
+        expect(await page.evaluate(id => {
+            const app = (window as any).__WFS_MAP__, s = app.sources.find((s: any) => s.id === id);
+            const p = app.map.project(id === 'categories' ? [-1, 54] : [-2, 53]);
+            return Array.from(s.layer.pickAll(p.x, p.y));
+        }, id)).toEqual([id === 'categories' ? 240 : 2]);
+    });
+}
