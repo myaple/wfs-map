@@ -61,13 +61,19 @@ const mapLegend = new MapLegend($('mapLegend'), (id, visible) => {
     const s = sources.find(s => s.id === id);
     if (!s) return;
     s.mapVisible = visible;
-    s.layer.visible = visible && (!s.mapHidden.size || !!s.layer.mapMask);
+    s.mapHidden.clear();
+    s.layer.visible = visible;
+    refreshMapMask(s);
     if (!visible && inspection?.sourceId === id) { popup?.remove(); marker?.remove(); }
     mapLegend.update(sources);
     map.triggerRepaint();
 }, (id, key, visible) => {
     const s = sources.find(s => s.id === id);
     if (!s) return;
+    if (visible && !s.mapVisible) {
+        hideAllMapValues(s);
+        s.mapVisible = true;
+    }
     visible ? s.mapHidden.delete(key) : s.mapHidden.add(key);
     refreshMapMask(s);
     mapLegend.update(sources);
@@ -1014,6 +1020,11 @@ function applyBackground() {
 }
 function ensureSourcesLoaded() {
     for (const s of sources) if (s.enabled && !s.error) loadSource(s);
+}
+function hideAllMapValues(s: Source) {
+    if (s.colorCategories) for (const category of s.colorCategories) s.mapHidden.add('category:' + category);
+    else if (s.colorLabels) for (let i = 0; i < s.colorLabels.length; i++) s.mapHidden.add('bin:' + i);
+    if (s.colorCategories || s.colorLabels) s.mapHidden.add('missing');
 }
 function refreshMapMask(s: Source) {
     const request = ++s.mapMaskRequest;
