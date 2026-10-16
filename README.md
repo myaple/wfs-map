@@ -99,6 +99,31 @@ examples and documentation. [Extract it from a stopped container](charts/wfs-map
 using `docker create` and `docker cp`, then deploy with Helm. The chart has no
 dependencies, so transferring the image also transfers the entire chart.
 
+Every push also publishes a separate **source image** at
+`ghcr.io/myaple/wfs-map:sha-<first seven SHA characters>-src`. It contains the
+entire repository checkout at `/src`, including `.git`, full Git history and
+tags, vendored dependencies, and files excluded by the application image's
+`.dockerignore`. Checkout authentication credentials are not persisted. The
+source image uses `scratch`: it is a source archive with no shell, Git binary,
+toolchain or application runtime. Extract it without starting it (replace
+`1234567` with the desired commit's first seven SHA characters):
+
+```sh
+docker pull ghcr.io/myaple/wfs-map:sha-1234567-src
+docker create --name wfs-source ghcr.io/myaple/wfs-map:sha-1234567-src /unused
+docker cp wfs-source:/src/. ./wfs-map-source
+docker rm wfs-source
+git -C ./wfs-map-source log -1
+```
+
+Transfer this image with `docker save` / `docker load` in the same way as the
+application image. The independent source-image job verifies the extracted
+checkout and Git history before publishing; PRs verify without publishing.
+For a local source image, build from a full clone with
+`docker build -f Dockerfile.source -t wfs-map-source .`; its Dockerfile-specific
+ignore file deliberately includes the entire local build context, so use a
+clean checkout.
+
 For a fully disconnected **image build**, preload `node:24-bookworm-slim`, `rust:1.90-bookworm` and `debian:bookworm-slim`:
 
 ```sh

@@ -1,0 +1,2 @@
+# Intentionally include the entire checkout, including .git and tracked files
+# excluded by the application image's root .dockerignore.

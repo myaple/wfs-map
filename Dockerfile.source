@@ -1,0 +1,4 @@
+# Source distribution only: no runtime, toolchain or executable.
+FROM scratch
+WORKDIR /src
+COPY . .
