@@ -91,14 +91,14 @@ test('unsupported, incomplete and invalid manifests are rejected', async () => {
         [m => m.settings.map.zoom = 99, /map view/],
         [m => m.settings.sources[0].coloring.scale = 'invalid', /colour bin scale/],
         [m => m.settings.sources[0].color = ['bad', 0, 0], /colour/],
-        [m => m.settings.sources[0].config.csvRef = 'browser-local', /local CSV/],
+        [m => m.settings.sources[0].config.csvRef = 'browser-local', /local file contents/],
         [m => m.csvFiles['wfs-one'] = 'csv/source-1.csv', /unexpected/],
-        [m => m.csvFiles['csv-one'] = '../private.csv', /missing a CSV/]
+        [m => m.csvFiles['csv-one'] = '../private.csv', /missing a file/]
     ];
     for (const [edit, error] of cases) await assert.rejects(readBackup(await modifiedBackup(edit)), error);
-    await assert.rejects(readBackup(await modifiedBackup(() => {}, f => f.delete('csv/source-1.csv'))), /missing a CSV/);
+    await assert.rejects(readBackup(await modifiedBackup(() => {}, f => f.delete('csv/source-1.csv'))), /missing a file/);
     await assert.rejects(readBackup(await modifiedBackup(() => {}, f => f.set('extra.txt', new Blob(['unexpected'])))), /unexpected files/);
-    await assert.rejects(readBackup(await modifiedBackup(() => {}, f => f.set('csv/source-1.csv', new Blob([])))), /empty CSV/);
+    await assert.rejects(readBackup(await modifiedBackup(() => {}, f => f.set('csv/source-1.csv', new Blob([])))), /empty file/);
 });
 
 test('corruption, truncation, unsafe paths, duplicates, links and oversized headers fail', async () => {
@@ -127,4 +127,17 @@ test('backups created before ellipse settings migrate with ellipses disabled', a
         for (const source of m.settings.sources) for (const key of ['ellipseMajorField','ellipseMinorField','ellipseOrientationField','ellipseMajorUnit','ellipseMinorUnit']) delete source.config[key];
     }));
     for (const source of restored.sources) { assert.equal(source.config.ellipseMajorField,''); assert.equal(source.config.ellipseMajorUnit,'m'); }
+});
+
+test('backups created before overlay settings migrate with overlay defaults', async () => {
+    // Pre-PR backups lack overlayGeoJSON, overlayFileName, and overlayColor
+    // entirely. They must import without error and get the overlay defaults.
+    const restored = await readBackup(await modifiedBackup(m => {
+        for (const source of m.settings.sources) for (const key of ['overlayGeoJSON','overlayFileName','overlayColor']) delete source.config[key];
+    }));
+    for (const source of restored.sources) {
+        assert.equal(source.config.overlayGeoJSON, '');
+        assert.equal(source.config.overlayFileName, '');
+        assert.equal(source.config.overlayColor, '#d45b24');
+    }
 });

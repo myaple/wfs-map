@@ -7,6 +7,7 @@ import { inferCSVFields, csvInferencePatch, inferredFieldKeys } from './csv-infe
 import { createBackup, readBackup } from './source-backup.ts';
 import { wfsURL, xmlDocument } from './data.ts';
 import { configKeys, defaultConfig, csvFieldTypes, settingsMetadata, validateConfig, validateBackground, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
+import { overlayColors, isValidGeoJSON } from './overlays.ts';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const input = (id: string) => $<HTMLInputElement>(id);
 const ellipseFieldKeys = ['ellipseMajorField', 'ellipseMinorField', 'ellipseOrientationField'] as const;
@@ -18,6 +19,9 @@ export class DataSources {
     private capabilities?: Document;
     private csvText = '';
     private csvBlob?: Blob;
+    private overlayText = '';
+    private overlayBlob?: Blob;
+    private overlayFileName = '';
     private csvHeaderNames: string[] = [];
     private csvRef = '';
     private fieldTypes: ReturnType<typeof csvFieldTypes> = {};
@@ -37,7 +41,7 @@ export class DataSources {
         this.saved = structuredClone(settings);
         $('configuration').innerHTML = `
         <div class="sources-page">
-          <div class="sources-heading"><div><h2>Data sources</h2><p class="hint">Connect WFS servers or import CSV points to explore on the map.</p></div><button id="addSource" class="primary">+ Add data source</button></div>
+          <div class="sources-heading"><div><h2>Data sources</h2><p class="hint">Connect WFS servers, import CSV points, or add GeoJSON overlays to explore on the map.</p></div><button id="addSource" class="primary">+ Add data source</button></div>
           <section class="settings-card" aria-labelledby="sourcesTitle"><div class="settings-card-head"><h3 id="sourcesTitle">Your data sources</h3><span id="sourceCount" class="hint"></span></div><p class="hint">Enable a source to load it after saving. Configure opens its connection settings.</p><ul id="sourceList" class="source-list"></ul><div id="sourceUndo" hidden><span id="removedName"></span> <button id="undoRemove">Undo remove</button></div></section>
           <details class="settings-card" id="backgroundSettings"><summary>Map background</summary><div class="settings-fields"><label for="basemapURL">Raster basemap tile URL</label><input id="basemapURL" placeholder="https://…/{z}/{x}/{y}.png"><label for="basemapAttribution">Basemap attribution</label><input id="basemapAttribution"><p class="hint">XYZ raster tiles. Leave the URL empty to use the offline grid.</p></div></details>
           <section class="settings-card" aria-labelledby="backupTitle"><h3 id="backupTitle">Backup &amp; share</h3><p class="hint">Download the current list, including unsaved changes and disabled sources, as a .tar.gz. Includes complete CSV files, WFS connection settings, source colours, and map background, view and point size. WFS features are fetched again when loaded.</p><div class="row"><button id="exportBackup">Download backup</button><button id="importBackup">Import backup</button><input id="backupFile" type="file" accept=".tar.gz,.tgz,application/gzip" hidden aria-label="Choose backup archive"></div><p id="backupStatus" class="hint" role="status"></p><p id="backupError" class="error" role="alert" hidden></p></section>
@@ -51,7 +55,7 @@ export class DataSources {
         <dialog id="backupDialog" class="source-dialog backup-dialog" aria-labelledby="backupDialogTitle"><h2 id="backupDialogTitle">Restore backup</h2><p>This replaces your current source list and map settings, including unsaved changes. Dataset filters and charts are reset. CSV files will be saved in this browser.</p><p id="backupSummary"></p><ul id="backupSources"></ul><p id="restoreError" class="error" role="alert" hidden></p><div class="row"><button id="cancelBackup">Cancel</button><button id="restoreBackup" class="primary">Replace sources &amp; restore</button></div></dialog>
         <dialog id="sourceDialog" class="source-dialog" aria-labelledby="sourceDialogTitle"><form id="sourceForm"><div class="source-dialog-head"><div><h2 id="sourceDialogTitle">Add data source</h2><p class="hint">Choose a source type and configure its dataset.</p></div><button id="closeSource" type="button" aria-label="Close source settings">×</button></div><div class="settings-fields">
           <label for="sourceName">Source name</label><input id="sourceName" required maxlength="120" placeholder="e.g. Weather stations">
-          <label for="type">Source type</label><select id="type"><option value="wfs">WFS server</option><option value="csv">CSV file</option></select>
+          <label for="type">Source type</label><select id="type"><option value="wfs">WFS server</option><option value="csv">CSV file</option><option value="overlay">GeoJSON overlay</option></select>
           <fieldset id="wfsFields" class="source-type-fields"><label for="url">WFS endpoint</label><input id="url" required placeholder="https://example.org/geoserver/wfs" aria-describedby="endpointHelp"><p id="endpointHelp" class="hint">HTTP(S) or a relative URL. Server-specific query parameters are kept as entered.</p>
           <div class="discovery-head"><label for="layerSelect">Feature layer</label><button id="discover" type="button">Discover layers</button></div><select id="layerSelect" aria-describedby="layerHelp"></select><div id="customLayer"><label for="layer">Custom layer name</label><input id="layer" required placeholder="e.g. workspace:stations" aria-describedby="layerHelp"></div><p id="layerHelp" class="hint">Discover layers to choose a dataset, or select Custom layer name to enter one yourself.</p><p id="discoveryStatus" class="hint" role="status"></p>
           <details id="wfsCompatibility"><summary>WFS compatibility and limits</summary><div class="settings-fields">
@@ -78,6 +82,11 @@ export class DataSources {
             <label for="csvTime">Time attribute (optional)</label><select id="csvTime"></select><p class="hint">ISO 8601 dates/times, using a 24-hour clock. Times without a timezone are assumed UTC; explicit offsets are converted to UTC. Use All time when no time column is selected. Coordinates must be longitude/latitude in WGS84; only points are supported.</p>
             <details id="csvTypes"><summary>Column types</summary><p class="hint">Automatic infers each column from the whole file. Text / category preserves numeric codes and leading zeros. Invalid values for an explicit type are reported as rejected rows. The selected time attribute must be Date / time or Automatic.</p><div id="csvTypeList" class="settings-fields"></div></details>
             <p class="hint">The imported file is saved in this browser with its settings. Available storage depends on your browser and device; a save error leaves your existing saved sources intact.</p>
+          </fieldset><fieldset id="overlayFields" class="source-type-fields" hidden disabled>
+            <p class="hint">GeoJSON overlays plot your file on the map without loading dataset points. They are usually added from the map toolbar’s Add GeoJSON overlay button, but you can also create or replace one here.</p>
+            <label for="overlaySourceFile">GeoJSON file</label><input id="overlaySourceFile" type="file" accept=".geojson,.json,application/geo+json,application/json"><p id="overlaySourceFileStatus" class="hint" role="status"></p>
+            <label for="overlaySourceColor">Overlay colour</label><select id="overlaySourceColor"></select>
+            <p id="overlaySourceHint" class="hint" role="status" hidden></p>
           </fieldset>
           <details id="ellipseFields"><summary>Ellipse fields (optional)</summary><div class="settings-fields">
             <p class="hint">Axes are radii from each point’s centre. Orientation is degrees clockwise from north. Missing or invalid values skip the ellipse while retaining its point.</p>
@@ -100,6 +109,8 @@ export class DataSources {
         $('delimiter').onchange = () => { this.stopCSVInference(); if (this.csvBlob) void this.inspectCSV(this.csvBlob, undefined, ++this.fileRevision, true); };
         for (const key of inferredFieldKeys) $(key === 'timeField' ? 'csvTime' : key).addEventListener('change', () => this.csvInferenceTouched.add(key));
         $('csvFile').onchange = () => void this.readCSV();
+        $('overlaySourceFile').onchange = () => void this.readOverlay();
+        $<HTMLSelectElement>('overlaySourceColor').replaceChildren(...overlayColors.map(c => new Option(c.name, c.id)));
         $('exportBackup').onclick = () => void this.exportBackup();
         $('importBackup').onclick = () => input('backupFile').click();
         $('backupFile').onchange = () => void this.importBackup();
@@ -219,6 +230,21 @@ export class DataSources {
         finally { this.setBackupBusy(false); }
     }
     pendingSettings(): Settings { return structuredClone(this.draft); }
+    // Called from the map toolbar’s Add GeoJSON overlay dialog. The overlay is
+    // added to the draft (like any source edit) so the regular Save analysis
+    // persists it; the staged file is committed to IndexedDB on save.
+    addOverlaySource(source: SavedSource) {
+        if (this.saving || this.backupBusy) throw Error('Wait for the source save or backup to finish, then retry.');
+        if (this.draft.sources.length >= 8) throw Error('Remove a source in Data sources to free a slot before adding an overlay.');
+        validateConfig(source.config);
+        this.draft.sources.push(source);
+        this.updateState(); this.render();
+    }
+    removeSource(id: string) {
+        const index = this.draft.sources.findIndex(s => s.id === id);
+        if (index >= 0) { const [source] = this.draft.sources.splice(index, 1); this.removed = { source, index }; }
+        this.updateState(); this.render();
+    }
     private updateState() {
         const dirty = JSON.stringify(settingsMetadata(this.draft)) !== JSON.stringify(settingsMetadata(this.saved));
         $('saveError').hidden = true;
@@ -238,8 +264,8 @@ export class DataSources {
             check.onchange = () => { s.enabled = check.checked; this.updateState(); };
             const description = document.createElement('div'); description.className = 'source-description';
             const name = document.createElement('strong'); name.textContent = s.name;
-            const url = document.createElement('span'); url.textContent = s.config.type === 'csv' ? `CSV · ${s.config.fileName}` : s.config.url; url.className = 'hint';
-            const layer = document.createElement('span'); layer.textContent = s.config.type === 'csv' ? (s.config.geometryMode === 'xy' ? `${s.config.longitudeField}, ${s.config.latitudeField}` : s.config.geometryField) : s.config.layer; layer.className = 'source-layer';
+            const url = document.createElement('span'); url.textContent = s.config.type === 'csv' ? `CSV · ${s.config.fileName}` : s.config.type === 'overlay' ? `GeoJSON overlay · ${s.config.overlayFileName || s.config.fileName || 'file'}` : s.config.url; url.className = 'hint';
+            const layer = document.createElement('span'); layer.textContent = s.config.type === 'csv' ? (s.config.geometryMode === 'xy' ? `${s.config.longitudeField}, ${s.config.latitudeField}` : s.config.geometryField) : s.config.type === 'overlay' ? (s.config.overlayColor || '') : s.config.layer; layer.className = 'source-layer';
             description.append(name, url, layer);
             const actions = document.createElement('div'); actions.className = 'source-actions';
             const configure = document.createElement('button'); configure.textContent = 'Configure'; configure.setAttribute('aria-label', 'Configure ' + s.name); configure.setAttribute('aria-haspopup', 'dialog'); configure.onclick = () => this.open(s.config, s.name, s);
@@ -259,11 +285,15 @@ export class DataSources {
         this.fileRevision++;
         this.ellipseDiscovery++; this.ellipseSchemaKey = ''; this.ellipseColumnNames = [];
         $<HTMLDetailsElement>('ellipseFields').open = false;
-        for (const key of configKeys) if (!['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'fieldTypes', ...ellipseFieldKeys].includes(key)) input(key).value = config[key];
+        for (const key of configKeys) if (!['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'fieldTypes', 'overlayGeoJSON', 'overlayFileName', ...ellipseFieldKeys].includes(key)) input(key).value = config[key];
         this.fieldTypes = csvFieldTypes(config);
         this.csvRef = config.csvRef; this.csvText = config.csvText; this.fileName = config.fileName;
         this.csvBlob = undefined; this.csvHeaderNames = [];
         input('csvFile').value = '';
+        this.overlayText = config.overlayGeoJSON; this.overlayBlob = undefined; this.overlayFileName = config.overlayFileName;
+        input('overlaySourceFile').value = '';
+        $<HTMLSelectElement>('overlaySourceColor').value = config.overlayColor || overlayColors[0].id;
+        $('overlaySourceFileStatus').textContent = config.overlayFileName ? `${config.overlayFileName} · saved with this overlay` : 'Choose a .geojson or .json file.';
         this.csvColumns(config);
         this.showType();
         input('sourceName').value = name;
@@ -280,6 +310,31 @@ export class DataSources {
             if (config.csvText) void this.inspectCSV(new Blob([config.csvText]), config, this.fileRevision);
             else if (config.csvRef) void this.restoreCSV(config, this.fileRevision);
         }
+        if (config.type === 'overlay' && !config.overlayGeoJSON && config.csvRef) void this.restoreOverlay(config, this.fileRevision);
+    }
+    private async restoreOverlay(config: Config, revision: number) {
+        $('overlaySourceFileStatus').textContent = `Reading ${config.overlayFileName || 'GeoJSON file'}…`;
+        try {
+            const text = await readCSVText(config.csvRef);
+            if (revision !== this.fileRevision) return;
+            this.overlayText = text; this.overlayFileName = config.overlayFileName;
+            $('overlaySourceFileStatus').textContent = `${config.overlayFileName} · ${text.length.toLocaleString()} characters · saved with this overlay`;
+        } catch (e) { if (revision === this.fileRevision) this.showError(e); }
+    }
+    private async readOverlay() {
+        const file = input('overlaySourceFile').files?.[0];
+        $('overlaySourceHint').hidden = true;
+        if (!file) { this.overlayText = ''; this.overlayBlob = undefined; this.overlayFileName = ''; $('overlaySourceFileStatus').textContent = 'Choose a .geojson or .json file.'; return; }
+        $('overlaySourceFileStatus').textContent = `Reading ${file.name}…`; $('sourceError').hidden = true;
+        try {
+            const text = await file.text();
+            if (!isValidGeoJSON(text)) throw Error('The chosen file is not valid GeoJSON (a Feature, FeatureCollection or geometry).');
+            this.overlayText = text; this.overlayBlob = file; this.overlayFileName = file.name;
+            const points = (() => { try { const doc = JSON.parse(text), features = doc.type === 'FeatureCollection' ? doc.features : [doc]; return features.filter((f: any) => f?.geometry?.type === 'Point' || f?.geometry?.type === 'MultiPoint').length; } catch { return 0; } })();
+            $('overlaySourceFileStatus').textContent = `${file.name} · ${points.toLocaleString()} point features`;
+            $('overlaySourceHint').textContent = points ? `${points.toLocaleString()} point ${points === 1 ? 'feature' : 'features'} use the point size slider; lines and polygons use the overlay colour.` : '';
+            $('overlaySourceHint').hidden = !points;
+        } catch (e) { this.overlayText = ''; this.overlayBlob = undefined; this.overlayFileName = ''; $('overlaySourceFileStatus').textContent = 'Choose a .geojson or .json file.'; this.showError(e); }
     }
     private async restoreCSV(config: Config, revision: number) {
         $<HTMLButtonElement>('updateSource').disabled = true;
@@ -295,7 +350,7 @@ export class DataSources {
         this.discovery?.abort(); this.discovery = undefined;
         $<HTMLButtonElement>('discover').disabled = false;
     }
-    private close() { this.stopCSVInference(); this.fileRevision++; this.csvText = ''; this.csvBlob = undefined; this.csvHeaderNames = []; this.editing = undefined; this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
+    private close() { this.stopCSVInference(); this.fileRevision++; this.csvText = ''; this.csvBlob = undefined; this.csvHeaderNames = []; this.overlayText = ''; this.overlayBlob = undefined; this.overlayFileName = ''; this.editing = undefined; this.stopDiscovery(); $<HTMLDialogElement>('sourceDialog').close(); }
     private resetLayers(selectCurrent = false) {
         this.capabilities = undefined;
         const name = input('layer').value;
@@ -328,10 +383,12 @@ export class DataSources {
         $('discoveryStatus').textContent = `${count} layer(s) found. Choose a feature layer above.${formatNotice}`;
     }
     private showType() {
-        const csv = input('type').value === 'csv';
-        for (const [id, active] of [['wfsFields', !csv], ['csvFields', csv]] as const) {
+        const type = input('type').value;
+        const csv = type === 'csv', overlay = type === 'overlay';
+        for (const [id, active] of [['wfsFields', type === 'wfs'], ['csvFields', csv], ['overlayFields', overlay]] as const) {
             const fields = $<HTMLFieldSetElement>(id); fields.hidden = !active; fields.disabled = !active;
         }
+        $('ellipseFields').hidden = overlay;
         this.showGeometry();
         this.ellipseColumns();
     }
@@ -461,9 +518,10 @@ export class DataSources {
         finally { if (revision === this.fileRevision) $<HTMLButtonElement>('updateSource').disabled = false; }
     }
     private config(): Config {
-        const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'fieldTypes'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
+        const config = { ...defaultConfig, ...Object.fromEntries(configKeys.filter(key => !['csvText', 'csvRef', 'fileName', 'longitudeField', 'latitudeField', 'fieldTypes', 'overlayGeoJSON', 'overlayFileName'].includes(key)).map(key => [key, key === 'delimiter' ? input(key).value : input(key).value.trim()])) } as Config;
         for (const key of ellipseFieldKeys) config[key] = this.ellipseFieldValue(key);
         if (config.type === 'csv') Object.assign(config, { csvText: this.csvText, csvRef: this.csvRef, fileName: this.fileName, longitudeField: input('longitudeField').value, latitudeField: input('latitudeField').value, geometryField: input('csvGeometry').value, timeField: input('csvTime').value, fieldTypes: JSON.stringify(this.fieldTypes) });
+        if (config.type === 'overlay') Object.assign(config, { overlayGeoJSON: this.overlayText, overlayFileName: this.overlayFileName, overlayColor: $<HTMLSelectElement>('overlaySourceColor').value });
         return config;
     }
     private updateSource() {
@@ -472,6 +530,11 @@ export class DataSources {
             const name = input('sourceName').value.trim();
             if (!name) throw Error('Enter a source name.');
             if (config.type === 'csv' && this.csvBlob) stageCSVFile(config.csvRef, this.csvBlob);
+            if (config.type === 'overlay' && this.overlayBlob) {
+                // Stage and reference the same csvRef so saveSettings finds the file.
+                if (!config.csvRef) config.csvRef = createUUID();
+                stageCSVFile(config.csvRef, this.overlayBlob);
+            }
             if (this.editing) { this.editing.name = name; this.editing.config = config; }
             else if (this.draft.sources.length < 8) this.draft.sources.push({ id: createUUID(), name, config, enabled: true });
             this.close(); this.render();
@@ -487,7 +550,7 @@ export class DataSources {
         try {
             for (const s of this.draft.sources) validateConfig(s.config);
             validateBackground(this.draft.background);
-            this.draft = await saveSettings(this.draft);
+            this.draft = await saveSettings(this.draft, this.saved);
             input('basemapURL').removeAttribute('aria-invalid');
             this.saved = structuredClone(this.draft); this.removed = undefined;
             this.csvText = '';

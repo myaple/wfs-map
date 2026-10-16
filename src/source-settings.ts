@@ -1,10 +1,11 @@
 import { ellipseConfigKeys, ellipseDefaults, validateEllipseConfig, validateEllipseVertices } from './ellipses.ts';
+import { overlayConfigKeys, overlayDefaults, validateOverlayConfig, isValidGeoJSON } from './overlays.ts';
 import { validateServerFilters, type ServerFilter } from './server-filters.ts';
 import type { ColourScheme } from './colour-schemes.ts';
 import { createUUID } from './uuid.ts';
-export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'maxParallelRequests', 'pagingEnd', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField', 'fieldTypes', ...ellipseConfigKeys] as const;
+export const configKeys = ['url', 'layer', 'version', 'format', 'srs', 'axis', 'sort', 'pageSize', 'maxParallelRequests', 'pagingEnd', 'limit', 'timeField', 'geometryField', 'type', 'csvText', 'csvRef', 'fileName', 'delimiter', 'geometryMode', 'longitudeField', 'latitudeField', 'fieldTypes', ...ellipseConfigKeys, ...overlayConfigKeys] as const;
 export type Config = Record<typeof configKeys[number], string>;
-export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', maxParallelRequests: '10', pagingEnd: 'empty', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '', fieldTypes: '{}', ...ellipseDefaults };
+export const defaultConfig: Config = { url: '', layer: '', version: '2.0.0', format: 'application/json', srs: 'urn:ogc:def:crs:OGC:1.3:CRS84', axis: 'xy', sort: '', pageSize: '50000', maxParallelRequests: '10', pagingEnd: 'empty', limit: '10000000', timeField: '', geometryField: '', type: 'wfs', csvText: '', csvRef: '', fileName: '', delimiter: ',', geometryMode: 'xy', longitudeField: '', latitudeField: '', fieldTypes: '{}', ...ellipseDefaults, ...overlayDefaults };
 export type SavedSource = {
     id: string; name: string; enabled: boolean; config: Config;
     color?: [number, number, number];
@@ -20,11 +21,15 @@ const defaultBackground: Background = { url: 'https://tile.openstreetmap.org/{z}
 // Old fixture settings become ordinary endpoint query parameters. Other servers
 // keep their URLs verbatim, including vendor parameters and authentication tokens.
 export function migrateSource(input: any): SavedSource | undefined {
-    if (!input || typeof input.name !== 'string' || !input.config || typeof input.config.url !== 'string') return;
+    if (!input || typeof input.name !== 'string' || !input.config) return;
+    // Overlay sources have no URL; they carry GeoJSON in a file reference.
+    const isOverlay = input.config.type === 'overlay';
+    if (!isOverlay && typeof input.config.url !== 'string') return;
     const config = { ...defaultConfig };
     for (const key of configKeys) if (typeof input.config[key] === 'string') config[key] = input.config[key];
     if (config.type === 'csv' && config.csvText && !config.csvRef) config.csvRef = createUUID();
-    try {
+    if (config.type === 'overlay' && config.overlayGeoJSON && !config.csvRef) config.csvRef = createUUID();
+    if (!isOverlay) try {
         const url = new URL(config.url, location.href);
         if (url.origin === location.origin && url.pathname === '/wfs' && ['points', 'distribution'].some(key => typeof input.config[key] === 'string')) {
             for (const key of ['points', 'distribution']) if (typeof input.config[key] === 'string' && !url.searchParams.has(key)) url.searchParams.set(key, input.config[key]);
@@ -62,6 +67,14 @@ export function csvFieldTypes(config: Config): Record<string, CSVFieldKind> {
 }
 export function validateConfig(config: Config) {
     validateEllipseConfig({ ...ellipseDefaults, ...config });
+    validateOverlayConfig({ ...overlayDefaults, ...config });
+    if (config.type === 'overlay') {
+        // A saved overlay has its GeoJSON in IndexedDB (csvRef), not inline.
+        // Only require inline GeoJSON when there is no file reference yet.
+        if (!config.csvRef && !config.overlayGeoJSON.trim()) throw Error('Choose a GeoJSON file.');
+        if (config.overlayGeoJSON.trim() && !isValidGeoJSON(config.overlayGeoJSON)) throw Error('The chosen file is not valid GeoJSON (a Feature, FeatureCollection or geometry).');
+        return;
+    }
     if (config.type === 'csv') {
         csvFieldTypes(config);
         if (!config.csvRef && !config.csvText.trim()) throw Error('Choose a CSV file.');
@@ -69,7 +82,7 @@ export function validateConfig(config: Config) {
         if (config.geometryMode === 'xy' ? !config.longitudeField || !config.latitudeField : !config.geometryField) throw Error('Choose the CSV geometry columns.');
         return;
     }
-    if (config.type !== 'wfs') throw Error('Choose WFS or CSV as the source type.');
+    if (config.type !== 'wfs' && config.type !== 'overlay') throw Error('Choose WFS, CSV or GeoJSON overlay as the source type.');
     const url = new URL(config.url, location.href);
     if (!config.url.trim() || !['http:', 'https:'].includes(url.protocol)) throw Error('Enter an HTTP(S) WFS endpoint or a relative URL.');
     if (!config.layer.trim()) throw Error('Enter a feature type or discover the server’s layers.');
@@ -96,8 +109,16 @@ export function validateMapSettings(map: MapSettings) {
 
 // File references identify immutable CSV contents without comparing megabytes.
 export function configIdentity(config: Config) {
-    return JSON.stringify({ ...config, csvText: config.csvRef ? '' : config.csvText });
+    return JSON.stringify({ ...config, csvText: config.csvRef ? '' : config.csvText, overlayGeoJSON: config.csvRef ? '' : config.overlayGeoJSON });
 }
 export function settingsMetadata(settings: Settings): Settings {
-    return { ...settings, sources: settings.sources.map(s => ({ ...s, config: { ...s.config, csvText: '' } })) };
+    const next = { ...settings, sources: settings.sources.map(s => ({ ...s, config: { ...s.config, csvText: '', overlayGeoJSON: '' } as Config })) };
+    // File references identify immutable file contents without comparing
+    // megabytes; keep them so a reload can restore the files from IndexedDB.
+    for (const s of settings.sources) {
+        if (!s.config.csvRef) continue;
+        const target = next.sources.find(n => n.id === s.id);
+        if (target) target.config.csvRef = s.config.csvRef;
+    }
+    return next;
 }

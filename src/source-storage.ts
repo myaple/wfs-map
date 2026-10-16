@@ -34,7 +34,7 @@ function openFiles(user = fileUser): Promise<IDBDatabase> {
 function completed(transaction: IDBTransaction): Promise<void> {
     return new Promise((resolve, reject) => {
         transaction.oncomplete = () => resolve();
-        transaction.onabort = () => reject(transaction.error ?? Error('CSV storage transaction was interrupted.'));
+        transaction.onabort = () => reject(transaction.error ?? Error('File storage transaction was interrupted.'));
         transaction.onerror = () => {}; // Abort reports the transaction error.
     });
 }
@@ -46,7 +46,7 @@ export async function readCSVBlob(reference: string, user = fileUser): Promise<B
         const transaction = db.transaction(storeName, 'readonly'), done = completed(transaction);
         const request = transaction.objectStore(storeName).get(reference);
         await done;
-        if (!(request.result instanceof Blob)) throw Error('The saved CSV file is missing. Choose the file again in Data sources.');
+        if (!(request.result instanceof Blob)) throw Error('The saved file is missing. Choose the file again in Data sources.');
         return request.result;
     } finally { db.close(); }
 }
@@ -54,20 +54,20 @@ export async function readCSVText(reference: string, user = fileUser): Promise<s
     return (await readCSVBlob(reference, user)).text();
 }
 function references(settings: Settings): Set<string> {
-    return new Set(settings.sources.filter(s => s.config.type === 'csv' && s.config.csvRef).map(s => s.config.csvRef));
+    return new Set(settings.sources.filter(s => (s.config.type === 'csv' || s.config.type === 'overlay') && s.config.csvRef).map(s => s.config.csvRef));
 }
 async function removeFiles(db: IDBDatabase, keys: Iterable<string>) {
     const transaction = db.transaction(storeName, 'readwrite'), done = completed(transaction);
     for (const key of keys) transaction.objectStore(storeName).delete(key);
     await done;
 }
-export async function saveSettings(settings: Settings): Promise<Settings> {
-    const next = settingsMetadata(settings), files = settings.sources.filter(s => s.config.type === 'csv');
-    let previous: Settings | undefined;
-    try { previous = JSON.parse(localStorage.getItem(settingsKey) ?? 'null') ?? undefined; } catch { }
+export async function saveSettings(settings: Settings, previousOverride?: Settings): Promise<Settings> {
+    const next = settingsMetadata(settings), files = settings.sources.filter(s => s.config.type === 'csv' || s.config.type === 'overlay');
+    let previous: Settings | undefined = previousOverride;
+    if (!previous) { try { previous = JSON.parse(localStorage.getItem(settingsKey) ?? 'null') ?? undefined; } catch { } }
     const oldRefs = previous?.sources ? references(previous) : new Set<string>();
     for (const [index, source] of settings.sources.entries()) {
-        if (source.config.type === 'csv' && !next.sources[index].config.csvRef) next.sources[index].config.csvRef = createUUID();
+        if ((source.config.type === 'csv' || source.config.type === 'overlay') && !next.sources[index].config.csvRef) next.sources[index].config.csvRef = createUUID();
     }
     // WFS-only settings keep working even when IndexedDB is unavailable.
     if (!files.length && !oldRefs.size) {
@@ -81,7 +81,7 @@ export async function saveSettings(settings: Settings): Promise<Settings> {
         let missing = false;
         for (const source of files) {
             const ref = next.sources.find(s => s.id === source.id)!.config.csvRef;
-            const payload = stagedFiles.get(fileKey(ref)) ?? (source.config.csvText ? new Blob([source.config.csvText], { type: 'text/csv' }) : undefined);
+            const payload = stagedFiles.get(fileKey(ref)) ?? (source.config.csvText ? new Blob([source.config.csvText], { type: 'text/csv' }) : source.config.overlayGeoJSON ? new Blob([source.config.overlayGeoJSON], { type: 'application/geo+json' }) : undefined);
             const request = store.getKey(ref);
             request.onsuccess = () => {
                 if (request.result !== undefined) return;
@@ -94,7 +94,7 @@ export async function saveSettings(settings: Settings): Promise<Settings> {
             };
         }
         try { await done; }
-        catch (e) { if (missing) throw Error('The saved CSV file is missing. Choose the file again in Data sources.'); throw e; }
+        catch (e) { if (missing) throw Error('The saved file is missing. Choose the file again in Data sources.'); throw e; }
         // Publishing one small pointer is atomic. A failed metadata write still
         // leaves every file referenced by the previous settings untouched.
         localStorage.setItem(settingsKey, JSON.stringify(next));

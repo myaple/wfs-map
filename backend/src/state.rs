@@ -222,6 +222,8 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
                 "ellipseOrientationField",
                 "ellipseMajorUnit",
                 "ellipseMinorUnit",
+                "overlayFileName",
+                "overlayColor",
             ],
         )?;
         for value in c.values() {
@@ -287,7 +289,7 @@ pub fn validate(v: &Value) -> Result<(), &'static str> {
         }
         if !matches!(
             config.get("type").and_then(Value::as_str),
-            Some("csv" | "wfs")
+            Some("csv" | "wfs" | "overlay")
         ) {
             return Err("Invalid source type");
         }
@@ -558,7 +560,13 @@ mod tests {
         let v = state();
         assert!(validate(&v).is_ok());
         for key in [
-            "csvText", "features", "results", "rows", "metrics", "preview",
+            "csvText",
+            "features",
+            "results",
+            "rows",
+            "metrics",
+            "preview",
+            "overlayGeoJSON",
         ] {
             let mut v = state();
             v[key] = serde_json::json!("SECRET");
@@ -567,6 +575,21 @@ mod tests {
         let mut v = state();
         v["settings"]["sources"] = serde_json::json!([{"id":"csv1","name":"CSV","enabled":true,"config":{"type":"csv","csvText":"SECRET"}}]);
         assert!(validate(&v).is_err());
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"ov1","name":"Overlay","enabled":true,"config":{"type":"overlay","overlayGeoJSON":"SECRET"}}]);
+        assert!(validate(&v).is_err());
+    }
+    #[test]
+    fn accepts_overlay_sources_without_data_payloads() {
+        let mut v = state();
+        v["settings"]["sources"] = serde_json::json!([{"id":"ov1","name":"Study area","enabled":true,"config":{"type":"overlay","csvRef":"abc-123","overlayFileName":"study.geojson","overlayColor":"#d45b24"}}]);
+        assert!(validate(&v).is_ok());
+        // Overlay type is accepted alongside wfs and csv.
+        for source_type in ["wfs", "csv", "overlay"] {
+            let mut v = state();
+            v["settings"]["sources"] = serde_json::json!([{"id":"s","name":"S","enabled":true,"config":{"type":source_type}}]);
+            assert!(validate(&v).is_ok(), "Rejected valid type {source_type}");
+        }
     }
     #[test]
     fn validates_wfs_paging_completion_and_accepts_older_configs() {
