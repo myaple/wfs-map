@@ -90,7 +90,10 @@ test('all chart types configure from schema and scatter drag produces an exact A
     await page.mouse.down({ button: 'right' });
     await page.mouse.move(b.x + rect.left + dx * 2.5, b.y + rect.bottom - dy * 2.5);
     await page.mouse.up({ button: 'right' });
-    await expect(page.locator('#filterStatus')).not.toContainText('4,096 matches');
+    // Wait for the drag's filter response, not just any status change: the
+    // intermediate "Updating selection and charts…" text also fails to contain
+    // "4,096 matches", so the negative assertion alone can pass too early.
+    await expect(page.locator('#filterStatus')).toContainText('620 matches');
     const result = await page.evaluate(() => (window as any).__WFS_MAP__.workspace.results[2]);
     const bounds = await page.evaluate(() => { const r = (window as any).__WFS_MAP__.workspace.results[2]; return { x: r.x.ranges.slice(0, 4), y: r.y.ranges.slice(0, 4), xf: r.x.field, yf: r.y.field, count: (window as any).__WFS_MAP__.metrics.filterCount }; });
     const expected = Array.from({ length: 4096 }, (_, i) => feature(i)).filter(f => { const p = f.properties as any; return p[bounds.xf] >= bounds.x[0] && p[bounds.xf] < bounds.x[3] && p[bounds.yf] >= bounds.y[0] && p[bounds.yf] < bounds.y[3]; }).length;

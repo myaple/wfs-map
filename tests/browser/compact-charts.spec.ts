@@ -22,7 +22,8 @@ test('compact comparison card keeps the plot prominent and controls accessible',
     await chart.scrollIntoViewIfNeeded();
     const card = (await chart.boundingBox())!, header = (await chart.locator('.chart-header').boundingBox())!;
     const canvas = chart.locator('canvas'), plot = JSON.parse((await canvas.getAttribute('data-plot-rect'))!);
-    expect(card.height).toBeLessThan(350);
+    // Allow a few px of font-metric variance across platforms/renderers.
+    expect(card.height).toBeLessThan(360);
     expect(header.height).toBeLessThan(45);
     expect(plot.bottom - plot.top).toBeGreaterThanOrEqual(170);
     await expect(chart.getByLabel('Chart source legend')).toContainText('Test WFS 2');
