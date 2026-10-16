@@ -1011,11 +1011,11 @@ html { scroll-padding-bottom: var(--workspace-dock-height, 48px); }
 .map-tools #enlargeMap { margin-left:0; }
 #addOverlay { display:inline-flex;align-items:center;justify-content:center;min-width:34px; }
 /* Active overlays are listed inside the overlay dialog, not as a side panel. */
-#overlayDialog .overlay-list { display:flex;flex-direction:column;gap:4px;padding:0;border-top:1px solid var(--border);margin-top:4px;padding-top:8px; }
-#overlayDialog .overlay-list-heading { font-size:13px;font-weight:600;margin:0 0 4px; }
-#overlayDialog .overlay-row { display:flex;align-items:center;gap:8px;font-size:13px; }
+#overlayDialog .overlay-list { display:flex;flex-direction:column;gap:4px;padding:16px 24px 20px;margin-top:0;border-top:none; }
+#overlayDialog .overlay-list-heading { font-size:13px;font-weight:600;margin:0 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em; }
+#overlayDialog .overlay-row { display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0; }
 #overlayDialog .overlay-row .overlay-name { font-weight:600; }
-#overlayDialog .overlay-row .hint { flex:1; }
+#overlayDialog .overlay-row .hint { flex:1;color:var(--muted); }
 #overlayDialog .overlay-swatch { width:12px;height:12px;border-radius:3px;flex:none; }
 #overlayDialog .overlay-row button.danger { margin-left:auto; }
 
