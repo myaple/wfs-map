@@ -19,9 +19,12 @@ function validateSettings(input: unknown): asserts input is Settings {
     for (const source of input.sources) {
         if (!object(source) || typeof source.id !== 'string' || !source.id || source.id.length > 128 || ids.has(source.id)
             || typeof source.name !== 'string' || !source.name.trim() || source.name.length > 120 || typeof source.enabled !== 'boolean'
-            || !object(source.config) || configKeys.filter(k => !['fieldTypes', 'pagingEnd', 'maxParallelRequests'].includes(k) && !ellipseConfigKeys.includes(k as typeof ellipseConfigKeys[number])).some(key => typeof source.config[key] !== 'string')) throw Error('Invalid or duplicate data source in backup.');
-        for (const key of ellipseConfigKeys) if (source.config[key] === undefined) source.config[key] = ellipseDefaults[key];
+            || !object(source.config)) throw Error('Invalid or duplicate data source in backup.');
+        // Migrate pre-overlay backups: default absent overlay keys BEFORE the
+        // required-string check so old CSV/WFS backups still import.
         for (const key of overlayConfigKeys) if (source.config[key] === undefined) source.config[key] = overlayDefaults[key];
+        if (configKeys.filter(k => !['fieldTypes', 'pagingEnd', 'maxParallelRequests'].includes(k) && !ellipseConfigKeys.includes(k as typeof ellipseConfigKeys[number])).some(key => typeof source.config[key] !== 'string')) throw Error('Invalid or duplicate data source in backup.');
+        for (const key of ellipseConfigKeys) if (source.config[key] === undefined) source.config[key] = ellipseDefaults[key];
         if (source.config.maxParallelRequests === undefined) source.config.maxParallelRequests = defaultConfig.maxParallelRequests;
         if (typeof source.config.maxParallelRequests !== 'string') throw Error('Invalid maximum parallel requests.');
         if (source.config.pagingEnd === undefined) source.config.pagingEnd = defaultConfig.pagingEnd;
@@ -80,6 +83,9 @@ export async function readBackup(archive: Blob): Promise<Settings> {
     let csvCount = 0;
     for (const source of manifest.settings.sources as SavedSource[]) {
         if (!object(source) || !object(source.config)) throw Error('Invalid data source in backup.');
+        // Migrate pre-overlay backups: old manifests lack the overlay keys
+        // entirely (undefined), so default them before the empty-string check.
+        for (const key of overlayConfigKeys) if (source.config[key] === undefined) source.config[key] = overlayDefaults[key];
         if (source.config.csvText !== '' || source.config.csvRef !== '' || source.config.overlayGeoJSON !== '') throw Error('Backup manifest must not contain local file contents or references.');
         if (source.config.type !== 'csv' && source.config.type !== 'overlay') continue;
         csvCount++;

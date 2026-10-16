@@ -187,6 +187,81 @@ test('Multiple overlays with the same file save correctly, and overlay config di
     expect(errors).toEqual([]);
 });
 
+test('GeoJSON overlay visibility toggle persists across reload', async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto('/?time=all&points=512&autoload=1');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
+    // Add and save an overlay.
+    await addOverlay(page, 'Toggle Test');
+    await page.locator('#closeOverlay').click();
+    await navigate(page, 'configuration');
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#saveState')).toContainText('Saved in this browser');
+    // Go back to analysis, open the dialog, uncheck visibility.
+    await navigate(page, 'analysis');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
+    await page.getByRole('button', { name: 'Add GeoJSON overlay', exact: true }).click();
+    await page.getByLabel('Show Toggle Test', { exact: true }).uncheck();
+    await expect.poll(async () => (await overlayLayers(page)).map(l => l?.visible)).toEqual([false, false, false]);
+    // Reload: visibility must stay off (was previously reset to on).
+    await page.locator('#closeOverlay').click();
+    await page.reload();
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.map.loaded());
+    await navigate(page, 'analysis');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.map.getStyle().layers.some((l: any) => l.id.startsWith('overlay-') && l.id.endsWith('-point')));
+    // All three layers must be hidden.
+    await expect.poll(async () => (await overlayLayers(page)).map(l => l?.visible)).toEqual([false, false, false]);
+    // Checkbox reflects the persisted state.
+    await page.getByRole('button', { name: 'Add GeoJSON overlay', exact: true }).click();
+    await expect(page.getByLabel('Show Toggle Test', { exact: true })).not.toBeChecked();
+    await page.locator('#closeOverlay').click();
+    // Verify the source's enabled flag was saved as false.
+    const settings = await saved(page);
+    const overlay = settings.sources.find((s: any) => s.config.type === 'overlay');
+    expect(overlay.enabled).toBe(false);
+    expect(errors).toEqual([]);
+});
+
+test('GeoJSON overlay picks up saved configuration changes (name, colour, GeoJSON)', async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto('/?time=all&points=512&autoload=1');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
+    // Add and save an orange overlay named "Original".
+    await addOverlay(page, 'Original', 'Orange');
+    await page.locator('#closeOverlay').click();
+    await navigate(page, 'configuration');
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#saveState')).toContainText('Saved in this browser');
+    // Verify initial state: orange layers.
+    await navigate(page, 'analysis');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.map.getStyle().layers.some((l: any) => l.id.startsWith('overlay-') && l.id.endsWith('-point')));
+    let layers = await overlayLayers(page);
+    expect(layers[2]?.color).toBe('#d45b24'); // orange point
+    // Go to config, rename to "Renamed", change colour to Teal.
+    await navigate(page, 'configuration');
+    await page.getByRole('button', { name: 'Configure Original', exact: true }).click();
+    await page.locator('#sourceName').fill('Renamed');
+    await page.locator('#overlaySourceColor').selectOption({ label: 'Teal' });
+    await page.locator('#updateSource').click();
+    await expect(page.locator('#sourceDialog')).not.toBeVisible();
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#saveState')).toContainText('Saved in this browser');
+    // Back to analysis: the overlay dialog must show the new name.
+    await navigate(page, 'analysis');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
+    await page.getByRole('button', { name: 'Add GeoJSON overlay', exact: true }).click();
+    await expect(page.locator('#overlayList .overlay-row')).toContainText('Renamed');
+    // Layers must be teal now (not stale orange).
+    await page.waitForFunction(() => (window as any).__WFS_MAP__.map.getStyle().layers.some((l: any) => l.id.startsWith('overlay-') && l.id.endsWith('-point')));
+    layers = await overlayLayers(page);
+    expect(layers[2]?.color).toBe('#17836f'); // teal point
+    expect(layers[1]?.color).toBe('#17836f'); // teal line
+    expect(layers[0]?.color).toBe('#17836f'); // teal fill
+    await page.locator('#closeOverlay').click();
+    expect(errors).toEqual([]);
+});
+
 test('GeoJSON overlay dialog validates files and lists colours', async ({ page }) => {
     await page.goto('/?time=all');
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.map.loaded());

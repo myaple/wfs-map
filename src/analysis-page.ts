@@ -276,7 +276,13 @@ function renderOverlayList() {
     for (const o of overlays) {
         const row = document.createElement('div'); row.className = 'overlay-row'; row.dataset.overlayId = o.id;
         const check = document.createElement('input'); check.type = 'checkbox'; check.checked = o.visible; check.setAttribute('aria-label', 'Show ' + o.name);
-        check.onchange = () => { o.visible = check.checked; syncOverlay(o); persist(); };
+        check.onchange = () => {
+            o.visible = check.checked;
+            // Sync the visibility toggle to the matching source so it persists.
+            const s = sources.find(s => s.id === o.id);
+            if (s) { s.enabled = check.checked; o.enabled = check.checked; }
+            syncOverlay(o); persist();
+        };
         const swatch = document.createElement('span'); swatch.className = 'overlay-swatch'; swatch.style.background = o.color; swatch.setAttribute('aria-hidden', 'true');
         const name = document.createElement('span'); name.className = 'overlay-name'; name.textContent = o.name;
         const file = document.createElement('span'); file.className = 'hint'; file.textContent = o.config.fileName || 'GeoJSON';
@@ -321,7 +327,47 @@ function adoptOverlays() {
     // the sources list (avoids a transient persist() that drops them).
     for (const o of [...overlays]) if (!sources.some(s => s.id === o.id && s.config.type === 'overlay')) removeOverlay(o);
     for (const s of sources.filter(s => s.config.type === 'overlay')) {
-        if (overlays.some(o => o.id === s.id)) continue; // already adopted
+        const existing = overlays.find(o => o.id === s.id);
+        if (existing) {
+            // Reconcile: the saved source changed (name, color, enabled, or
+            // GeoJSON content). Update the overlay in place and rebuild layers.
+            const colorChanged = existing.color !== (s.config.overlayColor || overlayColors[0].id);
+            const geojsonChanged = existing.geojson !== s.config.overlayGeoJSON && !!s.config.overlayGeoJSON;
+            existing.name = s.name;
+            existing.config = s.config;
+            existing.enabled = s.enabled;
+            existing.color = s.config.overlayColor || overlayColors[0].id;
+            // Preserve the user's visibility toggle unless the source was
+            // disabled/enabled — in that case follow the enabled flag.
+            if (existing.visible !== s.enabled && existing.enabled === s.enabled) {
+                // visibility unchanged relative to enabled change
+            }
+            existing.visible = s.enabled && existing.visible;
+            if (geojsonChanged) {
+                existing.geojson = s.config.overlayGeoJSON;
+                if (mapReady) {
+                    for (const id of [existing.pointId, existing.lineId, existing.fillId]) if (map.getLayer(id)) map.removeLayer(id);
+                    if (map.getSource(existing.sourceId)) map.removeSource(existing.sourceId);
+                    existing.sourceId = ''; existing.fillId = ''; existing.lineId = ''; existing.pointId = '';
+                    const ids = overlayLayerIds(existing.id);
+                    existing.sourceId = ids.sourceId; existing.fillId = ids.fillId; existing.lineId = ids.lineId; existing.pointId = ids.pointId;
+                }
+            }
+            if (mapReady && (colorChanged || geojsonChanged)) {
+                if (existing.sourceId && map.getSource(existing.sourceId) && existing.geojson) {
+                    (map.getSource(existing.sourceId) as maplibregl.GeoJSONSource).setData(JSON.parse(existing.geojson));
+                    for (const [layerId, paintKey] of [[existing.fillId, 'fill-color'], [existing.lineId, 'line-color'], [existing.pointId, 'circle-color']] as const) {
+                        if (map.getLayer(layerId)) map.setPaintProperty(layerId, paintKey, existing.color);
+                    }
+                } else if (existing.geojson) {
+                    addOverlayLayers(existing);
+                }
+                syncOverlay(existing);
+            } else if (mapReady) {
+                syncOverlay(existing);
+            }
+            continue;
+        }
         const color = s.config.overlayColor || overlayColors[0].id;
         overlays.push({ id: s.id, name: s.name, config: s.config, enabled: s.enabled, visible: s.enabled, color, geojson: s.config.overlayGeoJSON, ...overlayLayerIds(s.id) });
     }

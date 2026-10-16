@@ -128,3 +128,16 @@ test('backups created before ellipse settings migrate with ellipses disabled', a
     }));
     for (const source of restored.sources) { assert.equal(source.config.ellipseMajorField,''); assert.equal(source.config.ellipseMajorUnit,'m'); }
 });
+
+test('backups created before overlay settings migrate with overlay defaults', async () => {
+    // Pre-PR backups lack overlayGeoJSON, overlayFileName, and overlayColor
+    // entirely. They must import without error and get the overlay defaults.
+    const restored = await readBackup(await modifiedBackup(m => {
+        for (const source of m.settings.sources) for (const key of ['overlayGeoJSON','overlayFileName','overlayColor']) delete source.config[key];
+    }));
+    for (const source of restored.sources) {
+        assert.equal(source.config.overlayGeoJSON, '');
+        assert.equal(source.config.overlayFileName, '');
+        assert.equal(source.config.overlayColor, '#d45b24');
+    }
+});
