@@ -560,7 +560,12 @@ mod tests {
         let v = state();
         assert!(validate(&v).is_ok());
         for key in [
-            "csvText", "features", "results", "rows", "metrics", "preview",
+            "csvText",
+            "features",
+            "results",
+            "rows",
+            "metrics",
+            "preview",
             "overlayGeoJSON",
         ] {
             let mut v = state();
