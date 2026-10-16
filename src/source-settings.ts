@@ -69,8 +69,10 @@ export function validateConfig(config: Config) {
     validateEllipseConfig({ ...ellipseDefaults, ...config });
     validateOverlayConfig({ ...overlayDefaults, ...config });
     if (config.type === 'overlay') {
-        if (!config.overlayGeoJSON.trim()) throw Error('Choose a GeoJSON file.');
-        if (!isValidGeoJSON(config.overlayGeoJSON)) throw Error('The chosen file is not valid GeoJSON (a Feature, FeatureCollection or geometry).');
+        // A saved overlay has its GeoJSON in IndexedDB (csvRef), not inline.
+        // Only require inline GeoJSON when there is no file reference yet.
+        if (!config.csvRef && !config.overlayGeoJSON.trim()) throw Error('Choose a GeoJSON file.');
+        if (config.overlayGeoJSON.trim() && !isValidGeoJSON(config.overlayGeoJSON)) throw Error('The chosen file is not valid GeoJSON (a Feature, FeatureCollection or geometry).');
         return;
     }
     if (config.type === 'csv') {

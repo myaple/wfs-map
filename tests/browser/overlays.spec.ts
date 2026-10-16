@@ -21,7 +21,7 @@ async function addOverlay(page: Page, name = 'Study area', color = 'Orange') {
     await page.locator('#addOverlaySource').click();
     // Dialog stays open so the new overlay appears in the active list inside it.
     await expect(page.locator('#overlayDialog')).toBeVisible();
-    await expect(page.locator('#overlayList .overlay-row')).toContainText(name);
+    await expect(page.locator('#overlayList .overlay-row').filter({ hasText: name })).toHaveCount(1);
 }
 const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('wfs-settings')!));
 const idbKeys = (page: Page) => page.evaluate(async () => {
@@ -129,6 +129,61 @@ test('GeoJSON overlay plots on the map, follows the point size slider, and saves
     await expect(page.locator('#saveState')).toContainText('Saved in this browser');
     expect((await saved(page)).sources.some((s: any) => s.config.type === 'overlay')).toBe(false);
     await expect.poll(() => idbKeys(page)).toEqual([]);
+    expect(errors).toEqual([]);
+});
+
+test('Multiple overlays with the same file save correctly, and overlay config dialog has a single name field', async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto('/?time=all&points=512&autoload=1');
+    await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
+    // Add first overlay via toolbar and save.
+    await addOverlay(page, 'Overlay A');
+    await page.locator('#closeOverlay').click();
+    await navigate(page, 'configuration');
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#saveState')).toContainText('Saved in this browser');
+    // Add a second overlay with the SAME file (different name) and save again.
+    // Before the fix, the first overlay's config lost its inline GeoJSON after
+    // save+apply, so validateConfig threw "Choose a GeoJSON file." on save 2.
+    await navigate(page, 'analysis');
+    await addOverlay(page, 'Overlay B');
+    await page.locator('#closeOverlay').click();
+    await navigate(page, 'configuration');
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#saveState')).toContainText('Saved in this browser');
+    await expect(page.locator('#saveError')).toBeHidden();
+    const settings = await saved(page);
+    const overlayNames = settings.sources.filter((s: any) => s.config.type === 'overlay').map((s: any) => s.name);
+    expect(overlayNames).toEqual(['Overlay A', 'Overlay B']);
+    // Both overlays have distinct csvRefs and both files exist in IndexedDB.
+    const refs = settings.sources.filter((s: any) => s.config.type === 'overlay').map((s: any) => s.config.csvRef);
+    expect(refs[0]).not.toBe(refs[1]);
+    expect(await idbKeys(page)).toEqual(expect.arrayContaining(refs));
+    // The configure dialog has a single source name field (no duplicate overlay name).
+    await page.getByRole('button', { name: 'Configure Overlay A', exact: true }).click();
+    await expect(page.locator('#sourceName')).toHaveValue('Overlay A');
+    await expect(page.locator('#overlaySourceName')).toHaveCount(0); // removed
+    await expect(page.locator('#overlaySourceFileStatus')).toContainText('study-area.geojson');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    // An overlay can also be created from the "Add data source" dialog.
+    await page.locator('#addSource').click();
+    await page.locator('#type').selectOption('overlay');
+    await page.locator('#sourceName').fill('Config Created');
+    await page.locator('#overlaySourceFile').setInputFiles(overlayFile);
+    await expect(page.locator('#overlaySourceFileStatus')).toContainText('study-area.geojson');
+    await page.locator('#updateSource').click();
+    await expect(page.locator('#sourceDialog')).not.toBeVisible();
+    await expect(page.locator('#sourceList .source-row').filter({ hasText: 'Config Created' })).toHaveCount(1);
+    // Save with three overlays (two sharing the same file content).
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#saveState')).toContainText('Saved in this browser');
+    await expect(page.locator('#saveError')).toBeHidden();
+    const finalSettings = await saved(page);
+    expect(finalSettings.sources.filter((s: any) => s.config.type === 'overlay')).toHaveLength(3);
+    const finalRefs = finalSettings.sources.filter((s: any) => s.config.type === 'overlay').map((s: any) => s.config.csvRef);
+    expect(new Set(finalRefs).size).toBe(3); // all distinct
+    expect(await idbKeys(page)).toEqual(expect.arrayContaining(finalRefs));
     expect(errors).toEqual([]);
 });
 

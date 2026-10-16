@@ -41,7 +41,7 @@ export class DataSources {
         this.saved = structuredClone(settings);
         $('configuration').innerHTML = `
         <div class="sources-page">
-          <div class="sources-heading"><div><h2>Data sources</h2><p class="hint">Connect WFS servers or import CSV points to explore on the map.</p></div><button id="addSource" class="primary">+ Add data source</button></div>
+          <div class="sources-heading"><div><h2>Data sources</h2><p class="hint">Connect WFS servers, import CSV points, or add GeoJSON overlays to explore on the map.</p></div><button id="addSource" class="primary">+ Add data source</button></div>
           <section class="settings-card" aria-labelledby="sourcesTitle"><div class="settings-card-head"><h3 id="sourcesTitle">Your data sources</h3><span id="sourceCount" class="hint"></span></div><p class="hint">Enable a source to load it after saving. Configure opens its connection settings.</p><ul id="sourceList" class="source-list"></ul><div id="sourceUndo" hidden><span id="removedName"></span> <button id="undoRemove">Undo remove</button></div></section>
           <details class="settings-card" id="backgroundSettings"><summary>Map background</summary><div class="settings-fields"><label for="basemapURL">Raster basemap tile URL</label><input id="basemapURL" placeholder="https://…/{z}/{x}/{y}.png"><label for="basemapAttribution">Basemap attribution</label><input id="basemapAttribution"><p class="hint">XYZ raster tiles. Leave the URL empty to use the offline grid.</p></div></details>
           <section class="settings-card" aria-labelledby="backupTitle"><h3 id="backupTitle">Backup &amp; share</h3><p class="hint">Download the current list, including unsaved changes and disabled sources, as a .tar.gz. Includes complete CSV files, WFS connection settings, source colours, and map background, view and point size. WFS features are fetched again when loaded.</p><div class="row"><button id="exportBackup">Download backup</button><button id="importBackup">Import backup</button><input id="backupFile" type="file" accept=".tar.gz,.tgz,application/gzip" hidden aria-label="Choose backup archive"></div><p id="backupStatus" class="hint" role="status"></p><p id="backupError" class="error" role="alert" hidden></p></section>
@@ -83,7 +83,7 @@ export class DataSources {
             <details id="csvTypes"><summary>Column types</summary><p class="hint">Automatic infers each column from the whole file. Text / category preserves numeric codes and leading zeros. Invalid values for an explicit type are reported as rejected rows. The selected time attribute must be Date / time or Automatic.</p><div id="csvTypeList" class="settings-fields"></div></details>
             <p class="hint">The imported file is saved in this browser with its settings. Available storage depends on your browser and device; a save error leaves your existing saved sources intact.</p>
           </fieldset><fieldset id="overlayFields" class="source-type-fields" hidden disabled>
-            <label for="overlaySourceName">Overlay name</label><input id="overlaySourceName" disabled><p class="hint">Overlays are added from the map toolbar’s Add GeoJSON overlay button. They plot your file on the map without loading dataset points.</p>
+            <p class="hint">GeoJSON overlays plot your file on the map without loading dataset points. They are usually added from the map toolbar’s Add GeoJSON overlay button, but you can also create or replace one here.</p>
             <label for="overlaySourceFile">GeoJSON file</label><input id="overlaySourceFile" type="file" accept=".geojson,.json,application/geo+json,application/json"><p id="overlaySourceFileStatus" class="hint" role="status"></p>
             <label for="overlaySourceColor">Overlay colour</label><select id="overlaySourceColor"></select>
             <p id="overlaySourceHint" class="hint" role="status" hidden></p>
@@ -292,7 +292,6 @@ export class DataSources {
         input('csvFile').value = '';
         this.overlayText = config.overlayGeoJSON; this.overlayBlob = undefined; this.overlayFileName = config.overlayFileName;
         input('overlaySourceFile').value = '';
-        input('overlaySourceName').value = name;
         $<HTMLSelectElement>('overlaySourceColor').value = config.overlayColor || overlayColors[0].id;
         $('overlaySourceFileStatus').textContent = config.overlayFileName ? `${config.overlayFileName} · saved with this overlay` : 'Choose a .geojson or .json file.';
         this.csvColumns(config);
@@ -531,8 +530,11 @@ export class DataSources {
             const name = input('sourceName').value.trim();
             if (!name) throw Error('Enter a source name.');
             if (config.type === 'csv' && this.csvBlob) stageCSVFile(config.csvRef, this.csvBlob);
-            if (config.type === 'overlay' && this.overlayBlob) stageCSVFile(config.csvRef || createUUID(), this.overlayBlob);
-            if (config.type === 'overlay' && !config.csvRef) config.csvRef = createUUID();
+            if (config.type === 'overlay' && this.overlayBlob) {
+                // Stage and reference the same csvRef so saveSettings finds the file.
+                if (!config.csvRef) config.csvRef = createUUID();
+                stageCSVFile(config.csvRef, this.overlayBlob);
+            }
             if (this.editing) { this.editing.name = name; this.editing.config = config; }
             else if (this.draft.sources.length < 8) this.draft.sources.push({ id: createUUID(), name, config, enabled: true });
             this.close(); this.render();
