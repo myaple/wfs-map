@@ -34,7 +34,7 @@ for (const deviceScaleFactor of [1, 2]) test.describe(`measure at DPR ${deviceSc
         await fixture(page);
         const requests: string[] = []; page.on('request', r => { if (new URL(r.url()).searchParams.has('request')) requests.push(r.url()); });
         const button = page.getByRole('button', { name: 'Measure distance', exact: true });
-        expect(await button.evaluate(el => el.previousElementSibling?.id)).toBe('toggleEllipses');
+        expect(await button.evaluate(el => el.previousElementSibling?.id)).toBe('addOverlay');
         await button.click();
         await expect(button).toHaveAttribute('aria-pressed', 'true');
         await expect(page.locator('.map-measure-help')).toHaveText('Click the first point');
