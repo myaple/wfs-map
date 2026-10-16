@@ -19,7 +19,9 @@ async function addOverlay(page: Page, name = 'Study area', color = 'Orange') {
     await expect(page.locator('#overlayFileStatus')).toContainText('study-area.geojson');
     await page.locator('#overlayColor').selectOption({ label: color });
     await page.locator('#addOverlaySource').click();
-    await expect(page.locator('#overlayDialog')).not.toBeVisible();
+    // Dialog stays open so the new overlay appears in the active list inside it.
+    await expect(page.locator('#overlayDialog')).toBeVisible();
+    await expect(page.locator('#overlayList .overlay-row')).toContainText(name);
 }
 const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('wfs-settings')!));
 const idbKeys = (page: Page) => page.evaluate(async () => {
@@ -50,9 +52,17 @@ test('GeoJSON overlay plots on the map, follows the point size slider, and saves
     await expect(page.locator('#toggleEllipses')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add GeoJSON overlay', exact: true })).toBeVisible();
     await addOverlay(page);
-    // Listed under the map with its colour swatch, and drawn as three layers.
+    // The active overlay list is inside the dialog, not a side panel.
+    // Close the dialog to see the map without any side panel.
+    await page.locator('#closeOverlay').click();
+    await expect(page.locator('#overlayDialog')).not.toBeVisible();
+    // No side panel: the overlay list only exists inside the dialog.
+    await expect(page.locator('#overlayList')).toBeHidden();
+    // Reopen the dialog: the overlay is listed there with its colour swatch.
+    await page.getByRole('button', { name: 'Add GeoJSON overlay', exact: true }).click();
     await expect(page.locator('#overlayList .overlay-row')).toContainText('Study area');
     await expect(page.locator('#overlayList .overlay-row')).toContainText('study-area.geojson');
+    await page.locator('#closeOverlay').click();
     await page.waitForFunction(() => (window as any).__WFS_MAP__.map.getStyle().layers.some((l: any) => l.id.startsWith('overlay-')));
     const layers = await overlayLayers(page);
     expect(layers.map(l => l?.visible)).toEqual([true, true, true]);
@@ -88,6 +98,10 @@ test('GeoJSON overlay plots on the map, follows the point size slider, and saves
     await page.reload();
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.map.loaded());
     await page.waitForFunction(() => (window as any).__WFS_MAP__.map.getStyle().layers.some((l: any) => l.id.startsWith('overlay-') && l.id.endsWith('-point')));
+    // Navigate back to the analysis page (reload may land on configuration).
+    await navigate(page, 'analysis');
+    // Overlay restored: open the dialog to see it in the active list.
+    await page.getByRole('button', { name: 'Add GeoJSON overlay', exact: true }).click();
     await expect(page.locator('#overlayList .overlay-row')).toContainText('Study area');
     const restored = await overlayLayers(page);
     expect(restored.map(l => l?.visible)).toEqual([true, true, true]);
@@ -95,19 +109,20 @@ test('GeoJSON overlay plots on the map, follows the point size slider, and saves
     // The overlay survives with the loaded dataset visible.
     await page.waitForFunction(() => (window as any).__WFS_MAP__?.done);
     await expect(page.locator('#hud')).toContainText('Loaded');
-    // Back on the analysis page the overlay list is visible again.
-    await page.evaluate(() => { location.hash = '#analysis'; });
-    await expect(page.locator('#overlayList')).toBeVisible();
-    await page.screenshot({ path: 'test-results/overlay-restored.png', fullPage: false });
     // Toggling visibility hides the layers without removing the source.
     await page.getByLabel('Show Study area', { exact: true }).uncheck();
     await expect.poll(async () => (await overlayLayers(page)).map(l => l?.visible)).toEqual([false, false, false]);
     await page.getByLabel('Show Study area', { exact: true }).check();
     await expect.poll(async () => (await overlayLayers(page)).map(l => l?.visible)).toEqual([true, true, true]);
+    await page.screenshot({ path: 'test-results/overlay-restored.png', fullPage: false });
     // Removing the overlay removes its layers and its saved source.
+    // (The dialog is still open from the visibility toggle section above.)
     await page.getByRole('button', { name: 'Remove Study area', exact: true }).click();
     await expect(page.locator('#overlayList .overlay-row')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => (window as any).__WFS_MAP__.map.getStyle().layers.some((l: any) => l.id.startsWith('overlay-')))).toBe(false);
+    // Close the dialog and navigate to configuration.
+    await page.locator('#closeOverlay').click();
+    await expect(page.locator('#overlayDialog')).not.toBeVisible();
     await navigate(page, 'configuration');
     await expect(page.locator('#sourceList .source-row')).toHaveCount(1); // only the WFS source remains
     await page.locator('#saveSettings').click();
@@ -143,14 +158,20 @@ test('GeoJSON overlay dialog validates files and lists colours', async ({ page }
     await page.locator('#overlayFile').setInputFiles({ name: 'point.geojson', mimeType: 'application/json', buffer: Buffer.from('{"type":"Point","coordinates":[-1.5,54]}') });
     await expect(page.locator('#overlayFileStatus')).toContainText('1 point features');
     await page.locator('#addOverlaySource').click();
-    await expect(page.locator('#overlayDialog')).not.toBeVisible();
+    // Dialog stays open: the new overlay appears in the active list inside it.
+    await expect(page.locator('#overlayDialog')).toBeVisible();
     await expect(page.locator('#overlayList .overlay-row')).toContainText('Single point');
     await page.waitForFunction(() => (window as any).__WFS_MAP__.map.getStyle().layers.some((l: any) => l.id.startsWith('overlay-') && l.id.endsWith('-point')));
-    // Cancel closes the dialog without adding anything.
+    // Close the dialog: the overlay list is hidden (no side panel).
+    await page.locator('#closeOverlay').click();
+    await expect(page.locator('#overlayDialog')).not.toBeVisible();
+    await expect(page.locator('#overlayList')).toBeHidden();
+    // Reopen: the overlay is still listed.
     await page.getByRole('button', { name: 'Add GeoJSON overlay', exact: true }).click();
+    await expect(page.locator('#overlayList .overlay-row')).toHaveCount(1);
+    // Cancel closes the dialog without adding anything.
     await page.locator('#cancelOverlay').click();
     await expect(page.locator('#overlayDialog')).not.toBeVisible();
-    await expect(page.locator('#overlayList .overlay-row')).toHaveCount(1);
     // The overlay can be reconfigured from Data sources like any source.
     await navigate(page, 'configuration');
     await page.getByRole('button', { name: 'Configure Single point', exact: true }).click();

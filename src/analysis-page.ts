@@ -56,7 +56,7 @@ $('app').innerHTML = `
 <label for="overlayColor">Overlay colour</label><select id="overlayColor"></select>
 <p id="overlayHint" class="hint" role="status" hidden></p>
 <p id="overlayError" class="error" role="alert" hidden></p>
-</div><div class="source-dialog-footer"><span class="hint">Overlays are saved with your analysis like CSV files.</span><button id="cancelOverlay" type="button">Cancel</button><button id="addOverlaySource" class="primary" type="submit">Add overlay</button></div></form></dialog><div id="overlayList" class="overlay-list" hidden></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Middle-drag to highlight · double-middle-click to clear highlights · Click a segment · left-drag charts to zoom · right-drag to select · double-left-click to reset zoom · double-right-click to clear dataset filters</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
+</div><div class="source-dialog-footer"><span class="hint">Overlays are saved with your analysis like CSV files.</span><button id="cancelOverlay" type="button">Cancel</button><button id="addOverlaySource" class="primary" type="submit">Add overlay</button></div></form><div id="overlayList" class="overlay-list" hidden></div></dialog><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Middle-drag to highlight · double-middle-click to clear highlights · Click a segment · left-drag charts to zoom · right-drag to select · double-left-click to reset zoom · double-right-click to clear dataset filters</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section><div id="timelineHost" hidden></div>`;
 mountThemeToggle(document.querySelector('.topbar')!);
@@ -271,6 +271,8 @@ function renderOverlayList() {
     host.replaceChildren();
     if (!overlays.length) { host.hidden = true; return; }
     host.hidden = false;
+    const heading = document.createElement('h3'); heading.textContent = 'Active overlays'; heading.className = 'overlay-list-heading';
+    host.append(heading);
     for (const o of overlays) {
         const row = document.createElement('div'); row.className = 'overlay-row'; row.dataset.overlayId = o.id;
         const check = document.createElement('input'); check.type = 'checkbox'; check.checked = o.visible; check.setAttribute('aria-label', 'Show ' + o.name);
@@ -337,6 +339,7 @@ function openOverlayDialog() {
     $<HTMLInputElement>('overlayFileStatus').textContent = 'Choose a .geojson or .json file.';
     $<HTMLInputElement>('overlayName').value = '';
     $<HTMLSelectElement>('overlayColor').value = overlayColors[0].id;
+    renderOverlayList();
     $<HTMLDialogElement>('overlayDialog').showModal();
     $<HTMLInputElement>('overlayName').focus();
 }
@@ -383,7 +386,8 @@ $('overlayForm').onsubmit = e => {
         // Show the overlay immediately, before the analysis is saved.
         const o: Overlay = { id, name, enabled: true, visible: true, color, geojson: overlayFileText, config, ...overlayLayerIds(id) };
         overlays.push(o); addOverlayLayers(o); renderOverlayList();
-        closeOverlayDialog(); overlayFileName = ''; overlayFileText = '';
+        // Don't close: show the new overlay in the list inside the dialog.
+        overlayFileName = ''; overlayFileText = '';
     } catch (error) { $('overlayError').textContent = (error as Error).message; $('overlayError').hidden = false; }
 };
 const pointColors = new PointColors(() => sources, (source, previous) => {
