@@ -23,7 +23,7 @@ export function configurationState(settings: Settings, query: AnalysisState['que
             sources: settings.sources.map(s => ({
                 id: s.id, name: s.name, enabled: s.enabled,
                 serverFilters: structuredClone(s.serverFilters ?? []),
-                config: Object.fromEntries(configKeys.filter(k => k !== 'csvText').map(k => [k, s.config[k]])) as Settings['sources'][number]['config'],
+                config: Object.fromEntries(configKeys.filter(k => k !== 'csvText' && k !== 'overlayGeoJSON').map(k => [k, s.config[k]])) as Settings['sources'][number]['config'],
                 ...(s.color ? { color: [...s.color] as [number, number, number] } : {}),
                 ...(s.coloring ? { coloring: { ...(s.coloring.scheme ? { scheme: s.coloring.scheme } : {}), ...(s.coloring.scale ? { scale: s.coloring.scale } : {}), field: s.coloring.field, bins: s.coloring.bins, low: s.coloring.low, high: s.coloring.high, ...(s.coloring.categories ? { categories: structuredClone(s.coloring.categories) } : {}) } } : {})
             })),
@@ -36,7 +36,7 @@ export function configurationState(settings: Settings, query: AnalysisState['que
 }
 export function localSettings(state: AnalysisState): Settings {
     if (state.schemaVersion !== 1) throw Error('Unsupported analysis version.');
-    return { ...structuredClone(state.settings), sources: state.settings.sources.map(s => ({ ...structuredClone(s), config: { ...defaultConfig, ...s.config, csvText: '' } })) };
+    return { ...structuredClone(state.settings), sources: state.settings.sources.map(s => ({ ...structuredClone(s), config: { ...defaultConfig, ...s.config, csvText: '', overlayGeoJSON: '' } })) };
 }
 export function emptyState(defaultBasemapUrl = '', defaultBasemapAttribution = ''): AnalysisState {
     const url = defaultBasemapUrl.trim();

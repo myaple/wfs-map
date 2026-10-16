@@ -21,7 +21,7 @@ import { formatUTC, utcISO, utcInput } from './time.ts';
 import { createUUID } from './uuid.ts';
 import { configurationState, localSettings, type AnalysisState, type SourceAnalysis } from './analysis-state.ts';
 import { currentAnalysis, mountAnalysisControls, rememberBindings, localAnalysisKey } from './saved-analysis.ts';
-import { fileUser } from './source-storage.ts';
+import { fileUser, stageCSVFile, readCSVText } from './source-storage.ts';
 import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -33,7 +33,8 @@ import { Workspace } from './workspace.ts';
 import { all, type Expression } from './analysis.ts';
 import { PointColors } from './point-colors.ts';
 import { DataSources } from './data-sources.ts';
-import { configIdentity, defaultConfig, readSettings, settingsKey, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
+import { configIdentity, defaultConfig, readSettings, settingsKey, validateConfig, type Config, type Settings, type SavedSource, type MapSettings } from './source-settings.ts';
+import { overlayColors, overlayWarning, isValidGeoJSON } from './overlays.ts';
 import { queryFilter, timeBounds, validateTime, type QueryBounds, type QueryFields, type MapBounds } from './wfs-query.ts';
 import './style.css';
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
@@ -46,10 +47,16 @@ $('app').innerHTML = `
 <section id="configuration" hidden></section>
 <section id="analysis"><section class="query-panel" aria-labelledby="queryTitle"><div class="query-heading"><h2 id="queryTitle">Time &amp; map area</h2><span class="hint">Applies to all enabled sources · WFS requests and CSV rows</span></div><form id="timeForm" class="query-controls"><label for="timeWindow">Time window</label><select id="timeWindow"><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="custom">Custom range</option><option value="all">All time</option></select><div id="customTime" class="query-controls" hidden><span id="utcTimeHelp" class="hint">24-hour clock · UTC · YYYY-MM-DD HH:mm:ss</span><label for="timeStart">Start (UTC)</label><input id="timeStart" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"><label for="timeEnd">End (UTC)</label><input id="timeEnd" type="text" placeholder="YYYY-MM-DD HH:mm:ss" aria-describedby="utcTimeHelp"></div><button id="applyTime" class="primary" type="submit">Refresh time window</button></form><p id="timeSummary" class="hint" role="status"></p><p id="timeError" class="error" role="alert" hidden></p><div class="query-area"><span id="areaSummary" class="hint">All map areas · no area bound on loading.</span><button id="drawArea" type="button" aria-pressed="false">Draw load area on map</button><button id="clearArea" hidden>Clear map area</button></div><details id="advancedServerFilters" class="server-filter-panel"><summary>Advanced server filters</summary></details></section><div class="analysis-controls"><details class="colour-panel" open><summary>Point colouring</summary><p class="hint">Choose a source to style. Single colour for all points, discrete colours for text, or a gradient for numbers. Each source keeps its own settings.</p><div class="source-controls"><div class="source-control"><label for="colorSource">Colour data source</label><select id="colorSource"></select></div><div class="source-control"><label for="colorAttribute">Point colour attribute</label><select id="colorAttribute"></select></div><div id="solidColorControl" class="source-control"><label for="sourceColor">Single source colour</label><input id="sourceColor" type="color"></div><div data-gradient-control class="source-control"><label for="colorBins">Colour bins</label><select id="colorBins"><option>8</option><option selected>24</option><option>64</option></select></div><div data-gradient-control class="source-control"><label for="colorScale">Colour bin scale</label><select id="colorScale"><option value="linear">Linear</option><option value="log10">Log10</option></select></div><div data-gradient-control class="source-control"><label for="colorScheme">Colour scheme</label><select id="colorScheme"></select></div><span id="colorRamp" aria-hidden="true"></span></div><div id="categoryColors" hidden><label for="categorySearch">Find a value</label><input id="categorySearch" type="search" placeholder="Search unique values"><div id="categoryColorList"></div><button id="moreCategoryColors" type="button">Show more values</button><p id="categoryColorCount" class="hint"></p></div><p id="colorLegend" class="hint" role="status"></p></details><details class="filter-panel" open><summary>Dataset filters</summary><p class="hint">Filters apply to points already loaded for this source. Chart selections use the highlighted AND / OR group. Edit a group to select it.</p><div class="query-area"><span id="localAreaSummary" class="hint" role="status">All loaded map areas · right-drag a box on the map to filter all sources.</span><button id="clearLocalArea" type="button" hidden>Clear local map area</button></div><div class="source-controls"><div class="source-control"><label for="filterSource">Filter data source</label><select id="filterSource"></select></div><span id="filterOwner" class="hint"></span></div><div id="rules"></div><div class="row filter-actions"><button id="apply" class="primary" disabled>Apply filters</button><button id="reset" disabled>Clear filters</button><span id="filterStatus" role="status"></span></div></details></div>
 
-<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><span id="drawAreaHelp" class="hint" role="status" hidden>Left-drag to draw the load area · Escape to cancel</span><button id="toggleEllipses" aria-label="Show ellipses" aria-pressed="false" title="Show ellipses"><svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><ellipse cx="11" cy="8" rx="9" ry="5" transform="rotate(-25 11 8)" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button><button id="measureMap" type="button" aria-label="Measure distance" aria-pressed="false" title="Measure distance"><svg width="22" height="18" viewBox="0 0 22 18" aria-hidden="true"><path d="M3 14 16 1 21 6 8 19Z" transform="translate(0 -2)" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m7 8 3 3m1-7 3 3m1-7 3 3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button><details id="ellipseResolution" class="ellipse-resolution"><summary aria-label="Ellipse settings" title="Ellipse settings">⚙</summary><div class="ellipse-options">
+<div class="analysis-grid"><div class="map-panel"><div class="map-tools"><button id="fit" disabled>Fit dataset</button><label for="size">Point size</label><input id="size" type="range" min="1" max="8" step="0.5" value="2"><label><input id="basemap" type="checkbox"> Basemap</label><span id="drawAreaHelp" class="hint" role="status" hidden>Left-drag to draw the load area · Escape to cancel</span><button id="toggleEllipses" aria-label="Show ellipses" aria-pressed="false" title="Show ellipses"><svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><ellipse cx="11" cy="8" rx="9" ry="5" transform="rotate(-25 11 8)" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button><button id="addOverlay" type="button" aria-haspopup="dialog" aria-label="Add GeoJSON overlay" title="Add GeoJSON overlay"><svg width="22" height="18" viewBox="0 0 22 18" aria-hidden="true"><path d="M2 3h18v12H2z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 13l4-5 3 3 2-2 5 4" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="7" cy="7" r="1.6" fill="currentColor"/></svg></button><button id="measureMap" type="button" aria-label="Measure distance" aria-pressed="false" title="Measure distance"><svg width="22" height="18" viewBox="0 0 22 18" aria-hidden="true"><path d="M3 14 16 1 21 6 8 19Z" transform="translate(0 -2)" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m7 8 3 3m1-7 3 3m1-7 3 3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button><details id="ellipseResolution" class="ellipse-resolution"><summary aria-label="Ellipse settings" title="Ellipse settings">⚙</summary><div class="ellipse-options">
 <div class="ellipse-option"><label for="ellipseVertices">Vertices per ellipse</label><input id="ellipseVertices" type="number" min="4" max="128" step="1" value="12" aria-describedby="ellipseVerticesHint"><p id="ellipseVerticesHint" class="hint">4–128 · curved ends get more samples</p></div>
 <div class="ellipse-option"><label for="ellipseDetail">Outline detail</label><select id="ellipseDetail"><option value="auto">Automatic (fast in dense views)</option><option value="all">Every point</option></select></div>
-</div></details><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">⤢</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Middle-drag to highlight · double-middle-click to clear highlights · Click a segment · left-drag charts to zoom · right-drag to select · double-left-click to reset zoom · double-right-click to clear dataset filters</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
+</div></details><button id="enlargeMap" aria-label="Enlarge map" aria-haspopup="dialog" aria-expanded="false">⤢</button></div><main id="map"><div id="hud">Loaded 0 points</div></main><aside id="mapLegend" class="map-legend" aria-label="Map legend" hidden></aside></div><dialog id="overlayDialog" class="source-dialog" aria-labelledby="overlayDialogTitle"><form id="overlayForm"><div class="source-dialog-head"><div><h2 id="overlayDialogTitle">Add GeoJSON overlay</h2><p class="hint">Plot your own GeoJSON on the map. Point features follow the point size slider; lines and polygons use the overlay colour.</p></div><button id="closeOverlay" type="button" aria-label="Close overlay settings">×</button></div><div class="settings-fields">
+<label for="overlayName">Overlay name</label><input id="overlayName" required maxlength="120" placeholder="e.g. Study area">
+<label for="overlayFile">GeoJSON file</label><input id="overlayFile" type="file" accept=".geojson,.json,application/geo+json,application/json"><p id="overlayFileStatus" class="hint" role="status">Choose a .geojson or .json file.</p>
+<label for="overlayColor">Overlay colour</label><select id="overlayColor"></select>
+<p id="overlayHint" class="hint" role="status" hidden></p>
+<p id="overlayError" class="error" role="alert" hidden></p>
+</div><div class="source-dialog-footer"><span class="hint">Overlays are saved with your analysis like CSV files.</span><button id="cancelOverlay" type="button">Cancel</button><button id="addOverlaySource" class="primary" type="submit">Add overlay</button></div></form></dialog><div id="overlayList" class="overlay-list" hidden></div><section class="charts-panel"><div class="charts-head"><div><h2>Attribute charts</h2><span class="hint">Middle-drag to highlight · double-middle-click to clear highlights · Click a segment · left-drag charts to zoom · right-drag to select · double-left-click to reset zoom · double-right-click to clear dataset filters</span></div><div class="source-controls"><div class="source-control"><label for="chartSource">New chart data source</label><select id="chartSource"></select></div><button id="addChart" disabled>+ Add chart</button></div></div><div id="charts" aria-live="polite"><p class="empty">Load datasets to create charts from their attributes.</p></div></section></div>
 <details class="colour-panel csv-export-panel" open><summary>CSV export</summary><p class="hint">Download one source’s displayed selection, including its attributes and coordinates. Respects applied dataset/chart filters and the time and map-area bounds.</p><div class="source-controls"><div class="source-control"><label for="exportSource">Export data source</label><select id="exportSource"></select></div><button id="exportCSV" disabled>Download CSV</button><span id="csvExportStatus" class="hint" role="status"></span></div></details>
 <details class="measurements"><summary>Performance measurements</summary><div class="row"><button id="benchmark" disabled>Run pan / zoom test</button><button id="export">Download metrics</button></div><p class="hint">Offline grid by default. Frame intervals depend on GPU and point density.</p></details></section><div id="timelineHost" hidden></div>`;
 mountThemeToggle(document.querySelector('.topbar')!);
@@ -142,6 +149,8 @@ let mapSettings: MapSettings = settings.map ?? { center: [-3, 54], zoom: 5, poin
 let preserveMapView = !!settings.map;
 $<HTMLInputElement>('size').value = String(mapSettings.pointSize);
 const sources: Source[] = [];
+type Overlay = { id: string; name: string; config: Config; enabled: boolean; visible: boolean; color: string; geojson: string; sourceId: string; fillId: string; lineId: string; pointId: string };
+const overlays: Overlay[] = [];
 configureHighlights({
     select: request => chartRPC(sources.find(s => s.id === request.sourceId)!, { type: 'highlightRows', ...request }),
     counts: (sourceId, chart, rows) => chartRPC(sources.find(s => s.id === sourceId)!, { type: 'highlightCounts', chart, rows })
@@ -169,7 +178,7 @@ let localMapBounds: MapBounds | undefined = initialState?.localMapBounds ? struc
 let filterSourceId = '', popup: maplibregl.Popup | undefined, benchmarkRunning = false, mapReady = false, loadSlots = 0;
 const loadQueue: Source[] = [];
 const layerOrder: Source[] = [];
-function filterSource(): Source | undefined { return sources.find(s => s.enabled && s.id === filterSourceId) ?? sources.find(s => s.enabled); }
+function filterSource(): Source | undefined { return sources.find(s => s.enabled && s.config.type !== 'overlay' && s.id === filterSourceId) ?? sources.find(s => s.enabled && s.config.type !== 'overlay'); }
 function createSource(input: {
     id?: string;
     name?: string;
@@ -210,14 +219,21 @@ if (!settings.sources.length && (params.has('points') || params.has('url'))) {
 for (const [i, source] of settings.sources.entries()) createSource(source, i === 0);
 filterSourceId = filterSource()?.id ?? '';
 function snapshot(): Settings {
-    return { sources: sources.map(({ id, name, enabled, color, config, coloring, serverFilters }) => ({ id, name, enabled, color, config, coloring, serverFilters })), background: { ...background }, map: structuredClone(mapSettings) };
+    // Overlay sources may exist in the sources array (after reload, before
+    // adoptOverlays runs) or in the overlays array (after the user adds one).
+    // Include both, deduplicating by id.
+    const dataSources = sources.filter(s => s.config.type !== 'overlay').map(({ id, name, enabled, color, config, coloring, serverFilters }) => ({ id, name, enabled, color, config, coloring, serverFilters }));
+    const overlayFromSources = sources.filter(s => s.config.type === 'overlay').map(s => ({ id: s.id, name: s.name, enabled: s.enabled, config: s.config }));
+    const overlayFromOverlays = overlays.filter(o => !sources.some(s => s.id === o.id && s.config.type === 'overlay')).map(o => ({ id: o.id, name: o.name, enabled: o.enabled, config: o.config }));
+    return { sources: [...dataSources, ...overlayFromSources, ...overlayFromOverlays], background: { ...background }, map: structuredClone(mapSettings) };
 }
 function persist() {
     try { localStorage.setItem(settingsKey, JSON.stringify(snapshot())); }
     catch { status('Could not save analysis preferences in this browser.', true); }
 }
 function renderSources() {
-    const enabledSources = sources.filter(s => s.enabled);
+    const dataSources = sources.filter(s => s.config.type !== 'overlay');
+    const enabledSources = dataSources.filter(s => s.enabled);
     filterSourceId = filterSource()?.id ?? '';
     for (const id of ['filterSource', 'chartSource', 'exportSource']) {
         const select = $<HTMLSelectElement>(id), previous = select.value;
@@ -226,6 +242,8 @@ function renderSources() {
         select.disabled = !enabledSources.length;
         if (enabledSources.some(s => s.id === previous)) select.value = previous;
     }
+    $<HTMLSelectElement>('colorSource').replaceChildren(...enabledSources.map(s => new Option(s.name, s.id)));
+    if (!enabledSources.some(s => s.id === $<HTMLSelectElement>('colorSource').value)) $<HTMLSelectElement>('colorSource').value = enabledSources[0]?.id ?? '';
     $<HTMLSelectElement>('filterSource').value = filterSourceId;
     const current = filterSource();
     if (current && $('rules') !== current.rules) switchFilters(current.id);
@@ -238,6 +256,136 @@ function renderSources() {
     serverFilterPanel.refresh();
 }
 const sourceSettings = new DataSources(snapshot(), applySettings, async config => (await describe(undefined, config)).fields.map(f => f.name));
+// GeoJSON overlays are pure map annotations: they never load dataset points, so
+// they skip the worker pipeline entirely. Their file rides the same IndexedDB
+// storage and localStorage settings path as CSV files.
+function overlayLayerIds(id: string) { return { sourceId: 'overlay-' + id, fillId: 'overlay-' + id + '-fill', lineId: 'overlay-' + id + '-line', pointId: 'overlay-' + id + '-point' }; }
+function pointFeatures(geojson: string): number {
+    try {
+        const doc = JSON.parse(geojson), features = doc.type === 'FeatureCollection' ? doc.features : [doc];
+        return features.filter((f: any) => ['Point', 'MultiPoint'].includes(f?.geometry?.type ?? f?.type)).length;
+    } catch { return 0; }
+}
+function renderOverlayList() {
+    const host = $('overlayList');
+    host.replaceChildren();
+    if (!overlays.length) { host.hidden = true; return; }
+    host.hidden = false;
+    for (const o of overlays) {
+        const row = document.createElement('div'); row.className = 'overlay-row'; row.dataset.overlayId = o.id;
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = o.visible; check.setAttribute('aria-label', 'Show ' + o.name);
+        check.onchange = () => { o.visible = check.checked; syncOverlay(o); persist(); };
+        const swatch = document.createElement('span'); swatch.className = 'overlay-swatch'; swatch.style.background = o.color; swatch.setAttribute('aria-hidden', 'true');
+        const name = document.createElement('span'); name.className = 'overlay-name'; name.textContent = o.name;
+        const file = document.createElement('span'); file.className = 'hint'; file.textContent = o.config.fileName || 'GeoJSON';
+        const remove = document.createElement('button'); remove.textContent = 'Remove'; remove.className = 'danger'; remove.setAttribute('aria-label', 'Remove ' + o.name);
+        remove.onclick = () => removeOverlay(o);
+        row.append(check, swatch, name, file, remove); host.append(row);
+    }
+}
+function syncOverlay(o: Overlay) {
+    if (!mapReady) return;
+    for (const id of [o.fillId, o.lineId, o.pointId]) {
+        const layer = map.getLayer(id);
+        if (layer) map.setLayoutProperty(id, 'visibility', o.visible && o.enabled ? 'visible' : 'none');
+    }
+    map.triggerRepaint();
+}
+function addOverlayLayers(o: Overlay) {
+    if (!mapReady) return;
+    if (map.getSource(o.sourceId)) return;
+    const data = JSON.parse(o.geojson) as Parameters<maplibregl.GeoJSONSource['setData']>[0];
+    const ids = overlayLayerIds(o.id);
+    o.sourceId = ids.sourceId; o.fillId = ids.fillId; o.lineId = ids.lineId; o.pointId = ids.pointId;
+    map.addSource(o.sourceId, { type: 'geojson', data });
+    map.addLayer({ id: o.fillId, type: 'fill', source: o.sourceId, filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': o.color, 'fill-opacity': .18 } }, 'record-highlights');
+    map.addLayer({ id: o.lineId, type: 'line', source: o.sourceId, filter: ['in', ['geometry-type'], ['literal', ['LineString', 'Polygon']]] as any, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': o.color, 'line-width': 2 } }, 'record-highlights');
+    map.addLayer({ id: o.pointId, type: 'circle', source: o.sourceId, filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-color': o.color, 'circle-radius': ['max', 1, ['/', mapSettings.pointSize, 2]] } }, 'record-highlights');
+    syncOverlay(o);
+}
+function removeOverlay(o: Overlay) {
+    if (mapReady) {
+        for (const id of [o.pointId, o.lineId, o.fillId]) if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource(o.sourceId)) map.removeSource(o.sourceId);
+    }
+    overlays.splice(overlays.indexOf(o), 1);
+    const s = sources.find(s => s.id === o.id);
+    if (s) { clearSource(s); sources.splice(sources.indexOf(s), 1); }
+    sourceSettings.removeSource(o.id);
+    renderOverlayList(); persist(); state();
+}
+function adoptOverlays() {
+    // Remove overlays whose sources are gone; keep overlays still present in
+    // the sources list (avoids a transient persist() that drops them).
+    for (const o of [...overlays]) if (!sources.some(s => s.id === o.id && s.config.type === 'overlay')) removeOverlay(o);
+    for (const s of sources.filter(s => s.config.type === 'overlay')) {
+        if (overlays.some(o => o.id === s.id)) continue; // already adopted
+        const color = s.config.overlayColor || overlayColors[0].id;
+        overlays.push({ id: s.id, name: s.name, config: s.config, enabled: s.enabled, visible: s.enabled, color, geojson: s.config.overlayGeoJSON, ...overlayLayerIds(s.id) });
+    }
+    for (const o of overlays) {
+        if (!o.geojson && o.config.csvRef) readCSVText(o.config.csvRef, fileUser).then(text => {
+            if (sources.some(s => s.id === o.id && s.config.type === 'overlay') && !o.geojson) { o.geojson = text; addOverlayLayers(o); }
+        }).catch(() => status('The saved GeoJSON overlay file is missing. Remove the overlay or add the file again in Data sources.', true));
+        else addOverlayLayers(o);
+    }
+    renderOverlayList();
+}
+function openOverlayDialog() {
+    $('overlayError').hidden = true; $('overlayHint').hidden = true;
+    $<HTMLInputElement>('overlayFile').value = '';
+    $<HTMLInputElement>('overlayFileStatus').textContent = 'Choose a .geojson or .json file.';
+    $<HTMLInputElement>('overlayName').value = '';
+    $<HTMLSelectElement>('overlayColor').value = overlayColors[0].id;
+    $<HTMLDialogElement>('overlayDialog').showModal();
+    $<HTMLInputElement>('overlayName').focus();
+}
+function closeOverlayDialog() { $<HTMLDialogElement>('overlayDialog').close(); }
+$('addOverlay').onclick = openOverlayDialog;
+$('closeOverlay').onclick = closeOverlayDialog;
+$('cancelOverlay').onclick = closeOverlayDialog;
+$<HTMLDialogElement>('overlayDialog').addEventListener('cancel', closeOverlayDialog);
+$<HTMLSelectElement>('overlayColor').replaceChildren(...overlayColors.map(c => new Option(c.name, c.id)));
+$<HTMLInputElement>('overlayFile').onchange = async () => {
+    const file = $<HTMLInputElement>('overlayFile').files?.[0];
+    $<HTMLInputElement>('overlayFileStatus').textContent = file ? `Reading ${file.name}…` : 'Choose a .geojson or .json file.';
+    $('overlayError').hidden = true; $('overlayHint').hidden = true;
+    if (!file) return;
+    try {
+        const text = await file.text();
+        if (!isValidGeoJSON(text)) throw Error('The chosen file is not valid GeoJSON (a Feature, FeatureCollection or geometry).');
+        overlayFileName = file.name; overlayFileText = text;
+        $<HTMLInputElement>('overlayFileStatus').textContent = `${file.name} · ${pointFeatures(text).toLocaleString()} point features`;
+        const warning = overlayWarning(text);
+        if (warning) { $('overlayHint').textContent = warning; $('overlayHint').hidden = false; }
+    } catch (e) {
+        overlayFileName = ''; overlayFileText = '';
+        $<HTMLInputElement>('overlayFileStatus').textContent = 'Choose a .geojson or .json file.';
+        $('overlayError').textContent = (e as Error).message; $('overlayError').hidden = false;
+    }
+};
+let overlayFileName = '', overlayFileText = '';
+$('overlayForm').onsubmit = e => {
+    e.preventDefault();
+    try {
+        const name = $<HTMLInputElement>('overlayName').value.trim();
+        if (!name) throw Error('Enter an overlay name.');
+        if (!overlayFileText.trim()) throw Error('Choose a GeoJSON file.');
+        if (!isValidGeoJSON(overlayFileText)) throw Error('The chosen file is not valid GeoJSON (a Feature, FeatureCollection or geometry).');
+        const color = $<HTMLSelectElement>('overlayColor').value;
+        const id = createUUID();
+        const config: Config = { ...defaultConfig, type: 'overlay', overlayGeoJSON: overlayFileText, overlayFileName: overlayFileName, overlayColor: color, fileName: overlayFileName, csvRef: id };
+        validateConfig(config);
+        stageCSVFile(id, new Blob([overlayFileText], { type: 'application/geo+json' }));
+        // Overlays are stored in the draft so the usual Save analysis persists
+        // them; until then the file stays staged in memory like a CSV draft.
+        sourceSettings.addOverlaySource({ id, name, enabled: true, config });
+        // Show the overlay immediately, before the analysis is saved.
+        const o: Overlay = { id, name, enabled: true, visible: true, color, geojson: overlayFileText, config, ...overlayLayerIds(id) };
+        overlays.push(o); addOverlayLayers(o); renderOverlayList();
+        closeOverlayDialog(); overlayFileName = ''; overlayFileText = '';
+    } catch (error) { $('overlayError').textContent = (error as Error).message; $('overlayError').hidden = false; }
+};
 const pointColors = new PointColors(() => sources, (source, previous) => {
     const s = sources.find(s => s.id === source.id)!;
     s.layer.color = s.color;
@@ -274,13 +422,15 @@ function applySettings(next: Settings, restore = false) {
     const load: Source[] = [];
     for (const input of next.sources) {
         let s = sources.find(s => s.id === input.id);
-        if (!s) { s = createSource(input); if (s.enabled) load.push(s); }
+        if (!s) { s = createSource(input); if (s.enabled && s.config.type !== 'overlay') load.push(s); }
         else {
             const changed = configIdentity(s.config) !== configIdentity(input.config) || JSON.stringify(s.serverFilters) !== JSON.stringify(input.serverFilters ?? []), wasEnabled = s.enabled;
             s.name = input.name; s.config = { ...input.config }; s.serverFilters = structuredClone(input.serverFilters ?? []); s.enabled = input.enabled;
-            if (changed || !s.enabled) clearSource(s);
-            if (changed) s.fields = [];
-            if (s.enabled && (changed || !wasEnabled)) load.push(s);
+            if (s.config.type !== 'overlay') {
+                if (changed || !s.enabled) clearSource(s);
+                if (changed) s.fields = [];
+                if (s.enabled && (changed || !wasEnabled)) load.push(s);
+            }
         }
     }
     background = { ...next.background };
@@ -303,6 +453,7 @@ function applySettings(next: Settings, restore = false) {
     for (const s of sources) s.workspace.refreshSources();
     state();
     for (const s of load) loadSource(s);
+    adoptOverlays();
     if (currentAnalysis) rememberBindings(snapshot());
 }
 function switchFilters(id: string) {
@@ -435,6 +586,8 @@ function rememberMap() {
     if (localStorage.getItem(settingsKey) !== null) persist();
 }
 map.on('moveend', rememberMap);
+const updateOverlayTheme = () => { for (const o of overlays) syncOverlay(o); };
+window.addEventListener('themechange', updateOverlayTheme);
 const updateMapTheme = () => {
     if (!map.getLayer('background')) return;
     map.setPaintProperty('background', 'background-color', themeColor('map-background'));
@@ -622,12 +775,11 @@ function clearSource(s: Source) {
         popup?.remove();
 }
 function clear() {
-    for (const s of sources)
-        clearSource(s);
+    for (const s of sources) clearSource(s);
     state();
 }
 function loadSource(s: Source) {
-    if (!s.enabled || s.loading || !mapReady)
+    if (s.config.type === 'overlay' || !s.enabled || s.loading || !mapReady)
         return;
     if (s.done && s.loadedConfig === configIdentity(s.config) && s.loadedQuery === JSON.stringify(queryBounds) && s.loadedServerFilters === JSON.stringify(s.serverFilters))
         return;
@@ -651,7 +803,7 @@ function pumpLoads() {
 async function load() {
     if (!['#records', '#derived'].includes(location.hash)) location.hash = '#analysis';
     for (const s of sources)
-        if (s.enabled)
+        if (s.enabled && s.config.type !== 'overlay')
             loadSource(s);
 }
 async function performLoad(s: Source) {
@@ -913,8 +1065,9 @@ map.on('dblclick', e => {
 map.on('webglcontextlost', () => status('GPU context lost; waiting for restoration.', true));
 map.on('webglcontextrestored', () => {
     for (const s of sources)
-        if (s.enabled && (s.loaded || s.loading) && !map.getLayer(s.layer.id))
+        if (s.config.type !== 'overlay' && s.enabled && (s.loaded || s.loading) && !map.getLayer(s.layer.id))
             map.addLayer(s.layer, 'record-highlights');
+    for (const o of overlays) if (o.geojson) addOverlayLayers(o);
     state();
 });
 map.on('error', e => status(e.error.message, true));
@@ -975,8 +1128,11 @@ $('reset').onclick = () => filterSource()?.workspace.clearFilters();
 $('fit').onclick = fit;
 $('benchmark').onclick = () => void benchmark();
 $('size').oninput = () => {
+    mapSettings.pointSize = Number(value('size'));
     for (const s of sources)
-        s.layer.pointSize = Number(value('size'));
+        s.layer.pointSize = mapSettings.pointSize;
+    for (const o of overlays) if (mapReady && map.getLayer(o.pointId))
+        map.setPaintProperty(o.pointId, 'circle-radius', ['max', 1, ['/', mapSettings.pointSize, 2]]);
     map.triggerRepaint();
     rememberMap();
 };
@@ -1002,9 +1158,11 @@ $('export').onclick = () => { const blob = new Blob([JSON.stringify({ sources: s
     }, getPoint: (index: number) => { const s = filterSource(); s?.worker?.postMessage({ type: 'get', index, request: s.request }); } };
 renderSources();
 route();
+adoptOverlays();
 map.on('load', () => {
     mapReady = true;
     map.addLayer({ id: 'record-highlights', type: 'custom', renderingMode: '2d', render: () => { for (const source of sources) if (source.enabled) source.layer.drawHighlights(); } });
+    for (const o of overlays) if (o.geojson) addOverlayLayers(o);
     state();
     ensureSourcesLoaded();
 });
@@ -1019,7 +1177,7 @@ function applyBackground() {
     }
 }
 function ensureSourcesLoaded() {
-    for (const s of sources) if (s.enabled && !s.error) loadSource(s);
+    for (const s of sources) if (s.enabled && s.config.type !== 'overlay' && !s.error) loadSource(s);
 }
 function hideAllMapValues(s: Source) {
     if (s.colorCategories) for (const category of s.colorCategories) s.mapHidden.add('category:' + category);
